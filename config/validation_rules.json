@@ -1,0 +1,105 @@
+{
+  "rules": [
+    {
+      "id": "id_number_format",
+      "applies_to": "id_number",
+      "description": "Omang / Birth Certificate must be exactly 9 numeric digits. Passport format varies by country - no digit validation.",
+      "logic": {
+        "type": "conditional_on_id_type",
+        "Omang": {"type": "exact_digits", "length": 9},
+        "Birth Certificate": {"type": "exact_digits", "length": 9},
+        "Passport": {"type": "skip", "status_if_present": "WARNING", "message": "Passport format not validated - varies by country of origin"}
+      }
+    },
+    {
+      "id": "gender_derivation",
+      "applies_to": "gender",
+      "description": "Derive gender from the 5th digit of Omang/Birth Certificate number. 1=Male, 2=Female.",
+      "logic": {
+        "type": "derive_from_digit",
+        "source_field": "id_number",
+        "digit_index": 5,
+        "applicable_id_types": ["Omang", "Birth Certificate"],
+        "mapping": {"1": "Male", "2": "Female"}
+      }
+    },
+    {
+      "id": "id_expiry_future",
+      "applies_to": "id_expiry_date",
+      "description": "ID Expiry Date must be in the future relative to processing date. Skip entirely if ID Type = Birth Certificate.",
+      "logic": {
+        "type": "future_date",
+        "skip_if": {"field": "id_type", "equals": "Birth Certificate"}
+      }
+    },
+    {
+      "id": "date_of_birth_past",
+      "applies_to": "date_of_birth",
+      "description": "Date of Birth must be a valid date in the past.",
+      "logic": {"type": "past_date"}
+    },
+    {
+      "id": "email_format",
+      "applies_to": "email",
+      "description": "Must match standard email format (contains @ and a valid domain).",
+      "logic": {"type": "regex", "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"}
+    },
+    {
+      "id": "contact_number_numeric",
+      "applies_to": "contact_number",
+      "description": "Numeric, Botswana numbers typically 8 digits.",
+      "logic": {"type": "numeric_length", "expected_length": 8, "status_if_mismatch": "WARNING"}
+    },
+    {
+      "id": "minor_fields_required_if_acting_on_behalf",
+      "applies_to": "minor_full_name",
+      "description": "Minor's full name, guardian name and guardian Omang are required only when Account Type = Acting on Behalf of.",
+      "logic": {
+        "type": "conditional_required",
+        "condition_field": "account_type",
+        "condition_equals": "Acting on Behalf of",
+        "required_fields": ["minor_full_name", "guardian_name", "guardian_id_number"]
+      }
+    },
+    {
+      "id": "guardian_id_format",
+      "applies_to": "guardian_id_number",
+      "description": "Parent/Guardian Omang: 9-digit validation applies.",
+      "logic": {"type": "exact_digits", "length": 9, "only_if_present": true}
+    },
+    {
+      "id": "pref_sms_default",
+      "applies_to": "pref_sms",
+      "description": "SMS notification preference defaults to YES if blank.",
+      "logic": {"type": "default_if_blank", "default": true}
+    },
+    {
+      "id": "pref_marketing_default",
+      "applies_to": "pref_marketing",
+      "description": "Marketing communication preference defaults to YES if blank.",
+      "logic": {"type": "default_if_blank", "default": true}
+    },
+    {
+      "id": "communication_channel_default",
+      "applies_to": "communication_channel",
+      "description": "Communication channel defaults to EMAIL if blank.",
+      "logic": {"type": "default_if_blank", "default": "Email"}
+    },
+    {
+      "id": "beneficiary_split_total",
+      "applies_to": "beneficiaries",
+      "description": "Beneficiary split percentages must total 100%. Flag if not.",
+      "logic": {"type": "sum_equals", "field": "split_percent", "target": 100}
+    }
+  ],
+  "mandatory_fields": [
+    "full_name", "id_number", "id_type", "date_of_birth", "email",
+    "contact_number", "citizenship", "account_type", "occupation_type",
+    "monthly_income_range"
+  ],
+  "confidence_thresholds": {
+    "high": {"min": 85, "action": "auto_accept"},
+    "medium": {"min": 65, "max": 84, "action": "flag_for_review"},
+    "low": {"max": 64, "action": "escalate_to_operations"}
+  }
+}

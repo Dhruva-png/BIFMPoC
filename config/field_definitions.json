@@ -1,0 +1,30 @@
+{
+  "form_code": "APPFORM",
+  "fields": [
+    {"id": "full_name", "section": "Investor Details", "label": "Full Name (First + Surname)", "mandatory": true, "source": "form_field", "type": "text"},
+    {"id": "id_number", "section": "Investor Details", "label": "Omang / Passport / Birth Cert No.", "mandatory": true, "source": "form_field", "type": "id_number"},
+    {"id": "id_type", "section": "Investor Details", "label": "ID Type", "mandatory": true, "source": "derived", "type": "enum", "options": ["Omang", "Passport", "Birth Certificate"]},
+    {"id": "id_expiry_date", "section": "Investor Details", "label": "ID Expiry Date", "mandatory": false, "conditional": true, "source": "form_field", "type": "date"},
+    {"id": "date_of_birth", "section": "Investor Details", "label": "Date of Birth", "mandatory": true, "source": "form_field", "type": "date"},
+    {"id": "gender", "section": "Investor Details", "label": "Gender", "mandatory": false, "source": "derived", "type": "enum", "options": ["Male", "Female"]},
+    {"id": "email", "section": "Investor Details", "label": "Email Address", "mandatory": true, "source": "form_field", "type": "email"},
+    {"id": "contact_number", "section": "Investor Details", "label": "Contact Number", "mandatory": true, "source": "form_field", "type": "phone"},
+    {"id": "us_citizen", "section": "Investor Details", "label": "US Citizen", "mandatory": false, "source": "checkbox", "type": "boolean", "default": false},
+    {"id": "citizenship", "section": "Investor Details", "label": "Citizenship / Nationality", "mandatory": true, "source": "form_field", "type": "text"},
+
+    {"id": "account_type", "section": "Investor Type", "label": "Account Type", "mandatory": true, "source": "checkbox", "type": "enum", "options": ["Individual", "Acting on Behalf of"]},
+    {"id": "occupation_type", "section": "Investor Type", "label": "Occupation Type", "mandatory": true, "source": "checkbox", "type": "enum", "options": ["Salaried", "Self-employed", "Minor Scholar", "Student", "Retired", "Unemployed"]},
+    {"id": "monthly_income_range", "section": "Investor Type", "label": "Monthly Income Range", "mandatory": true, "source": "checkbox", "type": "text"},
+
+    {"id": "minor_full_name", "section": "Minor Details", "label": "Minor's Full Name", "mandatory": false, "conditional": true, "condition": "account_type == 'Acting on Behalf of'", "source": "form_field", "page_hint": "primary section", "type": "text"},
+    {"id": "guardian_name", "section": "Minor Details", "label": "Parent / Guardian Name", "mandatory": false, "conditional": true, "condition": "account_type == 'Acting on Behalf of'", "source": "form_field", "page_hint": "Page 10", "type": "text"},
+    {"id": "guardian_id_number", "section": "Minor Details", "label": "Parent / Guardian Omang", "mandatory": false, "conditional": true, "condition": "account_type == 'Acting on Behalf of'", "source": "form_field", "page_hint": "Page 10", "type": "id_number"},
+
+    {"id": "pref_sms", "section": "Preferences", "label": "Interaction Preference - SMS", "mandatory": false, "source": "checkbox", "type": "boolean", "default": true},
+    {"id": "pref_marketing", "section": "Preferences", "label": "Interaction Preference - Marketing", "mandatory": false, "source": "checkbox", "type": "boolean", "default": true},
+    {"id": "communication_channel", "section": "Preferences", "label": "Communication Channel", "mandatory": false, "source": "checkbox", "type": "enum", "options": ["Email", "Post"], "default": "Email"},
+    {"id": "signature_authority", "section": "Preferences", "label": "Signature Authority", "mandatory": false, "conditional": true, "source": "checkbox", "type": "text"},
+
+    {"id": "beneficiaries", "section": "Beneficiary", "label": "Beneficiary Name(s) / Relationship / Split %", "mandatory": false, "source": "form_field", "type": "list", "item_fields": ["name", "relationship", "split_percent"]}
+  ]
+}

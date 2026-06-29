@@ -1,0 +1,66 @@
+{
+  "form_types": [
+    {
+      "code": "APPFORM",
+      "name": "Investment Application Form",
+      "purpose": "New investor onboarding",
+      "primary_poc_form": true,
+      "classification_hints": [
+        "investment application form",
+        "new investor",
+        "investor details",
+        "kyc declaration"
+      ]
+    },
+    {
+      "code": "ADD",
+      "name": "Additional Investment Form",
+      "purpose": "Add funds to an existing UT account",
+      "applies_to": "existing investors only",
+      "classification_hints": ["additional investment", "top up", "existing account number"]
+    },
+    {
+      "code": "DEBIT",
+      "name": "Debit Order Form",
+      "purpose": "Recurring automatic debit setup",
+      "applies_to": "optional, recurring contributions",
+      "classification_hints": ["debit order", "recurring debit", "bank mandate"]
+    },
+    {
+      "code": "DIS",
+      "name": "Disinvestment Form (Standard)",
+      "purpose": "Withdraw/redeem units from standard funds",
+      "classification_hints": ["disinvestment", "withdrawal", "redemption"],
+      "distinguish_from": "DIS_GSG",
+      "distinguishing_rule": "Lists more than one standard fund; not the GSG-only form"
+    },
+    {
+      "code": "DIS_GSG",
+      "name": "Disinvestment Form (GSG)",
+      "purpose": "Dedicated withdrawal form for Global Sustainable Growth Fund",
+      "classification_hints": ["disinvestment", "global sustainable growth", "gsg"],
+      "distinguish_from": "DIS",
+      "distinguishing_rule": "Form lists only the GSG fund and references the 7-year lock-in"
+    },
+    {
+      "code": "STATIC",
+      "name": "Static / Update Investor Details Form",
+      "purpose": "Capture or update client standing data",
+      "classification_hints": ["update investor details", "change of details", "standing data"]
+    },
+    {
+      "code": "KYC",
+      "name": "KYC (Know Your Customer)",
+      "purpose": "Regulatory compliance, identity & source of funds",
+      "classification_hints": ["know your customer", "kyc", "source of funds", "risk profile"]
+    }
+  ],
+  "funds": [
+    {"name": "BIFM Pula Money Market Fund", "type": "Money Market", "cutoff_time": "12:00", "lock_in_years": 0},
+    {"name": "BIFM Letlotlo Education Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 7},
+    {"name": "BIFM Balanced Prudential Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 0},
+    {"name": "BIFM Ya Masa Junior Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 7},
+    {"name": "BIFM Local Equity Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 0},
+    {"name": "BIFM Global Sustainable Growth Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 0}
+  ]
+}
