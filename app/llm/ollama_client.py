@@ -106,6 +106,14 @@ def ask_vision(prompt: str, image_path: Path, json_mode: bool = True) -> LLMResp
         "prompt": prompt,
         "images": [image_b64],
         "stream": False,
+        "options": {
+            # Deterministic, lowest-temperature decoding: for transcription
+            # tasks (as opposed to creative generation) sampling noise just
+            # produces inconsistent character-level reads of handwriting.
+            "temperature": 0.0,
+            "top_p": 0.1,
+            "num_predict": 1024,
+        },
     }
     if json_mode:
         payload["format"] = "json"

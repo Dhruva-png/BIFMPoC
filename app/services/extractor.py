@@ -31,10 +31,19 @@ def _build_field_prompt(field_subset: list[dict]) -> str:
     field_block = "\n".join(lines)
 
     return (
-        "You are an OCR/vision field extractor for a BIFM Unit Trust form. "
-        "Examine this page image carefully, including handwritten text and ticked checkboxes. "
-        "Extract values for the following fields. For checkbox fields, identify which option "
-        "is ticked. If a field is not present on this page or is blank, use null.\n\n"
+        "You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
+        "form. The applicant's handwriting may be cursive, inconsistent, or partially "
+        "unclear - read it the way a careful human clerk would:\n"
+        "- Look at each letter/digit individually before deciding a value; don't guess from word shape alone.\n"
+        "- Pay special attention to digits that are easy to confuse: 0/O, 1/7, 5/6, 8/3.\n"
+        "- Use surrounding context (field label, expected format) to disambiguate, but never invent "
+        "a value that doesn't match the strokes on the page.\n"
+        "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading inside the box - "
+        "not just print near it.\n"
+        "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
+        "- Give a LOWER confidence score (below 60) for any field where the handwriting was hard to "
+        "read, even if you produced a best-guess value - confidence should reflect how sure you are, "
+        "not just whether you filled in something.\n\n"
         f"FIELDS:\n{field_block}\n\n"
         "Also extract any beneficiary table rows you see, as a list of objects with "
         "name, relationship, split_percent.\n\n"

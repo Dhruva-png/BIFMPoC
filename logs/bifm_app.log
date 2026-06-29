@@ -1,0 +1,17 @@
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status PASS (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (14 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status PASS (13 checks)
+2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (14 checks)
+2026-06-29 07:06:10 | INFO     | app.ocr.pdf_utils | Rendering test_form.pdf to images at 300 DPI
+2026-06-29 07:06:11 | INFO     | app.ocr.pdf_utils | Rendered 1 page(s) from test_form.pdf

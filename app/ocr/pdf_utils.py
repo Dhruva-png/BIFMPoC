@@ -22,6 +22,7 @@ import shutil
 from pathlib import Path
 
 import fitz  # PyMuPDF
+from PIL import Image, ImageEnhance, ImageOps
 
 from app.utils.logger import get_logger
 from config.settings import settings
@@ -30,15 +31,40 @@ logger = get_logger(__name__)
 
 try:
     import pytesseract
-    from PIL import Image
     _TESSERACT_AVAILABLE = shutil.which("tesseract") is not None
 except ImportError:
     _TESSERACT_AVAILABLE = False
 
 
+def _enhance_for_handwriting(img: Image.Image) -> Image.Image:
+    """
+    Lightweight, deterministic preprocessing that measurably helps a vision
+    model read handwriting: it doesn't change what's on the page, just makes
+    pen strokes higher-contrast and large enough to resolve clearly.
+
+    - Upscale small renders so faint/small handwriting has enough pixels.
+    - Grayscale removes color-noise from scans (stamps, coloured ink, paper
+      texture) and lets autocontrast use the full tonal range.
+    - Mild unsharp mask crisps up stroke edges that DPI conversion softens,
+      without introducing the artefacts a heavier sharpen would.
+    """
+    long_edge = max(img.size)
+    if long_edge < settings.ocr_min_long_edge_px:
+        scale = settings.ocr_min_long_edge_px / long_edge
+        img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
+
+    gray = ImageOps.grayscale(img)
+    gray = ImageOps.autocontrast(gray, cutoff=1)
+    gray = ImageEnhance.Sharpness(gray).enhance(1.6)
+    gray = ImageEnhance.Contrast(gray).enhance(1.15)
+    return gray.convert("RGB")  # llava expects RGB
+
+
 def render_pdf_to_images(pdf_path: Path, output_subdir: str | None = None) -> list[Path]:
     """
-    Renders every page of a PDF to a PNG file under settings.paths.temp_dir.
+    Renders every page of a PDF to a PNG file under settings.paths.temp_dir,
+    applying a handwriting-friendly enhancement pass (see _enhance_for_handwriting)
+    unless settings.ocr_enhance_images is disabled.
     Returns the list of image paths in page order.
     """
     if not pdf_path.exists():
@@ -60,7 +86,14 @@ def render_pdf_to_images(pdf_path: Path, output_subdir: str | None = None) -> li
             for i, page in enumerate(doc, start=1):
                 pixmap = page.get_pixmap(matrix=matrix)
                 img_path = target_dir / f"page_{i:03d}.png"
-                pixmap.save(str(img_path))
+
+                if settings.ocr_enhance_images:
+                    pil_img = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+                    pil_img = _enhance_for_handwriting(pil_img)
+                    pil_img.save(img_path, "PNG")
+                else:
+                    pixmap.save(str(img_path))
+
                 image_paths.append(img_path)
     except fitz.FileDataError as exc:
         raise ValueError(f"Could not read {pdf_path.name} - file may be corrupt or not a valid PDF") from exc

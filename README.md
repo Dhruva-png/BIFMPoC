@@ -47,6 +47,54 @@ automation.
   disambiguation only runs when the first classification call comes back
   below the "high confidence" threshold — not on every form.
 
+## Handwriting OCR accuracy
+
+These forms are handwritten, and `llava` (the original default vision model)
+is noticeably weaker at cursive/handwritten text than newer vision models.
+Several changes target this directly:
+
+1. **Stronger vision model (biggest lever)** — swap the default `llava` for a
+   model with meaningfully better handwriting/OCR performance. Pull one of:
+   ```
+   ollama pull llama3.2-vision      # good general handwriting + layout
+   ollama pull qwen2.5vl:7b         # strong dedicated OCR/handwriting performance
+   ollama pull minicpm-v            # smaller, still handwriting-capable
+   ```
+   then point the app at it:
+   ```
+   set OLLAMA_VISION_MODEL=qwen2.5vl:7b
+   ```
+   This one change typically matters more than anything else on this list —
+   `llava` was trained mostly on natural images, not document handwriting.
+
+2. **Higher render DPI** — bumped from 200 → 300 (`settings.pdf_render_dpi`),
+   so small/faint handwriting has more pixels to be read from.
+
+3. **Image enhancement pass** (`app/ocr/pdf_utils.py::_enhance_for_handwriting`,
+   toggle via `settings.ocr_enhance_images`) — grayscale + autocontrast +
+   mild sharpening, and auto-upscaling any page below ~2000px on its long
+   edge. This boosts pen-stroke contrast without altering content.
+
+4. **Deterministic decoding** — vision calls now run at `temperature=0.0`,
+   `top_p=0.1` (`app/llm/ollama_client.py`). Sampling noise is fine for
+   creative text but actively hurts character-level transcription accuracy.
+
+5. **Prompt changes** (`app/services/extractor.py`) — the extraction prompt
+   now explicitly asks the model to read letter-by-letter rather than guess
+   from word shape, watch commonly-confused digits (0/O, 1/7, 5/6, 8/3), and
+   report a *lower* confidence score for hard-to-read fields instead of a
+   confident-looking guess. Low-confidence fields surface clearly in the
+   Streamlit per-document view and the Excel "Validation Flags" sheet, so a
+   human reviewer knows exactly which fields to double-check rather than
+   trusting every value blindly.
+
+If accuracy is still not good enough after switching models, the most
+effective next step for a real form is usually field-level cropping (sending
+the model a tight crop of just the name/ID-number box instead of the whole
+page) — that's a larger change so it's not in this POC pass, but the
+`field_definitions.json` page hints already give you the coordinates needed
+to do it.
+
 ## Setup (Windows)
 
 1. **Install Ollama**: https://ollama.com/download — installs as a background service.

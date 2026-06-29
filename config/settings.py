@@ -17,7 +17,7 @@ class OllamaSettings:
     host: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     text_model: str = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.2")
     vision_model: str = os.environ.get("OLLAMA_VISION_MODEL", "llava")
-    request_timeout_seconds: int = 120
+    request_timeout_seconds: int = 180
     max_retries: int = 2
 
 
@@ -39,7 +39,9 @@ class PathSettings:
 class AppSettings:
     ollama: OllamaSettings = field(default_factory=OllamaSettings)
     paths: PathSettings = field(default_factory=PathSettings)
-    pdf_render_dpi: int = 200
+    pdf_render_dpi: int = 300  # bumped from 200 - handwriting needs more detail than typed text
+    ocr_enhance_images: bool = True  # grayscale + contrast + sharpen pass before sending to the vision model
+    ocr_min_long_edge_px: int = 2000  # upscale pages smaller than this so small handwriting stays legible
     log_level: str = os.environ.get("LOG_LEVEL", "INFO")
     excel_report_name: str = "BIFM_UT_Processing_Report.xlsx"
 
