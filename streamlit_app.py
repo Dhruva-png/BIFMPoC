@@ -114,11 +114,11 @@ st.markdown(
 # Session state
 # --------------------------------------------------------------------------- #
 if "outcomes" not in st.session_state:
-    st.session_state.outcomes: list[DocumentOutcome] = []
+    st.session_state["outcomes"] = []
 if "report_path" not in st.session_state:
-    st.session_state.report_path: Path | None = None
+    st.session_state["report_path"] = None
 if "last_run_at" not in st.session_state:
-    st.session_state.last_run_at: str | None = None
+    st.session_state["last_run_at"] = None
 
 STATUS_CHIP = {
     "PASS":    ("chip-pass",    "PASS"),
@@ -170,12 +170,16 @@ with st.sidebar:
 
     with st.expander("Form types in scope"):
         for ft in load_form_types()["form_types"]:
-            st.caption(f"**{ft['code']}** — {ft['name']}")
+            st.markdown(f"**{ft['code']}** — {ft['name']}", unsafe_allow_html=False)
 
     with st.expander("Funds & Cut-off times"):
         for fund in load_form_types().get("funds", []):
             cat_icon = "🟢" if fund["type"] == "Money Market" else "🔵"
-            st.caption(f"{cat_icon} **{fund['name']}**  ·  Cut-off: {fund['cutoff_time']}")
+            st.markdown(
+                f"{cat_icon} **{fund['name']}**  \n"
+                f"Cut-off: `{fund['cutoff_time']}`  ·  {fund['type']}",
+                unsafe_allow_html=False,
+            )
 
 # --------------------------------------------------------------------------- #
 # Header
