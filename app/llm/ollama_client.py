@@ -44,26 +44,49 @@ class LLMResponse:
 def _post(payload: dict) -> dict:
     url = f"{settings.ollama.host}/api/generate"
     last_exc: Optional[Exception] = None
-    for attempt in range(1, settings.ollama.max_retries + 2):
+    max_attempts = settings.ollama.max_retries + 1  # e.g. max_retries=1 → 2 attempts total
+
+    for attempt in range(1, max_attempts + 1):
         try:
             start = time.monotonic()
             resp = requests.post(url, json=payload, timeout=settings.ollama.request_timeout_seconds)
             resp.raise_for_status()
             elapsed = time.monotonic() - start
+            logger.debug("Ollama response in %.1fs (attempt %d)", elapsed, attempt)
             data = resp.json()
             data["_elapsed_seconds"] = elapsed
             return data
+
         except requests.exceptions.ConnectionError as exc:
+            # Ollama not running — retry makes sense (user may be starting it)
             last_exc = exc
             logger.error(
                 "Could not reach Ollama at %s (attempt %d/%d). Is `ollama serve` running?",
-                settings.ollama.host, attempt, settings.ollama.max_retries + 1,
+                settings.ollama.host, attempt, max_attempts,
             )
+            if attempt < max_attempts:
+                time.sleep(3)  # brief pause then retry connection
+
+        except requests.exceptions.Timeout as exc:
+            # Model took longer than request_timeout_seconds.
+            # Do NOT retry — another full timeout doubles the wait for no benefit.
+            # The timeout itself is already generous (default 600s); if it fires
+            # the model is genuinely overloaded or the hardware is too slow.
+            last_exc = exc
+            logger.error(
+                "Ollama timed out after %ds on attempt %d — not retrying. "
+                "Increase OLLAMA_REQUEST_TIMEOUT or switch to a smaller model.",
+                settings.ollama.request_timeout_seconds, attempt,
+            )
+            break  # exit retry loop immediately
+
         except requests.exceptions.RequestException as exc:
             last_exc = exc
-            logger.warning("Ollama request failed (attempt %d): %s", attempt, exc)
-        time.sleep(1.5 * attempt)
-    raise OllamaError(f"Ollama request failed after retries: {last_exc}") from last_exc
+            logger.warning("Ollama request failed (attempt %d/%d): %s", attempt, max_attempts, exc)
+            if attempt < max_attempts:
+                time.sleep(2)
+
+    raise OllamaError(f"Ollama request failed: {last_exc}") from last_exc
 
 
 def ask_text(prompt: str, system: str | None = None, json_mode: bool = False) -> LLMResponse:

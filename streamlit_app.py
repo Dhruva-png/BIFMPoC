@@ -162,6 +162,18 @@ with st.sidebar:
         f"Vision model: **{settings.ollama.vision_model}**  ·  "
         f"Text model: **{settings.ollama.text_model}**"
     )
+    st.caption(
+        f"Timeout: **{settings.ollama.request_timeout_seconds}s** per call  ·  "
+        f"Keep-alive: **{settings.ollama.keep_alive}**"
+    )
+    if not ollama_ok:
+        pass  # error already shown above
+    else:
+        st.info(
+            "⏱ First call per batch may take 1–3 min while the model loads. "
+            "Subsequent calls are faster once it's warm.",
+            icon=None,
+        )
 
     st.markdown("---")
     st.markdown("### 📂 Intake")

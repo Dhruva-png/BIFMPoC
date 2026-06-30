@@ -17,16 +17,27 @@ class OllamaSettings:
     host: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     text_model: str = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.2")
     vision_model: str = os.environ.get("OLLAMA_VISION_MODEL", "qwen3-vl:8b-instruct")
-    request_timeout_seconds: int = 180
-    max_retries: int = 2
-    # Keeps the model resident in memory between calls instead of Ollama
-    # unloading it after its default 5-minute idle window - avoids a costly
-    # reload on every document in a batch.
-    keep_alive: str = os.environ.get("OLLAMA_KEEP_ALIVE", "30m")
-    # Caps how many tokens the model can generate per call. The JSON payloads
-    # this app needs are small; a lower cap stops the model "running on"
-    # and directly cuts wall-clock time per call.
-    num_predict: int = int(os.environ.get("OLLAMA_NUM_PREDICT", "600"))
+
+    # Raised from 180s — the 8B vision model can take 3-5 min on first call
+    # (cold model load) or on CPU-only hardware. 600s (10 min) ensures a slow
+    # machine doesn't fail a valid job; fast hardware finishes well under 60s.
+    # Override with: OLLAMA_REQUEST_TIMEOUT=300
+    request_timeout_seconds: int = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "600"))
+
+    # Retry once on transient failures (connection blip, brief overload).
+    # Don't retry more — a genuine timeout means the model is genuinely slow;
+    # retrying wastes time rather than fixing anything.
+    max_retries: int = 1
+
+    # Keep the model hot in VRAM/RAM for the whole batch + a generous buffer.
+    # Without this Ollama unloads after 5 min of idle, forcing a full reload
+    # on the next document — the single biggest source of per-doc slowness.
+    keep_alive: str = os.environ.get("OLLAMA_KEEP_ALIVE", "60m")
+
+    # Caps generated tokens per call. Field-extraction JSON is small (~300
+    # tokens); 800 gives headroom for verbose models without letting them
+    # "run on" for minutes producing unwanted prose.
+    num_predict: int = int(os.environ.get("OLLAMA_NUM_PREDICT", "800"))
 
 
 @dataclass
