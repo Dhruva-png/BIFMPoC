@@ -170,15 +170,20 @@ with st.sidebar:
 
     with st.expander("Form types in scope"):
         for ft in load_form_types()["form_types"]:
-            st.markdown(f"**{ft['code']}** — {ft['name']}", unsafe_allow_html=False)
+            st.markdown(
+                f"<span style='color:#E7ECF2;font-size:0.85rem;'>"
+                f"<strong>{ft['code']}</strong> — {ft['name']}</span>",
+                unsafe_allow_html=True,
+            )
 
     with st.expander("Funds & Cut-off times"):
         for fund in load_form_types().get("funds", []):
             cat_icon = "🟢" if fund["type"] == "Money Market" else "🔵"
             st.markdown(
-                f"{cat_icon} **{fund['name']}**  \n"
-                f"Cut-off: `{fund['cutoff_time']}`  ·  {fund['type']}",
-                unsafe_allow_html=False,
+                f"<span style='color:#E7ECF2;font-size:0.85rem;'>"
+                f"{cat_icon} <strong>{fund['name']}</strong><br>"
+                f"Cut-off: <code>{fund['cutoff_time']}</code> · {fund['type']}</span>",
+                unsafe_allow_html=True,
             )
 
 # --------------------------------------------------------------------------- #
@@ -221,20 +226,35 @@ if run_clicked:
         st.warning("No PDF files to process. Upload files or point at a non-empty intake folder.")
     else:
         progress_box = st.empty()
-        log_box = st.container(height=180)
+        log_box = st.empty()
         progress_bar = st.progress(0.0)
-        log_lines: list[str] = []
+
+        # Thread-safe log queue: worker threads enqueue messages here;
+        # only the main thread calls st.* functions (Streamlit context is
+        # not available on ThreadPoolExecutor workers).
+        import queue as _queue
+        _log_q: _queue.Queue = _queue.Queue()
 
         def progress_cb(message: str) -> None:
-            log_lines.append(message)
-            with log_box:
-                st.markdown(
+            """Called from worker threads — must NOT touch Streamlit."""
+            _log_q.put(message)
+
+        def _drain_log(log_lines: list) -> None:
+            """Drain the queue and redraw the log box on the main thread."""
+            while not _log_q.empty():
+                try:
+                    log_lines.append(_log_q.get_nowait())
+                except _queue.Empty:
+                    break
+            if log_lines:
+                log_box.markdown(
                     "\n".join(f'<div class="log-line">▸ {l}</div>' for l in log_lines[-200:]),
                     unsafe_allow_html=True,
                 )
 
         report = ExcelReportBuilder()
         outcomes: list[DocumentOutcome] = []
+        log_lines: list[str] = []
         total = len(pdf_paths)
         progress_box.info(f"Processing {total} document(s) — up to {settings.max_workers} in parallel...")
 
@@ -245,13 +265,15 @@ if run_clicked:
                 outcomes.append(future.result())
                 done += 1
                 progress_bar.progress(done / total)
+                _drain_log(log_lines)  # update log on main thread after each doc completes
 
+        _drain_log(log_lines)  # final drain
         report_path = report.save()
         progress_box.empty()
         progress_bar.empty()
-        st.session_state.outcomes = outcomes
-        st.session_state.report_path = report_path
-        st.session_state.last_run_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state["outcomes"] = outcomes
+        st.session_state["report_path"] = report_path
+        st.session_state["last_run_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         st.success(f"Batch complete — {total} document(s) processed.")
         st.rerun()
 
