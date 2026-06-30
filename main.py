@@ -22,7 +22,8 @@ def run_headless(intake: str | None) -> int:
 
     if not check_connection():
         print("ERROR: Could not reach Ollama at the configured host. Start it with `ollama serve` "
-              "and ensure llama3.2 and llava are pulled (`ollama pull llama3.2 && ollama pull llava`).")
+              "and ensure llama3.2 and qwen3-vl:8b-instruct are pulled "
+              "(`ollama pull llama3.2 && ollama pull qwen3-vl:8b-instruct`).")
         return 1
 
     intake_dir = Path(intake) if intake else None

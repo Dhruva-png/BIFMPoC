@@ -5,7 +5,8 @@ Design intent:
 - ALL LLM calls in the application go through this module - one place to retry,
   log, and account for cost/latency.
 - Two entry points only: ask_text() for llama3.2 reasoning, and ask_vision()
-  for llava image understanding. Business logic never talks to requests.post()
+  for vision-model image understanding (default qwen3-vl:8b-instruct).
+  Business logic never talks to requests.post()
   directly, so the model/host can change in one place (config/settings.py).
 - Every call is logged with elapsed time so it's easy to see how many LLM
   calls a batch run actually used - that's how we keep usage deliberate
@@ -74,6 +75,8 @@ def ask_text(prompt: str, system: str | None = None, json_mode: bool = False) ->
         "model": settings.ollama.text_model,
         "prompt": prompt,
         "stream": False,
+        "keep_alive": settings.ollama.keep_alive,
+        "options": {"num_predict": settings.ollama.num_predict},
     }
     if system:
         payload["system"] = system
@@ -92,7 +95,7 @@ def ask_text(prompt: str, system: str | None = None, json_mode: bool = False) ->
 
 def ask_vision(prompt: str, image_path: Path, json_mode: bool = True) -> LLMResponse:
     """
-    Send a page image plus an extraction prompt to llava.
+    Send a page image plus an extraction prompt to the configured vision model.
     Used for: form classification (page 1), field extraction, checkbox detection.
     """
     if not image_path.exists():
@@ -106,13 +109,17 @@ def ask_vision(prompt: str, image_path: Path, json_mode: bool = True) -> LLMResp
         "prompt": prompt,
         "images": [image_b64],
         "stream": False,
+        "think": False,
+        "keep_alive": settings.ollama.keep_alive,
         "options": {
             # Deterministic, lowest-temperature decoding: for transcription
             # tasks (as opposed to creative generation) sampling noise just
             # produces inconsistent character-level reads of handwriting.
             "temperature": 0.0,
             "top_p": 0.1,
-            "num_predict": 1024,
+            # Lower cap than the text model - field-extraction JSON is small,
+            # so this stops the model "running on" and directly cuts latency.
+            "num_predict": settings.ollama.num_predict,
         },
     }
     if json_mode:
@@ -132,8 +139,12 @@ def parse_json_response(response_text: str) -> dict:
     """
     Models occasionally wrap JSON in prose or code fences even when format=json
     is requested. This defensively extracts the first valid JSON object.
+    Also strips any stray <think>...</think> block some thinking-capable model
+    variants emit inline even when not explicitly asked to "think".
     """
     text = response_text.strip()
+    if "<think>" in text and "</think>" in text:
+        text = text.split("</think>", 1)[1].strip()
     if text.startswith("```"):
         text = text.strip("`")
         if text.lower().startswith("json"):

@@ -15,61 +15,33 @@
 2026-06-29 07:05:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (14 checks)
 2026-06-29 07:06:10 | INFO     | app.ocr.pdf_utils | Rendering test_form.pdf to images at 300 DPI
 2026-06-29 07:06:11 | INFO     | app.ocr.pdf_utils | Rendered 1 page(s) from test_form.pdf
-2026-06-29 13:14:44 | INFO     | app.core.pipeline | Rendering pages for ADD - AMOLEMO.pdf...
-2026-06-29 13:14:44 | INFO     | app.ocr.pdf_utils | Rendering ADD - AMOLEMO.pdf to images at 300 DPI
-2026-06-29 13:14:50 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - AMOLEMO.pdf
-2026-06-29 13:14:50 | INFO     | app.core.pipeline | Classifying ADD - AMOLEMO.pdf...
-2026-06-29 13:16:41 | INFO     | app.services.classifier | Classified ADD - AMOLEMO as ADD (95% confidence)
-2026-06-29 13:16:41 | INFO     | app.services.filer | Filed ADD - AMOLEMO.pdf -> ADD_NA_UNKNOWN_20260629.pdf
-2026-06-29 13:16:41 | INFO     | app.core.pipeline | ADD - AMOLEMO.pdf: classified as Additional Investment Form (extraction not in POC scope for this form type)
-2026-06-29 13:16:41 | INFO     | app.core.pipeline | Rendering pages for DEBIT - AMOLEMO.pdf...
-2026-06-29 13:16:41 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - AMOLEMO.pdf to images at 300 DPI
-2026-06-29 13:16:47 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - AMOLEMO.pdf
-2026-06-29 13:16:47 | INFO     | app.core.pipeline | Classifying DEBIT - AMOLEMO.pdf...
-2026-06-29 13:18:22 | INFO     | app.services.classifier | Classified DEBIT - AMOLEMO as DEBIT (95% confidence)
-2026-06-29 13:18:22 | INFO     | app.services.filer | Filed DEBIT - AMOLEMO.pdf -> DEBIT_NA_UNKNOWN_20260629.pdf
-2026-06-29 13:18:22 | INFO     | app.core.pipeline | DEBIT - AMOLEMO.pdf: classified as Debit Order Form (extraction not in POC scope for this form type)
-2026-06-29 13:18:22 | INFO     | app.core.pipeline | Rendering pages for DIS - AMOLEMO.pdf...
-2026-06-29 13:18:22 | INFO     | app.ocr.pdf_utils | Rendering DIS - AMOLEMO.pdf to images at 300 DPI
-2026-06-29 13:18:27 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - AMOLEMO.pdf
-2026-06-29 13:18:27 | INFO     | app.core.pipeline | Classifying DIS - AMOLEMO.pdf...
-2026-06-29 13:20:00 | INFO     | app.services.classifier | Classified DIS - AMOLEMO as DIS (95% confidence)
-2026-06-29 13:20:00 | INFO     | app.services.filer | Filed DIS - AMOLEMO.pdf -> DIS_NA_UNKNOWN_20260629.pdf
-2026-06-29 13:20:00 | INFO     | app.core.pipeline | DIS - AMOLEMO.pdf: classified as Disinvestment Form (Standard) (extraction not in POC scope for this form type)
-2026-06-29 13:20:00 | INFO     | app.core.pipeline | Rendering pages for STATIC - AMOLEMO.pdf...
-2026-06-29 13:20:00 | INFO     | app.ocr.pdf_utils | Rendering STATIC - AMOLEMO.pdf to images at 300 DPI
-2026-06-29 13:20:08 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from STATIC - AMOLEMO.pdf
-2026-06-29 13:20:08 | INFO     | app.core.pipeline | Classifying STATIC - AMOLEMO.pdf...
-2026-06-29 13:21:56 | INFO     | app.services.classifier | Classified STATIC - AMOLEMO as STATIC (95% confidence)
-2026-06-29 13:21:56 | INFO     | app.services.filer | Filed STATIC - AMOLEMO.pdf -> STATIC_NA_UNKNOWN_20260629_1.pdf
-2026-06-29 13:21:56 | INFO     | app.core.pipeline | STATIC - AMOLEMO.pdf: classified as Static / Update Investor Details Form (extraction not in POC scope for this form type)
-2026-06-29 13:21:56 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
-2026-06-29 14:11:11 | INFO     | app.core.pipeline | Rendering pages for STATIC - AMOLEMO.pdf...
-2026-06-29 14:11:11 | INFO     | app.ocr.pdf_utils | Rendering STATIC - AMOLEMO.pdf to images at 300 DPI
-2026-06-29 14:11:18 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from STATIC - AMOLEMO.pdf
-2026-06-29 14:11:18 | INFO     | app.core.pipeline | Classifying STATIC - AMOLEMO.pdf...
-2026-06-29 14:13:19 | INFO     | app.services.classifier | Classified STATIC - AMOLEMO as STATIC (95% confidence)
-2026-06-29 14:13:19 | INFO     | app.services.filer | Filed STATIC - AMOLEMO.pdf -> STATIC_NA_UNKNOWN_20260629_1_2.pdf
-2026-06-29 14:13:19 | INFO     | app.core.pipeline | STATIC - AMOLEMO.pdf: classified as Static / Update Investor Details Form (extraction not in POC scope for this form type)
-2026-06-29 14:13:19 | INFO     | app.core.pipeline | Rendering pages for DIS - AMOLEMO.pdf...
-2026-06-29 14:13:19 | INFO     | app.ocr.pdf_utils | Rendering DIS - AMOLEMO.pdf to images at 300 DPI
-2026-06-29 14:13:24 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - AMOLEMO.pdf
-2026-06-29 14:13:24 | INFO     | app.core.pipeline | Classifying DIS - AMOLEMO.pdf...
-2026-06-29 14:15:07 | INFO     | app.services.classifier | Classified DIS - AMOLEMO as DIS (95% confidence)
-2026-06-29 14:15:07 | INFO     | app.services.filer | Filed DIS - AMOLEMO.pdf -> DIS_NA_UNKNOWN_20260629_1.pdf
-2026-06-29 14:15:07 | INFO     | app.core.pipeline | DIS - AMOLEMO.pdf: classified as Disinvestment Form (Standard) (extraction not in POC scope for this form type)
-2026-06-29 14:15:07 | INFO     | app.core.pipeline | Rendering pages for DEBIT - AMOLEMO.pdf...
-2026-06-29 14:15:07 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - AMOLEMO.pdf to images at 300 DPI
-2026-06-29 14:15:14 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - AMOLEMO.pdf
-2026-06-29 14:15:14 | INFO     | app.core.pipeline | Classifying DEBIT - AMOLEMO.pdf...
-2026-06-29 14:16:55 | INFO     | app.services.classifier | Classified DEBIT - AMOLEMO as DEBIT (95% confidence)
-2026-06-29 14:16:55 | INFO     | app.services.filer | Filed DEBIT - AMOLEMO.pdf -> DEBIT_NA_UNKNOWN_20260629_1.pdf
-2026-06-29 14:16:55 | INFO     | app.core.pipeline | DEBIT - AMOLEMO.pdf: classified as Debit Order Form (extraction not in POC scope for this form type)
-2026-06-29 14:16:55 | INFO     | app.core.pipeline | Rendering pages for ADD - AMOLEMO.pdf...
-2026-06-29 14:16:55 | INFO     | app.ocr.pdf_utils | Rendering ADD - AMOLEMO.pdf to images at 300 DPI
-2026-06-29 14:17:02 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - AMOLEMO.pdf
-2026-06-29 14:17:03 | INFO     | app.core.pipeline | Classifying ADD - AMOLEMO.pdf...
-2026-06-29 14:18:50 | INFO     | app.services.classifier | Classified ADD - AMOLEMO as ADD (95% confidence)
-2026-06-29 14:18:51 | INFO     | app.services.filer | Filed ADD - AMOLEMO.pdf -> ADD_NA_UNKNOWN_20260629_1.pdf
-2026-06-29 14:18:51 | INFO     | app.core.pipeline | ADD - AMOLEMO.pdf: classified as Additional Investment Form (extraction not in POC scope for this form type)
-2026-06-29 14:18:51 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status PASS (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (14 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status PASS (13 checks)
+2026-06-29 07:53:45 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (14 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status PASS (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (14 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status WARNING (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status PASS (13 checks)
+2026-06-29 08:43:52 | INFO     | app.validation.engine | Validated test.pdf -> overall status FAIL (14 checks)

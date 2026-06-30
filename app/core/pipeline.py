@@ -10,6 +10,7 @@ captures per-document outcome either way).
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -106,7 +107,15 @@ def process_single_document(pdf_path: Path, report: ExcelReportBuilder, progress
 def run_batch(intake_dir: Path | None = None, progress_cb: ProgressCallback = None) -> tuple[list[DocumentOutcome], Path]:
     """
     Processes every PDF in intake_dir (default: settings.paths.intake_dir),
-    returns the per-document outcomes and the path to the saved Excel report.
+    returns the per-document outcomes (in stable, original file order) and the
+    path to the saved Excel report.
+
+    Documents are processed concurrently (settings.max_workers, default 2) -
+    each document spends most of its time waiting on an HTTP call to Ollama,
+    so overlapping that wait with another document's page rendering/image
+    encoding (CPU-bound) cuts wall-clock time even without a faster model.
+    ExcelReportBuilder.add_form() is only ever called from process_single_document,
+    and list.append() is atomic under the GIL, so no extra locking is needed.
     """
     intake_dir = intake_dir or settings.paths.intake_dir
     pdf_files = sorted(intake_dir.glob("*.pdf"))
@@ -115,9 +124,19 @@ def run_batch(intake_dir: Path | None = None, progress_cb: ProgressCallback = No
         _emit(progress_cb, f"No PDF files found in {intake_dir}")
         return [], settings.paths.output_dir / settings.excel_report_name
 
-    _emit(progress_cb, f"Found {len(pdf_files)} document(s) to process.")
+    _emit(progress_cb, f"Found {len(pdf_files)} document(s) to process (up to {settings.max_workers} in parallel).")
     report = ExcelReportBuilder()
-    outcomes = [process_single_document(pdf, report, progress_cb) for pdf in pdf_files]
+
+    results: dict[int, DocumentOutcome] = {}
+    with ThreadPoolExecutor(max_workers=max(1, settings.max_workers)) as pool:
+        futures = {
+            pool.submit(process_single_document, pdf, report, progress_cb): i
+            for i, pdf in enumerate(pdf_files)
+        }
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+
+    outcomes = [results[i] for i in range(len(pdf_files))]
     output_path = report.save()
     _emit(progress_cb, f"Batch complete. Report saved to {output_path}")
     return outcomes, output_path

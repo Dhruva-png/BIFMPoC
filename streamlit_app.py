@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -225,10 +226,15 @@ if run_clicked:
         report = ExcelReportBuilder()
         outcomes: list[DocumentOutcome] = []
         total = len(pdf_paths)
-        for i, pdf_path in enumerate(pdf_paths, start=1):
-            progress_box.info(f"Processing **{pdf_path.name}**  ({i} of {total})")
-            outcomes.append(process_single_document(pdf_path, report, progress_cb=progress_cb))
-            progress_bar.progress(i / total)
+        progress_box.info(f"Processing {total} document(s) — up to {settings.max_workers} in parallel...")
+
+        with ThreadPoolExecutor(max_workers=max(1, settings.max_workers)) as pool:
+            futures = {pool.submit(process_single_document, p, report, progress_cb): p for p in pdf_paths}
+            done = 0
+            for future in as_completed(futures):
+                outcomes.append(future.result())
+                done += 1
+                progress_bar.progress(done / total)
 
         report_path = report.save()
         progress_box.empty()
