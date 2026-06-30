@@ -1,12 +1,24 @@
 """
-Module 2: Field Extractor - Investment Application Form (Section 7.2).
+Module 2: Field Extractor — supports ALL 6 BIFM UT form types.
 
-Cost-conscious design: ONE llava call covers the primary investor-details
-pages (page 1, where nearly all mandatory fields live). A SECOND call is
-only made for the Page 10 guardian/authorisation section, and only when the
-first pass reports Account Type = "Acting on Behalf of" - i.e. most adult
-individual applications cost exactly one vision call, matching the
-document's own page_hint metadata in config/field_definitions.json.
+Form types in scope:
+  APPFORM  Investment Application Form
+  ADD      Additional Investment Form
+  DEBIT    Debit Order Form
+  DIS      Disinvestment Form (Standard)
+  DIS_GSG  Disinvestment Form (GSGF — Global Sustainable Growth Fund)
+  STATIC   Static / Change of Investor Details Form
+  KYC      KYC (Know Your Customer)
+
+Design:
+- One llava vision call per form covers the primary page(s); a second call
+  is only made for APPFORM when a guardian/minor section lives on page 10.
+- Each form type's field list comes from config/field_definitions.json so
+  the prompt is always form-specific — not a single generic mega-prompt that
+  confuses the model with fields that don't exist on the current form.
+- After extraction, derived metadata fields are computed deterministically:
+    fund_category, processing_cutoff, form_type_label, instruction_mode,
+    kyc_completeness_flag, sub_instruction_type.
 """
 from __future__ import annotations
 
@@ -14,49 +26,62 @@ from pathlib import Path
 
 from app.llm.ollama_client import ask_vision, parse_json_response
 from app.models.schemas import Beneficiary, ExtractionResult, FieldValue
-from app.utils.config_loader import load_field_definitions
+from app.utils.config_loader import (
+    derive_fund_category,
+    get_fields_for_form,
+    get_mandatory_fields_for_form,
+    load_field_definitions,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Page 10 of APPFORM contains the guardian/minor section
 GUARDIAN_FIELD_IDS = {"guardian_name", "guardian_id_number"}
-GUARDIAN_PAGE_NUMBER = 10  # per Section 4.2 "Minor / Child Account Logic"
+GUARDIAN_PAGE_NUMBER = 10
 
 
-def _build_field_prompt(field_subset: list[dict]) -> str:
+# ---------------------------------------------------------------------------
+# Prompt builder
+# ---------------------------------------------------------------------------
+
+def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
     lines = []
     for f in field_subset:
         opts = f" Allowed values: {f['options']}." if "options" in f else ""
-        lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}")
+        cond = f" (Only if: {f['condition']})" if f.get("condition") else ""
+        lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}{cond}")
     field_block = "\n".join(lines)
 
     return (
-        "You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
-        "form. The applicant's handwriting may be cursive, inconsistent, or partially "
-        "unclear - read it the way a careful human clerk would:\n"
-        "- Look at each letter/digit individually before deciding a value; don't guess from word shape alone.\n"
-        "- Pay special attention to digits that are easy to confuse: 0/O, 1/7, 5/6, 8/3.\n"
-        "- Use surrounding context (field label, expected format) to disambiguate, but never invent "
-        "a value that doesn't match the strokes on the page.\n"
-        "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading inside the box - "
-        "not just print near it.\n"
+        f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
+        f"'{form_label}' form. Read it the way a careful human clerk would:\n"
+        "- Look at each letter/digit individually; don't guess from word shape alone.\n"
+        "- Pay special attention to easily confused digits: 0/O, 1/7, 5/6, 8/3.\n"
+        "- Use surrounding context (field label, expected format) to disambiguate.\n"
+        "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading INSIDE the box.\n"
         "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
-        "- Give a LOWER confidence score (below 60) for any field where the handwriting was hard to "
-        "read, even if you produced a best-guess value - confidence should reflect how sure you are, "
-        "not just whether you filled in something.\n\n"
-        f"FIELDS:\n{field_block}\n\n"
-        "Also extract any beneficiary table rows you see, as a list of objects with "
-        "name, relationship, split_percent.\n\n"
-        "Respond ONLY with a JSON object of this exact shape:\n"
+        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n\n"
+        f"FIELDS TO EXTRACT:\n{field_block}\n\n"
+        "Also extract any beneficiary table rows (name, relationship, split_percent).\n\n"
+        "Respond ONLY with this exact JSON shape:\n"
         "{\n"
-        '  "fields": {"<field_id>": {"value": <value or null>, "confidence": <0-100 integer>}, ...},\n'
+        '  "fields": {"<field_id>": {"value": <value or null>, "confidence": <0-100>}, ...},\n'
         '  "beneficiaries": [{"name": "...", "relationship": "...", "split_percent": <number>}, ...]\n'
         "}"
     )
 
 
-def _extract_fields_from_page(image_path: Path, field_subset: list[dict]) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
-    prompt = _build_field_prompt(field_subset)
+# ---------------------------------------------------------------------------
+# Core extraction call
+# ---------------------------------------------------------------------------
+
+def _extract_fields_from_page(
+    image_path: Path,
+    field_subset: list[dict],
+    form_label: str,
+) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
+    prompt = _build_field_prompt(field_subset, form_label)
     response = ask_vision(prompt, image_path, json_mode=True)
 
     try:
@@ -72,10 +97,19 @@ def _extract_fields_from_page(image_path: Path, field_subset: list[dict]) -> tup
         value = payload.get("value") if isinstance(payload, dict) else payload
         confidence = float(payload.get("confidence", 0)) if isinstance(payload, dict) else 0.0
         if value is not None:
-            fields[fid] = FieldValue(field_id=fid, value=value, confidence=confidence, source_page=_page_number(image_path))
+            fields[fid] = FieldValue(
+                field_id=fid,
+                value=value,
+                confidence=confidence,
+                source_page=_page_number(image_path),
+            )
 
     beneficiaries = [
-        Beneficiary(name=b.get("name", ""), relationship=b.get("relationship", ""), split_percent=float(b.get("split_percent", 0) or 0))
+        Beneficiary(
+            name=b.get("name", ""),
+            relationship=b.get("relationship", ""),
+            split_percent=float(b.get("split_percent", 0) or 0),
+        )
         for b in parsed.get("beneficiaries", [])
         if b.get("name")
     ]
@@ -83,40 +117,141 @@ def _extract_fields_from_page(image_path: Path, field_subset: list[dict]) -> tup
 
 
 def _page_number(image_path: Path) -> int:
-    # filenames are page_001.png, page_002.png, ...
     try:
         return int(image_path.stem.split("_")[-1])
     except (IndexError, ValueError):
         return 0
 
 
-def extract_investment_application_form(page_images: list[Path]) -> ExtractionResult:
+# ---------------------------------------------------------------------------
+# Derived metadata fields
+# ---------------------------------------------------------------------------
+
+def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str, FieldValue]:
     """
-    page_images must be in page order, as produced by app.ocr.pdf_utils.render_pdf_to_images.
+    Compute all metadata fields that must be generated by the system
+    (not extracted from the form directly), per the requirements doc.
     """
-    field_defs = load_field_definitions()["fields"]
+    derived: dict[str, FieldValue] = {}
+
+    def _add(field_id: str, value, confidence: float = 100.0) -> None:
+        derived[field_id] = FieldValue(field_id=field_id, value=value, confidence=confidence)
+
+    # Form type label
+    from app.utils.config_loader import load_field_definitions
+    form_defs = load_field_definitions()
+    form_label = form_defs.get(form_code, {}).get("label", form_code)
+    _add("form_type", form_label)
+
+    # Fund category & processing cut-off (applies to forms with fund selection)
+    fund_name = None
+    for fid in ("fund_name",):
+        fv = fields.get(fid)
+        if fv and fv.value:
+            fund_name = str(fv.value)
+            break
+
+    if form_code == "DIS_GSG":
+        # GSGF form always has the GSGF-specific cut-off
+        _add("fund_name", "BIFM Global Sustainable Growth Fund")
+        _add("fund_category", "Non-Money Market (GSGF)")
+        _add("processing_cutoff", "Quarterly - 7th of last month of quarter")
+    elif fund_name:
+        fund_category, cutoff = derive_fund_category(fund_name)
+        _add("fund_category", fund_category)
+        _add("processing_cutoff", cutoff)
+    elif form_code in ("ADD", "DIS", "DEBIT"):
+        _add("fund_category", "Unknown - Fund Name Not Extracted")
+        _add("processing_cutoff", "Unknown")
+
+    # Instruction mode for DIS (partial / percentage / full closure)
+    if form_code in ("DIS", "DIS_GSG"):
+        closure = fields.get("account_closure")
+        dis_amount = fields.get("disinvestment_amount")
+        dis_pct = fields.get("disinvestment_percentage")
+        if closure and str(closure.value).lower() in ("yes", "true", "1"):
+            _add("instruction_mode", "Full Closure")
+        elif dis_pct and dis_pct.value:
+            _add("instruction_mode", "Percentage")
+        elif dis_amount and dis_amount.value:
+            _add("instruction_mode", "Partial Amount")
+        else:
+            _add("instruction_mode", "Unknown")
+
+    # Sub-instruction type for DEBIT
+    if form_code == "DEBIT":
+        instr = fields.get("instruction_type")
+        if instr and instr.value:
+            val = str(instr.value).lower()
+            if "cancel" in val:
+                _add("sub_instruction_type", "Cancel")
+            elif "change" in val:
+                _add("sub_instruction_type", "Change")
+            elif "new" in val:
+                _add("sub_instruction_type", "New")
+            else:
+                _add("sub_instruction_type", instr.value)
+
+    # Sub-type for STATIC
+    if form_code == "STATIC":
+        change_type = fields.get("change_type")
+        if change_type and change_type.value:
+            _add("static_sub_type", change_type.value)
+
+    # KYC completeness flag
+    if form_code == "KYC":
+        kyc_fields = ["kyc_certified_id", "kyc_proof_address", "kyc_proof_banking", "kyc_proof_source"]
+        ticked = [
+            fid for fid in kyc_fields
+            if fields.get(fid) and str(fields[fid].value).lower() in ("true", "yes", "1", "checked")
+        ]
+        all_complete = len(ticked) == 4
+        _add("kyc_completeness_flag", "Complete" if all_complete else f"Incomplete ({len(ticked)}/4 documents provided)")
+
+    return derived
+
+
+# ---------------------------------------------------------------------------
+# Public entry points (one per form type, plus the routing dispatcher)
+# ---------------------------------------------------------------------------
+
+def extract_form(form_code: str, page_images: list[Path]) -> ExtractionResult:
+    """
+    Routes to the correct extraction logic based on form_code.
+    This is the single entry point called by pipeline.py.
+    """
+    if not page_images:
+        raise ValueError(f"No page images provided for extraction (form_code={form_code})")
+
+    if form_code == "APPFORM":
+        return _extract_appform(page_images)
+    else:
+        return _extract_standard_form(form_code, page_images)
+
+
+def _extract_appform(page_images: list[Path]) -> ExtractionResult:
+    """
+    Investment Application Form extractor.
+    Uses page 1 for primary fields; page 10 conditionally for guardian/minor details.
+    """
+    field_defs = get_fields_for_form("APPFORM")
     primary_fields = [f for f in field_defs if f.get("page_hint") != "Page 10" and f["id"] not in GUARDIAN_FIELD_IDS]
     guardian_fields = [f for f in field_defs if f["id"] in GUARDIAN_FIELD_IDS or f.get("page_hint") == "Page 10"]
-
-    if not page_images:
-        raise ValueError("No page images provided for extraction")
 
     all_fields: dict[str, FieldValue] = {}
     all_beneficiaries: list[Beneficiary] = []
 
-    # Pass 1: primary investor-details page (page 1 covers nearly all mandatory fields)
-    primary_page = page_images[0]
-    fields, beneficiaries = _extract_fields_from_page(primary_page, primary_fields)
+    # Pass 1: primary page
+    fields, beneficiaries = _extract_fields_from_page(page_images[0], primary_fields, "Investment Application Form")
     all_fields.update(fields)
     all_beneficiaries.extend(beneficiaries)
 
-    # Pass 2 (conditional): only if this is a minor/guardian account, per Section 4.2.
+    # Pass 2 (conditional): guardian/minor section on page 10
     account_type = all_fields.get("account_type")
     is_minor_account = account_type is not None and "behalf" in str(account_type.value).lower()
-
     if is_minor_account and len(page_images) >= GUARDIAN_PAGE_NUMBER:
         guardian_page = page_images[GUARDIAN_PAGE_NUMBER - 1]
-        g_fields, _ = _extract_fields_from_page(guardian_page, guardian_fields)
+        g_fields, _ = _extract_fields_from_page(guardian_page, guardian_fields, "Investment Application Form (Guardian Section)")
         all_fields.update(g_fields)
     elif is_minor_account:
         logger.warning(
@@ -124,16 +259,63 @@ def extract_investment_application_form(page_images: list[Path]) -> ExtractionRe
             "expected guardian section on page %d.", len(page_images), GUARDIAN_PAGE_NUMBER,
         )
 
-    # Derive id_type from whichever ID-type checkbox value was captured, if not explicit.
     if "id_type" not in all_fields and "id_number" in all_fields:
         logger.warning("id_type not extracted directly - downstream validation will treat it as unknown")
 
+    all_fields.update(_derive_metadata("APPFORM", all_fields))
+
     result = ExtractionResult(
-        source_file=primary_page.parent.name,
+        source_file=page_images[0].parent.name,
         form_code="APPFORM",
         fields=all_fields,
         beneficiaries=all_beneficiaries,
         page_count=len(page_images),
     )
-    logger.info("Extracted %d field(s) and %d beneficiary row(s) from %s", len(all_fields), len(all_beneficiaries), result.source_file)
+    logger.info("Extracted %d field(s) and %d beneficiary row(s) from %s (APPFORM)",
+                len(all_fields), len(all_beneficiaries), result.source_file)
     return result
+
+
+def _extract_standard_form(form_code: str, page_images: list[Path]) -> ExtractionResult:
+    """
+    General extractor for ADD, DEBIT, DIS, DIS_GSG, STATIC, KYC.
+    Sends ALL form fields in one vision call against page 1 (and page 2 if multi-page).
+    For longer forms (STATIC has Form A + Form B sections), we send all pages.
+    """
+    field_defs = get_fields_for_form(form_code)
+    form_label = load_field_definitions().get(form_code, {}).get("label", form_code)
+
+    all_fields: dict[str, FieldValue] = {}
+    all_beneficiaries: list[Beneficiary] = []
+
+    # For STATIC forms that may span two pages (Form A and Form B are separate sections),
+    # run extraction on up to 2 pages and merge.
+    pages_to_process = page_images[:2] if form_code == "STATIC" else [page_images[0]]
+
+    for page_img in pages_to_process:
+        fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label)
+        # Merge: don't overwrite a higher-confidence extraction from a prior page
+        for fid, fv in fields.items():
+            existing = all_fields.get(fid)
+            if existing is None or fv.confidence > existing.confidence:
+                all_fields[fid] = fv
+        all_beneficiaries.extend(beneficiaries)
+
+    # Append system-derived metadata fields
+    all_fields.update(_derive_metadata(form_code, all_fields))
+
+    result = ExtractionResult(
+        source_file=page_images[0].parent.name,
+        form_code=form_code,
+        fields=all_fields,
+        beneficiaries=all_beneficiaries,
+        page_count=len(page_images),
+    )
+    logger.info("Extracted %d field(s) from %s (%s)", len(all_fields), result.source_file, form_code)
+    return result
+
+
+# Keep backward-compatible alias used by older pipeline code
+def extract_investment_application_form(page_images: list[Path]) -> ExtractionResult:
+    """Backward-compatible alias for APPFORM extraction."""
+    return _extract_appform(page_images)

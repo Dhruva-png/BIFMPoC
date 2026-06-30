@@ -14,7 +14,7 @@
     {
       "id": "gender_derivation",
       "applies_to": "gender",
-      "description": "Derive gender from the 5th digit of Omang/Birth Certificate number. 1=Male, 2=Female.",
+      "description": "Derive gender from the 5th digit of Omang/Birth Certificate number. 1=Male, 2=Female. Applies to APPFORM and KYC only.",
       "logic": {
         "type": "derive_from_digit",
         "source_field": "id_number",
@@ -35,7 +35,7 @@
     {
       "id": "date_of_birth_past",
       "applies_to": "date_of_birth",
-      "description": "Date of Birth must be a valid date in the past.",
+      "description": "Date of Birth must be a valid date in the past. Applies to APPFORM and KYC.",
       "logic": {"type": "past_date"}
     },
     {
@@ -51,9 +51,15 @@
       "logic": {"type": "numeric_length", "expected_length": 8, "status_if_mismatch": "WARNING"}
     },
     {
+      "id": "branch_code_format",
+      "applies_to": "branch_code",
+      "description": "Bank branch code must be exactly 6 digits per BIFM requirements.",
+      "logic": {"type": "exact_digits", "length": 6}
+    },
+    {
       "id": "minor_fields_required_if_acting_on_behalf",
       "applies_to": "minor_full_name",
-      "description": "Minor's full name, guardian name and guardian Omang are required only when Account Type = Acting on Behalf of.",
+      "description": "Minor's full name, guardian name and guardian Omang are required only when Account Type = Acting on Behalf of. APPFORM only.",
       "logic": {
         "type": "conditional_required",
         "condition_field": "account_type",
@@ -64,38 +70,45 @@
     {
       "id": "guardian_id_format",
       "applies_to": "guardian_id_number",
-      "description": "Parent/Guardian Omang: 9-digit validation applies.",
+      "description": "Parent/Guardian Omang: 9-digit validation applies. APPFORM only.",
       "logic": {"type": "exact_digits", "length": 9, "only_if_present": true}
     },
     {
       "id": "pref_sms_default",
       "applies_to": "pref_sms",
-      "description": "SMS notification preference defaults to YES if blank.",
+      "description": "SMS notification preference defaults to YES if blank. APPFORM only.",
       "logic": {"type": "default_if_blank", "default": true}
     },
     {
       "id": "pref_marketing_default",
       "applies_to": "pref_marketing",
-      "description": "Marketing communication preference defaults to YES if blank.",
+      "description": "Marketing communication preference defaults to YES if blank. APPFORM only.",
       "logic": {"type": "default_if_blank", "default": true}
     },
     {
       "id": "communication_channel_default",
       "applies_to": "communication_channel",
-      "description": "Communication channel defaults to EMAIL if blank.",
+      "description": "Communication channel defaults to EMAIL if blank. APPFORM only.",
       "logic": {"type": "default_if_blank", "default": "Email"}
     },
     {
       "id": "beneficiary_split_total",
       "applies_to": "beneficiaries",
-      "description": "Beneficiary split percentages must total 100%. Flag if not.",
+      "description": "Beneficiary split percentages must total 100%. APPFORM only.",
       "logic": {"type": "sum_equals", "field": "split_percent", "target": 100}
+    },
+    {
+      "id": "kyc_completeness",
+      "applies_to": "kyc_completeness_flag",
+      "description": "All 4 KYC document checkboxes (Certified ID, Proof of Address, Proof of Banking, Proof of Source) must be ticked. KYC only.",
+      "logic": {"type": "kyc_completeness_check"}
+    },
+    {
+      "id": "fund_category_present",
+      "applies_to": "fund_category",
+      "description": "Fund category (MM/NMM/GSGF) and processing cut-off must be determinable from the extracted fund name. ADD, DEBIT, DIS, DIS_GSG only.",
+      "logic": {"type": "fund_category_present"}
     }
-  ],
-  "mandatory_fields": [
-    "full_name", "id_number", "id_type", "date_of_birth", "email",
-    "contact_number", "citizenship", "account_type", "occupation_type",
-    "monthly_income_range"
   ],
   "confidence_thresholds": {
     "high": {"min": 85, "action": "auto_accept"},

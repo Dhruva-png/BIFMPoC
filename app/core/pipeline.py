@@ -1,12 +1,17 @@
 """
-Orchestrates a full batch run across the 5 modules described in Section 7.2:
+Orchestrates a full document processing run across the 5 modules:
 
-  intake PDF -> render pages -> Module 1 (Classify) -> Module 2 (Extract)
-             -> Module 3 (Validate) -> Module 4 (Excel rows) -> Module 5 (File)
+  intake PDF → render pages → Module 1 (Classify) → Module 2 (Extract)
+             → Module 3 (Validate) → Module 4 (Excel rows) → Module 5 (File)
 
-Designed to process one document fully before moving to the next, so a
-failure on one form doesn't block the rest of the batch (Processing Log
-captures per-document outcome either way).
+ALL 6 BIFM UT form types are now fully processed through extraction and
+validation — not just classified and filed with a "NOT_EXTRACTED" placeholder.
+Every form type goes through:
+  1. Classification (which form type is this?)
+  2. Full field extraction (form-type-specific field set)
+  3. Validation (mandatory fields, format checks, derived fields)
+  4. Excel report row
+  5. Document filing with standardized filename
 """
 from __future__ import annotations
 
@@ -18,7 +23,7 @@ from typing import Callable, Optional
 from app.models.schemas import ExtractionResult, ProcessingLogEntry, ValidationReport
 from app.ocr.pdf_utils import render_pdf_to_images
 from app.services import classifier, filer
-from app.services.extractor import extract_investment_application_form
+from app.services.extractor import extract_form
 from app.services.report_generator import ExcelReportBuilder
 from app.utils.config_loader import load_validation_rules
 from app.utils.logger import get_logger
@@ -49,73 +54,96 @@ def _emit(progress_cb: ProgressCallback, message: str) -> None:
         progress_cb(message)
 
 
-def process_single_document(pdf_path: Path, report: ExcelReportBuilder, progress_cb: ProgressCallback = None) -> DocumentOutcome:
-    """Runs one document through the full pipeline; never raises - errors are captured in the outcome."""
+def process_single_document(
+    pdf_path: Path,
+    report: ExcelReportBuilder,
+    progress_cb: ProgressCallback = None,
+) -> DocumentOutcome:
+    """
+    Runs one document through the full 5-stage pipeline.
+    Never raises — errors are captured in the returned DocumentOutcome.
+    """
     try:
+        # Stage 1: Render PDF pages to images
         _emit(progress_cb, f"Rendering pages for {pdf_path.name}...")
         page_images = render_pdf_to_images(pdf_path)
 
+        # Stage 2: Classify the form type
         _emit(progress_cb, f"Classifying {pdf_path.name}...")
         classification = classifier.classify_form(page_images[0])
 
-        # Disambiguate GSG vs Standard disinvestment only when needed (see classifier.py docstring).
+        # Disambiguate GSG vs Standard disinvestment when confidence is borderline
         if classification.form_code in ("DIS", "DIS_GSG") and classification.confidence < HIGH_CONFIDENCE_MIN:
-            _emit(progress_cb, "Disambiguating GSG vs Standard disinvestment...")
+            _emit(progress_cb, f"Disambiguating DIS vs DIS_GSG for {pdf_path.name}...")
             classification = classifier.disambiguate_gsg_vs_standard(page_images[0])
 
-        if classification.form_code != "APPFORM":
-            # Out of POC's primary extraction scope (Section 3.1) - classify & file only.
-            log_entry = filer.file_document(
-                pdf_path, classification.form_code, entity_number="N/A",
-                full_name=None, validation_status="NOT_EXTRACTED",
-                classification_confidence=classification.confidence,
-            )
-            empty_extraction = ExtractionResult(source_file=pdf_path.stem, form_code=classification.form_code)
-            empty_validation = ValidationReport(source_file=pdf_path.stem, entity_number="N/A")
-            report.add_form(empty_extraction, empty_validation, log_entry)
-            _emit(progress_cb, f"{pdf_path.name}: classified as {classification.form_name} (extraction not in POC scope for this form type)")
-            return DocumentOutcome(pdf_path.name, classification.form_code, classification.confidence, "NOT_EXTRACTED",
-                                    extraction=empty_extraction, validation=empty_validation)
+        form_code = classification.form_code
+        _emit(progress_cb, f"{pdf_path.name}: classified as '{classification.form_name}' ({classification.confidence:.0f}% confidence)")
 
-        _emit(progress_cb, f"Extracting fields from {pdf_path.name}...")
-        extraction = extract_investment_application_form(page_images)
+        # Stage 3: Extract fields (ALL form types now go through extraction)
+        _emit(progress_cb, f"Extracting fields from {pdf_path.name} ({form_code})...")
+        extraction = extract_form(form_code, page_images)
 
+        # Stage 4: Validate the extraction
         _emit(progress_cb, f"Validating {pdf_path.name}...")
         validation_report = validate(extraction)
 
+        # Stage 5: File the document with standardized naming
         _emit(progress_cb, f"Filing {pdf_path.name}...")
+        # Resolve entity_number: use extracted value or fall back to id_number / source file name
+        entity_number = (
+            extraction.field_value("entity_number")
+            or extraction.field_value("id_number")
+            or "N/A"
+        )
+        full_name = extraction.field_value("full_name")
+
         log_entry = filer.file_document(
             pdf_path,
-            form_code=classification.form_code,
-            entity_number=validation_report.entity_number,
-            full_name=extraction.field_value("full_name"),
+            form_code=form_code,
+            entity_number=str(entity_number),
+            full_name=full_name,
             validation_status=validation_report.overall_status.value,
             classification_confidence=classification.confidence,
         )
 
         report.add_form(extraction, validation_report, log_entry)
-        _emit(progress_cb, f"{pdf_path.name}: {validation_report.overall_status.value}")
-        return DocumentOutcome(pdf_path.name, classification.form_code, classification.confidence, validation_report.overall_status.value,
-                                extraction=extraction, validation=validation_report)
+        _emit(progress_cb, f"{pdf_path.name}: complete → {validation_report.overall_status.value}")
 
-    except Exception as exc:  # noqa: BLE001 - one bad document must not kill the batch
+        return DocumentOutcome(
+            filename=pdf_path.name,
+            form_code=form_code,
+            classification_confidence=classification.confidence,
+            validation_status=validation_report.overall_status.value,
+            extraction=extraction,
+            validation=validation_report,
+        )
+
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to process %s", pdf_path.name)
         _emit(progress_cb, f"ERROR processing {pdf_path.name}: {exc}")
-        return DocumentOutcome(pdf_path.name, "ERROR", 0.0, "FAIL", error=str(exc))
+        return DocumentOutcome(
+            filename=pdf_path.name,
+            form_code="ERROR",
+            classification_confidence=0.0,
+            validation_status="FAIL",
+            error=str(exc),
+        )
 
 
-def run_batch(intake_dir: Path | None = None, progress_cb: ProgressCallback = None) -> tuple[list[DocumentOutcome], Path]:
+def run_batch(
+    intake_dir: Path | None = None,
+    progress_cb: ProgressCallback = None,
+) -> tuple[list[DocumentOutcome], Path]:
     """
-    Processes every PDF in intake_dir (default: settings.paths.intake_dir),
-    returns the per-document outcomes (in stable, original file order) and the
-    path to the saved Excel report.
+    Processes every PDF in intake_dir (default: settings.paths.intake_dir).
+    Returns per-document outcomes in stable file order and the path to the
+    saved Excel report.
 
-    Documents are processed concurrently (settings.max_workers, default 2) -
-    each document spends most of its time waiting on an HTTP call to Ollama,
-    so overlapping that wait with another document's page rendering/image
-    encoding (CPU-bound) cuts wall-clock time even without a faster model.
-    ExcelReportBuilder.add_form() is only ever called from process_single_document,
-    and list.append() is atomic under the GIL, so no extra locking is needed.
+    Documents are processed concurrently (settings.max_workers, default 2).
+    Each document spends most of its time waiting on the Ollama HTTP call,
+    so overlapping that wait with another document's page rendering (CPU-bound)
+    cuts wall-clock time even without extra GPU capacity.
     """
     intake_dir = intake_dir or settings.paths.intake_dir
     pdf_files = sorted(intake_dir.glob("*.pdf"))

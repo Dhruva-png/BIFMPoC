@@ -1,33 +1,37 @@
 """
-Converts PDF pages to images so they can be sent to llava for layout/field/
-checkbox understanding. Uses PyMuPDF (fitz) — a self-contained Python binding
-to the MuPDF renderer, distributed as a regular pip wheel.
+Converts PDF pages to images for the vision model (llava / qwen-vl).
 
-Deliberately NOT using pdf2image/Poppler here: pdf2image only wraps the
-Poppler command-line tools (pdftoppm/pdftocairo), which are a *separate*
-binary that pip cannot install — they have to be installed on the OS and put
-on PATH. That's exactly what produces the "Unable to get page count. Is
-poppler installed and in PATH?" error on a fresh machine. PyMuPDF ships its
-own renderer inside the wheel, so `pip install -r requirements.txt` is
-sufficient and there is nothing extra to install or configure on Windows.
+Renderer: pypdfium2 (ships its own PDF engine in the wheel — no system
+dependency, unlike pdf2image which wraps Poppler CLI tools). Falls back to
+pdf2image + Poppler if pypdfium2 is unavailable.
 
-Also provides an optional pytesseract raw-text pass, used only as a
-cross-check signal (e.g. for keyword-based form classification hints) -
-not as the primary extraction path, since llava handles layout + checkboxes
-that plain OCR text cannot.
+Also provides an optional Tesseract raw-text pass used only as a lightweight
+cross-check for classification keyword hints — not the primary extraction path.
 """
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-import fitz  # PyMuPDF
 from PIL import Image, ImageEnhance, ImageOps
 
 from app.utils.logger import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# PDF renderer (pypdfium2 preferred, pdf2image fallback)
+# ---------------------------------------------------------------------------
+
+try:
+    import pypdfium2 as pdfium
+    _RENDERER = "pypdfium2"
+    logger.debug("PDF renderer: pypdfium2")
+except ImportError:
+    pdfium = None  # type: ignore[assignment]
+    _RENDERER = "pdf2image"
+    logger.debug("PDF renderer: pdf2image (pypdfium2 not available)")
 
 try:
     import pytesseract
@@ -36,36 +40,74 @@ except ImportError:
     _TESSERACT_AVAILABLE = False
 
 
+# ---------------------------------------------------------------------------
+# Image enhancement
+# ---------------------------------------------------------------------------
+
 def _enhance_for_handwriting(img: Image.Image) -> Image.Image:
     """
-    Lightweight, deterministic preprocessing that measurably helps a vision
-    model read handwriting: it doesn't change what's on the page, just makes
-    pen strokes higher-contrast and large enough to resolve clearly.
-
+    Lightweight preprocessing to help the vision model read handwriting:
     - Upscale small renders so faint/small handwriting has enough pixels.
-    - Grayscale removes color-noise from scans (stamps, coloured ink, paper
-      texture) and lets autocontrast use the full tonal range.
-    - Mild unsharp mask crisps up stroke edges that DPI conversion softens,
-      without introducing the artefacts a heavier sharpen would.
+    - Grayscale removes colour noise; autocontrast uses the full tonal range.
+    - Mild unsharp mask crisps stroke edges without artefacts.
     """
     long_edge = max(img.size)
     if long_edge < settings.ocr_min_long_edge_px:
         scale = settings.ocr_min_long_edge_px / long_edge
-        img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
+        img = img.resize(
+            (int(img.width * scale), int(img.height * scale)),
+            Image.LANCZOS,
+        )
 
     gray = ImageOps.grayscale(img)
     gray = ImageOps.autocontrast(gray, cutoff=1)
     gray = ImageEnhance.Sharpness(gray).enhance(1.6)
     gray = ImageEnhance.Contrast(gray).enhance(1.15)
-    return gray.convert("RGB")  # llava expects RGB
+    return gray.convert("RGB")  # vision model expects RGB
 
+
+# ---------------------------------------------------------------------------
+# Rendering back-ends
+# ---------------------------------------------------------------------------
+
+def _render_with_pypdfium2(pdf_path: Path, target_dir: Path) -> list[Path]:
+    doc = pdfium.PdfDocument(str(pdf_path))
+    image_paths: list[Path] = []
+    scale = settings.pdf_render_dpi / 72.0
+    for i, page in enumerate(doc, start=1):
+        bitmap = page.render(scale=scale, rotation=0)
+        pil_img = bitmap.to_pil()
+        img_path = target_dir / f"page_{i:03d}.png"
+        if settings.ocr_enhance_images:
+            pil_img = _enhance_for_handwriting(pil_img)
+        pil_img.save(img_path, "PNG")
+        image_paths.append(img_path)
+    doc.close()
+    return image_paths
+
+
+def _render_with_pdf2image(pdf_path: Path, target_dir: Path) -> list[Path]:
+    from pdf2image import convert_from_path  # type: ignore[import]
+    pages = convert_from_path(str(pdf_path), dpi=settings.pdf_render_dpi)
+    image_paths: list[Path] = []
+    for i, pil_img in enumerate(pages, start=1):
+        img_path = target_dir / f"page_{i:03d}.png"
+        if settings.ocr_enhance_images:
+            pil_img = _enhance_for_handwriting(pil_img)
+        pil_img.save(img_path, "PNG")
+        image_paths.append(img_path)
+    return image_paths
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def render_pdf_to_images(pdf_path: Path, output_subdir: str | None = None) -> list[Path]:
     """
-    Renders every page of a PDF to a PNG file under settings.paths.temp_dir,
-    applying a handwriting-friendly enhancement pass (see _enhance_for_handwriting)
-    unless settings.ocr_enhance_images is disabled.
-    Returns the list of image paths in page order.
+    Renders every page of a PDF to a PNG under settings.paths.temp_dir,
+    applying handwriting-friendly enhancement unless ocr_enhance_images is off.
+    Returns image paths in page order.
     """
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -73,30 +115,20 @@ def render_pdf_to_images(pdf_path: Path, output_subdir: str | None = None) -> li
     target_dir = settings.paths.temp_dir / (output_subdir or pdf_path.stem)
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Rendering %s to images at %d DPI", pdf_path.name, settings.pdf_render_dpi)
+    logger.info("Rendering %s at %d DPI via %s", pdf_path.name, settings.pdf_render_dpi, _RENDERER)
 
-    # PyMuPDF renders at 72 DPI by default; scale the page->pixmap matrix to
-    # hit the configured DPI, matching the old pdf2image(dpi=...) behaviour.
-    zoom = settings.pdf_render_dpi / 72.0
-    matrix = fitz.Matrix(zoom, zoom)
-
-    image_paths: list[Path] = []
     try:
-        with fitz.open(str(pdf_path)) as doc:
-            for i, page in enumerate(doc, start=1):
-                pixmap = page.get_pixmap(matrix=matrix)
-                img_path = target_dir / f"page_{i:03d}.png"
+        if _RENDERER == "pypdfium2":
+            image_paths = _render_with_pypdfium2(pdf_path, target_dir)
+        else:
+            image_paths = _render_with_pdf2image(pdf_path, target_dir)
+    except Exception as exc:
+        raise ValueError(
+            f"Could not render {pdf_path.name} — file may be corrupt or password-protected: {exc}"
+        ) from exc
 
-                if settings.ocr_enhance_images:
-                    pil_img = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
-                    pil_img = _enhance_for_handwriting(pil_img)
-                    pil_img.save(img_path, "PNG")
-                else:
-                    pixmap.save(str(img_path))
-
-                image_paths.append(img_path)
-    except fitz.FileDataError as exc:
-        raise ValueError(f"Could not read {pdf_path.name} - file may be corrupt or not a valid PDF") from exc
+    if not image_paths:
+        raise ValueError(f"No pages rendered from {pdf_path.name}")
 
     logger.info("Rendered %d page(s) from %s", len(image_paths), pdf_path.name)
     return image_paths
@@ -104,21 +136,24 @@ def render_pdf_to_images(pdf_path: Path, output_subdir: str | None = None) -> li
 
 def quick_text_scan(image_path: Path) -> str:
     """
-    Cheap, deterministic raw-text pass using Tesseract (if installed).
-    Used only for classification keyword hints - falls back to empty string
-    if pytesseract/Tesseract isn't installed, since it's optional, not required.
+    Optional raw-text pass via Tesseract (if installed).
+    Used for classification keyword hints only — not the primary extraction path.
+    Returns empty string gracefully when Tesseract is unavailable.
     """
     if not _TESSERACT_AVAILABLE:
         return ""
     try:
         return pytesseract.image_to_string(Image.open(image_path))
-    except Exception as exc:  # noqa: BLE001 - degrade gracefully, this path is optional
+    except Exception as exc:  # noqa: BLE001
         logger.warning("Tesseract quick scan failed for %s: %s", image_path.name, exc)
         return ""
 
 
 def find_page_for_hint(image_paths: list[Path], hint_keywords: list[str]) -> Path | None:
-    """Scans pages with quick_text_scan to locate a page matching given keywords (e.g. Page 10 guardian section)."""
+    """
+    Scans pages with quick_text_scan to locate a page matching given keywords.
+    Used e.g. to find the guardian section on page 10 of the APPFORM.
+    """
     for img_path in image_paths:
         text = quick_text_scan(img_path).lower()
         if any(hint.lower() in text for hint in hint_keywords):

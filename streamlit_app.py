@@ -5,15 +5,19 @@ Streamlit front end.
 Run with:
     streamlit run streamlit_app.py
 
-This is a thin presentation layer only — all business logic (classification,
-extraction, validation, Excel generation, filing) still lives in app/ and is
-untouched. The UI calls app.core.pipeline.process_single_document() per file
-so progress can be streamed to the page as each document completes.
+Supports all 6 BIFM UT form types through the full pipeline:
+  APPFORM  Investment Application Form
+  ADD      Additional Investment Form
+  DEBIT    Debit Order Form
+  DIS      Disinvestment Form (Standard)
+  DIS_GSG  Disinvestment Form (GSGF)
+  STATIC   Static / Change of Investor Details
+  KYC      KYC (Know Your Customer)
+
+Every form is classified, field-extracted, validated, and filed.
 """
 from __future__ import annotations
 
-import shutil
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -38,24 +42,20 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-PRIMARY = "#0F4C81"      # deep institutional blue
-ACCENT = "#C9A24B"       # restrained gold accent
-PASS_C = "#1E8E5A"
-WARN_C = "#B7791F"
-FAIL_C = "#C0392B"
+PRIMARY = "#0F4C81"
+ACCENT  = "#C9A24B"
+PASS_C  = "#1E8E5A"
+WARN_C  = "#B7791F"
+FAIL_C  = "#C0392B"
 BG_CARD = "#FFFFFF"
-INK = "#1B2733"
-MUTED = "#5C6B7A"
+INK     = "#1B2733"
+MUTED   = "#5C6B7A"
 
 st.markdown(
     f"""
     <style>
-    .stApp {{
-        background: linear-gradient(180deg, #F4F7FB 0%, #EEF2F7 100%);
-    }}
-    [data-testid="stSidebar"] {{
-        background: {INK};
-    }}
+    .stApp {{ background: linear-gradient(180deg, #F4F7FB 0%, #EEF2F7 100%); }}
+    [data-testid="stSidebar"] {{ background: {INK}; }}
     [data-testid="stSidebar"] * {{ color: #E7ECF2 !important; }}
     [data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,0.15); }}
 
@@ -85,18 +85,13 @@ st.markdown(
         display:inline-block; padding:3px 11px; border-radius:999px;
         font-size:0.74rem; font-weight:700; letter-spacing:.02em;
     }}
-    .chip-pass {{ background:#E4F6EC; color:{PASS_C}; }}
+    .chip-pass    {{ background:#E4F6EC; color:{PASS_C}; }}
     .chip-warning {{ background:#FCF1DD; color:{WARN_C}; }}
-    .chip-fail {{ background:#FBE6E4; color:{FAIL_C}; }}
-    .chip-not_extracted {{ background:#EAEDF1; color:{MUTED}; }}
-    .chip-error {{ background:#FBE6E4; color:{FAIL_C}; }}
+    .chip-fail    {{ background:#FBE6E4; color:{FAIL_C}; }}
+    .chip-error   {{ background:#FBE6E4; color:{FAIL_C}; }}
 
-    .section-title {{
-        font-size:1.02rem; font-weight:700; color:{INK}; margin: 6px 0 10px 0;
-    }}
-    div[data-testid="stExpander"] {{
-        background:{BG_CARD}; border-radius:12px; border:1px solid #E3E8EE;
-    }}
+    .section-title {{ font-size:1.02rem; font-weight:700; color:{INK}; margin: 6px 0 10px 0; }}
+    div[data-testid="stExpander"] {{ background:{BG_CARD}; border-radius:12px; border:1px solid #E3E8EE; }}
     .stButton>button {{
         background:{PRIMARY}; color:white; border:none; border-radius:8px;
         font-weight:600; padding:0.55rem 1.1rem;
@@ -106,6 +101,10 @@ st.markdown(
         background:{ACCENT}; color:#2B2305; border:none; border-radius:8px; font-weight:700;
     }}
     .log-line {{ font-family: 'SF Mono', Consolas, monospace; font-size:0.8rem; color:{MUTED}; padding:2px 0; }}
+    .derived-tag {{
+        display:inline-block; background:#EEF2F7; color:{MUTED}; font-size:0.7rem;
+        padding:1px 7px; border-radius:999px; margin-left:4px;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -122,21 +121,20 @@ if "last_run_at" not in st.session_state:
     st.session_state.last_run_at: str | None = None
 
 STATUS_CHIP = {
-    "PASS": ("chip-pass", "PASS"),
+    "PASS":    ("chip-pass",    "PASS"),
     "WARNING": ("chip-warning", "WARNING"),
-    "FAIL": ("chip-fail", "FAIL"),
-    "NOT_EXTRACTED": ("chip-not_extracted", "CLASSIFIED ONLY"),
-    "ERROR": ("chip-error", "ERROR"),
+    "FAIL":    ("chip-fail",    "FAIL"),
+    "ERROR":   ("chip-error",   "ERROR"),
 }
 
 
 def status_chip(status: str) -> str:
-    cls, label = STATUS_CHIP.get(status, ("chip-not_extracted", status))
+    cls, label = STATUS_CHIP.get(status, ("chip-warning", status))
     return f'<span class="status-chip {cls}">{label}</span>'
 
 
 # --------------------------------------------------------------------------- #
-# Sidebar — connection status, intake source, run controls
+# Sidebar
 # --------------------------------------------------------------------------- #
 with st.sidebar:
     st.markdown("### ⚙️ System Status")
@@ -145,9 +143,12 @@ with st.sidebar:
         st.success(f"Ollama connected · `{settings.ollama.host}`", icon="✅")
     else:
         st.error(f"Ollama unreachable at `{settings.ollama.host}`", icon="⚠️")
-        st.caption("Run `ollama serve`, then `ollama pull llama3.2 && ollama pull llava`.")
+        st.caption("Run `ollama serve`, then `ollama pull llama3.2 && ollama pull qwen3-vl:8b-instruct`.")
 
-    st.caption(f"Vision model: **{settings.ollama.vision_model}**  ·  Text model: **{settings.ollama.text_model}**")
+    st.caption(
+        f"Vision model: **{settings.ollama.vision_model}**  ·  "
+        f"Text model: **{settings.ollama.text_model}**"
+    )
 
     st.markdown("---")
     st.markdown("### 📂 Intake")
@@ -171,6 +172,11 @@ with st.sidebar:
         for ft in load_form_types()["form_types"]:
             st.caption(f"**{ft['code']}** — {ft['name']}")
 
+    with st.expander("Funds & Cut-off times"):
+        for fund in load_form_types().get("funds", []):
+            cat_icon = "🟢" if fund["type"] == "Money Market" else "🔵"
+            st.caption(f"{cat_icon} **{fund['name']}**  ·  Cut-off: {fund['cutoff_time']}")
+
 # --------------------------------------------------------------------------- #
 # Header
 # --------------------------------------------------------------------------- #
@@ -180,9 +186,9 @@ st.markdown(
         <div style="font-size:1.8rem;">📄</div>
         <div>
             <h1>BIFM Unit Trusts — Document Processing</h1>
-            <p>Local, offline form classification · extraction · validation · filing — POC</p>
+            <p>Classification · Field Extraction · Validation · Filing · Excel Report — POC</p>
         </div>
-        <div class="bifm-badge">100% LOCAL · NO CLOUD CALLS</div>
+        <div class="bifm-badge">ALL 6 FORM TYPES · 100% LOCAL</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -253,18 +259,19 @@ outcomes: list[DocumentOutcome] = st.session_state.outcomes
 if not outcomes:
     st.info("No batch has been run yet. Add PDFs in the sidebar and click **Run Batch** to begin.")
 else:
-    pass_n = sum(1 for o in outcomes if o.validation_status == "PASS")
-    warn_n = sum(1 for o in outcomes if o.validation_status == "WARNING")
-    fail_n = sum(1 for o in outcomes if o.validation_status in ("FAIL", "ERROR"))
+    pass_n  = sum(1 for o in outcomes if o.validation_status == "PASS")
+    warn_n  = sum(1 for o in outcomes if o.validation_status == "WARNING")
+    fail_n  = sum(1 for o in outcomes if o.validation_status in ("FAIL", "ERROR"))
     other_n = len(outcomes) - pass_n - warn_n - fail_n
 
+    # Summary metrics
     cols = st.columns(5)
     metrics = [
         ("Documents processed", str(len(outcomes)), INK),
-        ("Passed", str(pass_n), PASS_C),
-        ("Warnings", str(warn_n), WARN_C),
-        ("Failed", str(fail_n), FAIL_C),
-        ("Classified only", str(other_n), MUTED),
+        ("Passed",              str(pass_n),         PASS_C),
+        ("Warnings",            str(warn_n),         WARN_C),
+        ("Failed / Error",      str(fail_n),         FAIL_C),
+        ("Other",               str(other_n),        MUTED),
     ]
     for col, (label, value, color) in zip(cols, metrics):
         col.markdown(
@@ -274,16 +281,38 @@ else:
         )
 
     st.write("")
+
+    # Form type breakdown
+    form_counts: dict[str, int] = {}
+    for o in outcomes:
+        form_counts[o.form_code] = form_counts.get(o.form_code, 0) + 1
+    if form_counts:
+        st.markdown('<div class="section-title">Form Types Processed</div>', unsafe_allow_html=True)
+        breakdown_cols = st.columns(min(len(form_counts), 6))
+        for col, (code, count) in zip(breakdown_cols, form_counts.items()):
+            col.markdown(
+                f'<div class="metric-card"><div class="label">{code}</div>'
+                f'<div class="value" style="font-size:1.4rem;color:{INK};">{count}</div></div>',
+                unsafe_allow_html=True,
+            )
+        st.write("")
+
     left, right = st.columns([3, 2])
 
     with left:
         st.markdown('<div class="section-title">Processing Results</div>', unsafe_allow_html=True)
         table_rows = [
             {
-                "Document": o.filename,
-                "Form Type": o.form_code,
+                "Document":   o.filename,
+                "Form Type":  o.form_code,
                 "Confidence": f"{o.classification_confidence:.0f}%",
-                "Status": o.validation_status,
+                "Status":     o.validation_status,
+                "Fund Category": (
+                    o.extraction.field_value("fund_category") if o.extraction else ""
+                ) or "",
+                "Cut-off": (
+                    o.extraction.field_value("processing_cutoff") if o.extraction else ""
+                ) or "",
             }
             for o in outcomes
         ]
@@ -312,41 +341,75 @@ else:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
                 )
-            st.caption(f"4 sheets: Investor Master · Beneficiary Details · Validation Flags · Processing Log")
+            st.caption("4 sheets: Investor Master · Beneficiary Details · Validation Flags · Processing Log")
+
         filed_dir = settings.paths.filed_dir
         filed_count = len(list(filed_dir.glob("*"))) if filed_dir.exists() else 0
         st.caption(f"📁 {filed_count} document(s) renamed & filed to `output/filed_documents/`")
 
     st.write("")
     st.markdown('<div class="section-title">Document Detail</div>', unsafe_allow_html=True)
+
     for o in outcomes:
         chip = status_chip(o.validation_status)
-        with st.expander(f"{o.filename}  ·  {o.form_code}  ·  {o.classification_confidence:.0f}% confidence"):
+        fund_cat = ""
+        if o.extraction:
+            fc = o.extraction.field_value("fund_category")
+            if fc:
+                fund_cat = f" · {fc}"
+
+        with st.expander(
+            f"{o.filename}  ·  {o.form_code}{fund_cat}  ·  {o.classification_confidence:.0f}% confidence"
+        ):
             st.markdown(chip, unsafe_allow_html=True)
+
             if o.error:
                 st.error(o.error)
+
             if o.extraction and o.extraction.fields:
-                field_rows = [
-                    {"Field": fid, "Value": str(fv.value), "Confidence": f"{fv.confidence:.0f}%"}
+                # Separate derived/system fields from extracted fields for clarity
+                derived_ids = {
+                    "form_type", "fund_category", "processing_cutoff", "instruction_mode",
+                    "sub_instruction_type", "static_sub_type", "kyc_completeness_flag",
+                }
+                extracted_rows = [
+                    {"Field": fid, "Value": str(fv.value), "Confidence": f"{fv.confidence:.0f}%", "Source": "Extracted"}
                     for fid, fv in o.extraction.fields.items()
+                    if fid not in derived_ids
                 ]
-                st.dataframe(pd.DataFrame(field_rows), use_container_width=True, hide_index=True)
+                derived_rows = [
+                    {"Field": fid, "Value": str(fv.value), "Confidence": "—", "Source": "Derived"}
+                    for fid, fv in o.extraction.fields.items()
+                    if fid in derived_ids
+                ]
+
+                if extracted_rows:
+                    st.caption("**Extracted Fields**")
+                    st.dataframe(pd.DataFrame(extracted_rows), use_container_width=True, hide_index=True)
+
+                if derived_rows:
+                    st.caption("**System-Derived Metadata**")
+                    st.dataframe(pd.DataFrame(derived_rows), use_container_width=True, hide_index=True)
+
             if o.extraction and o.extraction.beneficiaries:
-                st.caption("Beneficiaries")
+                st.caption("**Beneficiaries**")
                 st.dataframe(
-                    pd.DataFrame(
-                        [{"Name": b.name, "Relationship": b.relationship, "Split %": b.split_percent}
-                         for b in o.extraction.beneficiaries]
-                    ),
-                    use_container_width=True, hide_index=True,
+                    pd.DataFrame([
+                        {"Name": b.name, "Relationship": b.relationship, "Split %": b.split_percent}
+                        for b in o.extraction.beneficiaries
+                    ]),
+                    use_container_width=True,
+                    hide_index=True,
                 )
+
             if o.validation and o.validation.results:
-                st.caption("Validation flags")
-                vrows = [
-                    {"Field": r.field_id, "Status": r.status.value, "Message": r.message}
-                    for r in o.validation.results if r.status != ValidationStatus.PASS
+                failing = [
+                    {"Field": r.field_id, "Status": r.status.value, "Message": r.message, "Value": str(r.value or "")}
+                    for r in o.validation.results
+                    if r.status != ValidationStatus.PASS
                 ]
-                if vrows:
-                    st.dataframe(pd.DataFrame(vrows), use_container_width=True, hide_index=True)
+                st.caption("**Validation Issues**" if failing else "**Validation**")
+                if failing:
+                    st.dataframe(pd.DataFrame(failing), use_container_width=True, hide_index=True)
                 else:
-                    st.caption("All checks passed.")
+                    st.success("All validation checks passed.", icon="✅")
