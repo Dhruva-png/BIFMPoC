@@ -92,6 +92,19 @@ st.markdown(
 
     .section-title {{ font-size:1.02rem; font-weight:700; color:{INK}; margin: 6px 0 10px 0; }}
     div[data-testid="stExpander"] {{ background:{BG_CARD}; border-radius:12px; border:1px solid #E3E8EE; }}
+
+    /* Sidebar expanders: dark background, light text */
+    [data-testid="stSidebar"] div[data-testid="stExpander"] {{
+        background: #263342 !important;
+        border-color: rgba(255,255,255,0.12) !important;
+    }}
+    [data-testid="stSidebar"] div[data-testid="stExpander"] * {{
+        color: #E7ECF2 !important;
+    }}
+    [data-testid="stSidebar"] details summary p {{
+        color: #E7ECF2 !important;
+        font-weight: 600;
+    }}
     .stButton>button {{
         background:{PRIMARY}; color:white; border:none; border-radius:8px;
         font-weight:600; padding:0.55rem 1.1rem;
@@ -170,21 +183,12 @@ with st.sidebar:
 
     with st.expander("Form types in scope"):
         for ft in load_form_types()["form_types"]:
-            st.markdown(
-                f"<span style='color:#E7ECF2;font-size:0.85rem;'>"
-                f"<strong>{ft['code']}</strong> — {ft['name']}</span>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(f"**{ft['code']}** — {ft['name']}")
 
     with st.expander("Funds & Cut-off times"):
         for fund in load_form_types().get("funds", []):
             cat_icon = "🟢" if fund["type"] == "Money Market" else "🔵"
-            st.markdown(
-                f"<span style='color:#E7ECF2;font-size:0.85rem;'>"
-                f"{cat_icon} <strong>{fund['name']}</strong><br>"
-                f"Cut-off: <code>{fund['cutoff_time']}</code> · {fund['type']}</span>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(f"{cat_icon} **{fund['name']}** · Cut-off: `{fund['cutoff_time']}`")
 
 # --------------------------------------------------------------------------- #
 # Header
