@@ -63,6 +63,42 @@ def _require_api_key() -> str:
     return settings.gemini.api_key
 
 
+def _parse_429(resp: "requests.Response") -> tuple[bool, float]:
+    """
+    Inspect a 429 response body and decide:
+      - is_hard_quota: True if any quota metric has limit=0, meaning this key/
+        project has NO free-tier allowance at all. Retrying can never succeed
+        in that case (Google isn't going to grant more quota mid-backoff), so
+        the caller should fail fast instead of burning the whole retry budget.
+      - retry_after: seconds Google itself suggests waiting (from the
+        RetryInfo field), falling back to 15s if it wasn't provided.
+    """
+    retry_after = 15.0
+    is_hard_quota = False
+    try:
+        payload = resp.json().get("error", {})
+        for detail in payload.get("details", []):
+            detail_type = detail.get("@type", "")
+            if detail_type.endswith("QuotaFailure"):
+                for violation in detail.get("violations", []):
+                    if violation.get("quotaValue") in ("0", 0):
+                        is_hard_quota = True
+            if detail_type.endswith("RetryInfo"):
+                delay = detail.get("retryDelay", "")
+                if delay.endswith("s"):
+                    try:
+                        retry_after = float(delay[:-1])
+                    except ValueError:
+                        pass
+        # Some responses only put "limit: 0" in the free-text message rather
+        # than structured details - catch that too.
+        if "limit: 0" in payload.get("message", ""):
+            is_hard_quota = True
+    except Exception:  # noqa: BLE001
+        pass
+    return is_hard_quota, retry_after
+
+
 def _post(model: str, body: dict) -> dict:
     api_key = _require_api_key()
     url = f"{_BASE_URL}/{model}:generateContent"
@@ -79,16 +115,29 @@ def _post(model: str, body: dict) -> dict:
                 timeout=settings.gemini.request_timeout_seconds,
             )
             if resp.status_code == 429:
-                # Free-tier rate limit - back off and retry rather than failing
-                # the whole batch on a transient quota blip.
+                is_hard_quota, retry_after = _parse_429(resp)
+                if is_hard_quota:
+                    # limit: 0 means this project has NO free-tier allowance -
+                    # retrying (even with backoff) cannot succeed, so stop
+                    # immediately instead of wasting the whole batch's time.
+                    raise GeminiError(
+                        "Gemini quota is 0 for this API key/project - the free "
+                        "tier is unavailable (often due to region restrictions "
+                        "or Google disabling no-billing access). This will not "
+                        "resolve by retrying. Fix by either: (1) enabling "
+                        "billing on the Google Cloud project behind this key at "
+                        "https://aistudio.google.com/apikey, or (2) setting "
+                        "LLM_PROVIDER=ollama to run fully local instead."
+                    )
                 last_exc = GeminiError("Rate limited (429) - free tier quota hit")
                 logger.warning(
-                    "Gemini rate-limited (attempt %d/%d). Backing off 15s. "
-                    "If this happens often, slow down BIFM_MAX_WORKERS.",
-                    attempt, max_attempts,
+                    "Gemini rate-limited (attempt %d/%d). Backing off %.0fs "
+                    "(Google-suggested delay). If this happens often, slow "
+                    "down BIFM_MAX_WORKERS.",
+                    attempt, max_attempts, retry_after,
                 )
                 if attempt < max_attempts:
-                    time.sleep(15)
+                    time.sleep(retry_after)
                     continue
             resp.raise_for_status()
             elapsed = time.monotonic() - start

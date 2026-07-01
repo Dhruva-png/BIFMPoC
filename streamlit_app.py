@@ -202,9 +202,12 @@ with st.sidebar:
         st.caption(f"{len(existing)} PDF(s) found in folder.")
 
     st.markdown("---")
-    run_clicked = st.button("▶  Run Batch", use_container_width=True, disabled=not ollama_ok)
+    run_clicked = st.button("▶  Run Batch", width="stretch", disabled=not ollama_ok)
     if not ollama_ok:
-        st.caption("Start Ollama to enable processing.")
+        if settings.llm_provider == "ollama":
+            st.caption("Start Ollama to enable processing.")
+        else:
+            st.caption("Fix the Gemini API key/quota issue above to enable processing.")
 
     with st.expander("Form types in scope"):
         for ft in load_form_types()["form_types"]:
@@ -379,7 +382,7 @@ else:
 
         st.dataframe(
             df.style.map(_style_status, subset=["Status"]),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -394,7 +397,7 @@ else:
                     data=f.read(),
                     file_name=Path(report_path).name,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
+                    width="stretch",
                 )
             st.caption("4 sheets: Investor Master · Beneficiary Details · Validation Flags · Processing Log")
 
@@ -440,11 +443,11 @@ else:
 
                 if extracted_rows:
                     st.caption("**Extracted Fields**")
-                    st.dataframe(pd.DataFrame(extracted_rows), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(extracted_rows), width="stretch", hide_index=True)
 
                 if derived_rows:
                     st.caption("**System-Derived Metadata**")
-                    st.dataframe(pd.DataFrame(derived_rows), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(derived_rows), width="stretch", hide_index=True)
 
             if o.extraction and o.extraction.beneficiaries:
                 st.caption("**Beneficiaries**")
@@ -453,7 +456,7 @@ else:
                         {"Name": b.name, "Relationship": b.relationship, "Split %": b.split_percent}
                         for b in o.extraction.beneficiaries
                     ]),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 
@@ -465,6 +468,6 @@ else:
                 ]
                 st.caption("**Validation Issues**" if failing else "**Validation**")
                 if failing:
-                    st.dataframe(pd.DataFrame(failing), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(failing), width="stretch", hide_index=True)
                 else:
                     st.success("All validation checks passed.", icon="✅")
