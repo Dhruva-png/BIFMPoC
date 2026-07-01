@@ -1,6 +1,52 @@
 # BIFM Unit Trusts — Document Processing (POC)
 
-Local, offline AI-powered pipeline for BIFM UT instruction form processing.
+AI-powered pipeline for BIFM UT instruction form processing. Runs against
+either a **free cloud vision model (default)** or a **fully local/offline
+model** — pick whichever suits your hardware.
+
+## Quick start: choosing an LLM provider
+
+Running an 8B vision model locally needs a real GPU (or a lot of patience on
+CPU). If your laptop can't handle that, use the free Gemini API instead —
+same code, same output, just faster and with zero local model download.
+
+### Option A — Gemini (default, recommended for laptops)
+
+1. Get a free API key: https://aistudio.google.com/apikey (any Google
+   account, no credit card, no charge on the free tier).
+2. Set it as an environment variable before launching:
+   ```bash
+   # macOS/Linux
+   export GEMINI_API_KEY="your-key-here"
+
+   # Windows (Command Prompt)
+   set GEMINI_API_KEY=your-key-here
+
+   # Windows (PowerShell)
+   $env:GEMINI_API_KEY="your-key-here"
+   ```
+3. Run the app as normal (`python main.py`, or `streamlit run streamlit_app.py`).
+   `LLM_PROVIDER` defaults to `gemini`, so nothing else changes.
+
+Free-tier limits are generous for a POC (gemini-2.0-flash: roughly 15
+requests/minute, 1,500/day at no cost — check the AI Studio dashboard for
+current numbers). Typical latency is 1-3 seconds per page, vs. minutes on a
+CPU-only laptop running the local model.
+
+### Option B — Ollama (fully local/offline)
+
+If you'd rather keep everything on-device (no internet dependency, no data
+leaving the machine), set:
+```bash
+export LLM_PROVIDER=ollama
+```
+and follow the local setup below (`ollama serve` + pull the models). This is
+the original setup this POC shipped with — nothing about it changed, it's
+just no longer the default.
+
+Both providers produce identical output (same JSON shape, same downstream
+pipeline) — `app/llm/router.py` is the single switch point, so business
+logic never needs to know which one is active.
 
 ## What it does
 

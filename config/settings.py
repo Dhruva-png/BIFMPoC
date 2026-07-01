@@ -13,6 +13,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # project root
 
 
 @dataclass
+class GeminiSettings:
+    """
+    Google Gemini free tier - the recommended default for laptops that can't
+    run an 8B vision model locally. gemini-2.0-flash's free tier (as of this
+    writing) is generous enough for POC-scale batches: ~15 requests/minute,
+    1,500 requests/day, no cost. Get a key at https://aistudio.google.com/apikey
+    (Google account, no card required) and set it as GEMINI_API_KEY.
+    """
+    api_key: str = os.environ.get("GEMINI_API_KEY", "")
+    text_model: str = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.0-flash")
+    vision_model: str = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.0-flash")
+    request_timeout_seconds: int = int(os.environ.get("GEMINI_REQUEST_TIMEOUT", "60"))
+    max_retries: int = 2
+    num_predict: int = int(os.environ.get("GEMINI_NUM_PREDICT", "800"))
+
+
+@dataclass
 class OllamaSettings:
     host: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     text_model: str = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.2")
@@ -56,6 +73,11 @@ class PathSettings:
 
 @dataclass
 class AppSettings:
+    # "gemini" (default - free, fast, no local hardware needed) or "ollama"
+    # (fully local/offline, needs a GPU/enough RAM for an 8B vision model).
+    # Override with LLM_PROVIDER=ollama to go back to fully local.
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "gemini").lower()
+    gemini: GeminiSettings = field(default_factory=GeminiSettings)
     ollama: OllamaSettings = field(default_factory=OllamaSettings)
     paths: PathSettings = field(default_factory=PathSettings)
     # 220 DPI is a fast default: llava's vision encoder resizes everything to

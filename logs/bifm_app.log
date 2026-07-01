@@ -234,3 +234,185 @@
 2026-06-30 11:04:18 | INFO     | app.services.filer | Filed report_KYC.pdf -> KYC_502345678_GAOTLHOBOGWE_20260630_1.pdf
 2026-06-30 11:04:18 | INFO     | app.core.pipeline | report_KYC.pdf: complete → WARNING
 2026-06-30 11:04:18 | INFO     | app.services.report_generator | Saved consolidated Excel report to /home/claude/bifm_ocr_app/output/BIFM_UT_Processing_Report.xlsx
+2026-07-01 12:01:37 | INFO     | app.core.pipeline | Rendering pages for STATIC - AMOLEMO.pdf...
+2026-07-01 12:01:37 | INFO     | app.core.pipeline | Rendering pages for DIS - AMOLEMO.pdf...
+2026-07-01 12:01:37 | INFO     | app.ocr.pdf_utils | Rendering STATIC - AMOLEMO.pdf at 220 DPI via pypdfium2
+2026-07-01 12:01:37 | INFO     | app.ocr.pdf_utils | Rendering DIS - AMOLEMO.pdf at 220 DPI via pypdfium2
+2026-07-01 12:01:42 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - AMOLEMO.pdf
+2026-07-01 12:01:42 | INFO     | app.core.pipeline | Classifying DIS - AMOLEMO.pdf...
+2026-07-01 12:01:45 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from STATIC - AMOLEMO.pdf
+2026-07-01 12:01:45 | INFO     | app.core.pipeline | Classifying STATIC - AMOLEMO.pdf...
+2026-07-01 12:11:44 | ERROR    | app.llm.ollama_client | Ollama timed out after 600s on attempt 1 — not retrying. Increase OLLAMA_REQUEST_TIMEOUT or switch to a smaller model.
+2026-07-01 12:11:44 | ERROR    | app.core.pipeline | Failed to process DIS - AMOLEMO.pdf
+Traceback (most recent call last):
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\http\client.py", line 1395, in getresponse
+    response.begin()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\http\client.py", line 325, in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\http\client.py", line 286, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\socket.py", line 706, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\util\retry.py", line 474, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\util\util.py", line 39, in reraise
+    raise value
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 536, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 367, in _raise_timeout
+    raise ReadTimeoutError(
+urllib3.exceptions.ReadTimeoutError: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\ollama_client.py", line 52, in _post
+    resp = requests.post(url, json=payload, timeout=settings.ollama.request_timeout_seconds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\adapters.py", line 713, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\core\pipeline.py", line 81, in process_single_document
+    classification = classifier.classify_form(page_images[0])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\services\classifier.py", line 55, in classify_form
+    response = ask_vision(prompt, first_page_image, json_mode=True)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\ollama_client.py", line 152, in ask_vision
+    data = _post(payload)
+           ^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\ollama_client.py", line 89, in _post
+    raise OllamaError(f"Ollama request failed: {last_exc}") from last_exc
+app.llm.ollama_client.OllamaError: Ollama request failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+2026-07-01 12:11:44 | INFO     | app.core.pipeline | ERROR processing DIS - AMOLEMO.pdf: Ollama request failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+2026-07-01 12:11:44 | INFO     | app.core.pipeline | Rendering pages for DEBIT - AMOLEMO.pdf...
+2026-07-01 12:11:44 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - AMOLEMO.pdf at 220 DPI via pypdfium2
+2026-07-01 12:11:47 | ERROR    | app.llm.ollama_client | Ollama timed out after 600s on attempt 1 — not retrying. Increase OLLAMA_REQUEST_TIMEOUT or switch to a smaller model.
+2026-07-01 12:11:47 | ERROR    | app.core.pipeline | Failed to process STATIC - AMOLEMO.pdf
+Traceback (most recent call last):
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\http\client.py", line 1395, in getresponse
+    response.begin()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\http\client.py", line 325, in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\http\client.py", line 286, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\socket.py", line 706, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\util\retry.py", line 474, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\util\util.py", line 39, in reraise
+    raise value
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 536, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\urllib3\connectionpool.py", line 367, in _raise_timeout
+    raise ReadTimeoutError(
+urllib3.exceptions.ReadTimeoutError: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\ollama_client.py", line 52, in _post
+    resp = requests.post(url, json=payload, timeout=settings.ollama.request_timeout_seconds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\adapters.py", line 713, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\core\pipeline.py", line 81, in process_single_document
+    classification = classifier.classify_form(page_images[0])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\services\classifier.py", line 55, in classify_form
+    response = ask_vision(prompt, first_page_image, json_mode=True)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\ollama_client.py", line 152, in ask_vision
+    data = _post(payload)
+           ^^^^^^^^^^^^^^
+  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\ollama_client.py", line 89, in _post
+    raise OllamaError(f"Ollama request failed: {last_exc}") from last_exc
+app.llm.ollama_client.OllamaError: Ollama request failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+2026-07-01 12:11:47 | INFO     | app.core.pipeline | ERROR processing STATIC - AMOLEMO.pdf: Ollama request failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+2026-07-01 12:11:47 | INFO     | app.core.pipeline | Rendering pages for ADD - AMOLEMO.pdf...
+2026-07-01 12:11:47 | INFO     | app.ocr.pdf_utils | Rendering ADD - AMOLEMO.pdf at 220 DPI via pypdfium2
+2026-07-01 12:11:56 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - AMOLEMO.pdf
+2026-07-01 12:11:56 | INFO     | app.core.pipeline | Classifying DEBIT - AMOLEMO.pdf...
+2026-07-01 12:12:00 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - AMOLEMO.pdf
+2026-07-01 12:12:00 | INFO     | app.core.pipeline | Classifying ADD - AMOLEMO.pdf...

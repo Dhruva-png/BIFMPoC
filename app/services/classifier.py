@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.llm.ollama_client import ask_vision, parse_json_response
+from app.llm.router import ask_vision, parse_json_response
 from app.models.schemas import ClassificationResult
 from app.utils.config_loader import load_form_types
 from app.utils.logger import get_logger

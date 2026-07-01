@@ -26,7 +26,7 @@ import pandas as pd
 import streamlit as st
 
 from app.core.pipeline import DocumentOutcome, process_single_document
-from app.llm.ollama_client import check_connection
+from app.llm.router import check_connection, active_provider
 from app.models.schemas import ValidationStatus
 from app.services.report_generator import ExcelReportBuilder
 from app.utils.config_loader import load_form_types
@@ -151,21 +151,29 @@ def status_chip(status: str) -> str:
 # --------------------------------------------------------------------------- #
 with st.sidebar:
     st.markdown("### ⚙️ System Status")
+    st.caption(f"LLM provider: **{active_provider()}**  ·  set via `LLM_PROVIDER` env var")
     ollama_ok = check_connection()
-    if ollama_ok:
-        st.success(f"Ollama connected · `{settings.ollama.host}`", icon="✅")
+    if settings.llm_provider == "ollama":
+        if ollama_ok:
+            st.success(f"Ollama connected · `{settings.ollama.host}`", icon="✅")
+        else:
+            st.error(f"Ollama unreachable at `{settings.ollama.host}`", icon="⚠️")
+            st.caption("Run `ollama serve`, then `ollama pull llama3.2 && ollama pull qwen3-vl:8b-instruct`.")
+        st.caption(
+            f"Vision model: **{settings.ollama.vision_model}**  ·  "
+            f"Text model: **{settings.ollama.text_model}**"
+        )
+        st.caption(
+            f"Timeout: **{settings.ollama.request_timeout_seconds}s** per call  ·  "
+            f"Keep-alive: **{settings.ollama.keep_alive}**"
+        )
     else:
-        st.error(f"Ollama unreachable at `{settings.ollama.host}`", icon="⚠️")
-        st.caption("Run `ollama serve`, then `ollama pull llama3.2 && ollama pull qwen3-vl:8b-instruct`.")
-
-    st.caption(
-        f"Vision model: **{settings.ollama.vision_model}**  ·  "
-        f"Text model: **{settings.ollama.text_model}**"
-    )
-    st.caption(
-        f"Timeout: **{settings.ollama.request_timeout_seconds}s** per call  ·  "
-        f"Keep-alive: **{settings.ollama.keep_alive}**"
-    )
+        if ollama_ok:
+            st.success("Gemini API key valid", icon="✅")
+        else:
+            st.error("Gemini unreachable — missing or invalid GEMINI_API_KEY", icon="⚠️")
+            st.caption("Get a free key at https://aistudio.google.com/apikey and set it as an environment variable.")
+        st.caption(f"Vision/text model: **{settings.gemini.vision_model}** (free tier)")
     if not ollama_ok:
         pass  # error already shown above
     else:

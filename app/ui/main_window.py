@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from app.core.pipeline import run_batch
-from app.llm.ollama_client import check_connection
+from app.llm.router import check_connection, active_provider
 from app.utils.logger import get_logger
 from config.settings import settings
 
@@ -64,7 +64,7 @@ class BifmApp(tk.Tk):
         self.open_report_button = ttk.Button(actions, text="Open Last Report", command=self._open_report, state="disabled")
         self.open_report_button.pack(side="left", padx=8)
 
-        self.ollama_status_label = ttk.Label(actions, text="Checking Ollama connection...", foreground="gray")
+        self.ollama_status_label = ttk.Label(actions, text=f"Checking {active_provider()} connection...", foreground="gray")
         self.ollama_status_label.pack(side="right")
 
         ttk.Label(self, textvariable=self.status_var, foreground="blue").pack(fill="x", padx=10)
@@ -83,7 +83,8 @@ class BifmApp(tk.Tk):
     def _check_ollama_async(self) -> None:
         def worker():
             ok = check_connection()
-            text = "Ollama: connected" if ok else "Ollama: NOT reachable - start `ollama serve`"
+            provider = active_provider()
+            text = f"{provider}: connected" if ok else f"{provider}: NOT reachable - see README setup"
             color = "green" if ok else "red"
             self.ollama_status_label.config(text=text, foreground=color)
         threading.Thread(target=worker, daemon=True).start()

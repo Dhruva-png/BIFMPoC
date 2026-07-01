@@ -17,13 +17,19 @@ logger = get_logger("main")
 
 
 def run_headless(intake: str | None, channel: str = "Unknown") -> int:
+    from app.llm.router import check_connection
     from app.core.pipeline import run_batch
-    from app.llm.ollama_client import check_connection
 
     if not check_connection():
-        print("ERROR: Could not reach Ollama at the configured host. Start it with `ollama serve` "
-              "and ensure llama3.2 and qwen3-vl:8b-instruct are pulled "
-              "(`ollama pull llama3.2 && ollama pull qwen3-vl:8b-instruct`).")
+        from config.settings import settings
+        if settings.llm_provider == "ollama":
+            print("ERROR: Could not reach Ollama at the configured host. Start it with `ollama serve` "
+                  "and ensure llama3.2 and qwen3-vl:8b-instruct are pulled "
+                  "(`ollama pull llama3.2 && ollama pull qwen3-vl:8b-instruct`).")
+        else:
+            print("ERROR: Could not reach Gemini (missing/invalid GEMINI_API_KEY). "
+                  "Get a free key at https://aistudio.google.com/apikey and set it as an "
+                  "environment variable, or set LLM_PROVIDER=ollama to run fully local.")
         return 1
 
     intake_dir = Path(intake) if intake else None
