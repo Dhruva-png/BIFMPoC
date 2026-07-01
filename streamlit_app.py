@@ -18,14 +18,15 @@ Every form is classified, field-extracted, validated, and filed.
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from app.core.pipeline import DocumentOutcome, process_single_document
+from app.core.pipeline import DocumentOutcome, process_batch, process_single_document
 from app.llm.router import check_connection, active_provider
 from app.models.schemas import ValidationStatus
 from app.services.report_generator import ExcelReportBuilder
@@ -294,21 +295,37 @@ if run_clicked:
                 )
 
         report = ExcelReportBuilder()
-        outcomes: list[DocumentOutcome] = []
         log_lines: list[str] = []
         total = len(pdf_paths)
-        progress_box.info(f"Processing {total} document(s) — up to {settings.max_workers} in parallel...")
+        progress_box.info(
+            f"Processing {total} document(s) for this batch (one investor) — "
+            f"up to {settings.max_workers} in parallel..."
+        )
 
-        with ThreadPoolExecutor(max_workers=max(1, settings.max_workers)) as pool:
-            futures = {pool.submit(process_single_document, p, report, progress_cb, channel): p for p in pdf_paths}
-            done = 0
-            for future in as_completed(futures):
-                outcomes.append(future.result())
-                done += 1
-                progress_bar.progress(done / total)
-                _drain_log(log_lines)  # update log on main thread after each doc completes
+        # process_batch treats every PDF in this upload as ONE PERSON's set
+        # of forms: it extracts all of them (concurrently, throttled to
+        # Groq's TPM budget internally), merges identity/contact/banking
+        # fields across all the documents, backfills blanks from that
+        # merged profile, then validates/files/reports each one. Run it on
+        # a background thread so the Streamlit main thread stays free to
+        # poll the progress log (worker threads must never touch st.*).
+        _batch_result: dict[str, list] = {}
+
+        def _run_batch() -> None:
+            _batch_result["outcomes"] = process_batch(pdf_paths, report, progress_cb, channel)
+
+        worker_thread = threading.Thread(target=_run_batch, daemon=True)
+        worker_thread.start()
+        while worker_thread.is_alive():
+            _drain_log(log_lines)
+            done = sum(1 for l in log_lines if ": complete →" in l or l.startswith("ERROR processing"))
+            progress_bar.progress(min(done / total, 0.99))
+            time.sleep(0.3)
+        worker_thread.join()
 
         _drain_log(log_lines)  # final drain
+        progress_bar.progress(1.0)
+        outcomes: list[DocumentOutcome] = _batch_result.get("outcomes", [])
         report_path = report.save()
         progress_box.empty()
         progress_bar.empty()

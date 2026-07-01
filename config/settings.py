@@ -42,8 +42,21 @@ class GroqSettings:
     text_model: str = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
     vision_model: str = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
     request_timeout_seconds: int = int(os.environ.get("GROQ_REQUEST_TIMEOUT", "60"))
-    max_retries: int = 2
+    # Raised from 2 -> 4. The free tier's 30k TPM budget is tight enough that
+    # a batch of concurrent documents can legitimately need more than 3
+    # attempts to drain the window - failing a document outright (and losing
+    # its fields) is worse than one more short wait.
+    max_retries: int = int(os.environ.get("GROQ_MAX_RETRIES", "4"))
     num_predict: int = int(os.environ.get("GROQ_NUM_PREDICT", "800"))
+    # Proactive tokens-per-minute budget the app self-throttles to, BELOW
+    # Groq's actual account limit (30,000 TPM as of writing - check
+    # https://console.groq.com/settings/billing for your org's limit).
+    # Kept under the real ceiling so concurrent workers "reserve" budget
+    # before sending instead of finding out via a 429 afterwards - the
+    # earlier failure was exactly 3 workers' calls landing in the same
+    # window and pushing 29,321 -> 32,575 used against a 30,000 limit.
+    # Override with GROQ_TPM_LIMIT if your account has a different tier.
+    tpm_limit: int = int(os.environ.get("GROQ_TPM_LIMIT", "27000"))
 
 
 @dataclass

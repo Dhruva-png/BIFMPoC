@@ -54,6 +54,12 @@ class FieldValue:
     value: Any
     confidence: float  # 0-100
     source_page: Optional[int] = None
+    # "extracted" (read directly off this document) by default. Set to
+    # "backfilled:<other source_file>" when a person-level field was blank
+    # on this document and filled in from a sibling document in the same
+    # batch - see app.services.consolidator. Purely informational/auditable;
+    # never affects validation logic.
+    source: str = "extracted"
 
 
 @dataclass

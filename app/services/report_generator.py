@@ -18,7 +18,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from app.models.schemas import ExtractionResult, ProcessingLogEntry, ValidationReport, ValidationStatus
+from app.models.schemas import ExtractionResult, FieldValue, ProcessingLogEntry, ValidationReport, ValidationStatus
 from app.utils.logger import get_logger
 from config.settings import settings
 
@@ -66,6 +66,41 @@ _INVESTOR_MASTER_PRIORITY_COLS = [
 ]
 
 
+# Column order for the Consolidated Investor Profile sheet - one row per
+# batch/person, merging person-level fields picked up from any document in
+# their batch (see app.services.consolidator).
+_CONSOLIDATED_PROFILE_PRIORITY_COLS = [
+    "person_key",
+    "document_count",
+    "source_documents",
+    "entity_number",
+    "entity_name",
+    "full_name",
+    "title",
+    "id_number",
+    "id_type",
+    "id_expiry_date",
+    "date_of_birth",
+    "gender",
+    "citizenship",
+    "email",
+    "contact_number",
+    "residential_address",
+    "postal_address",
+    "occupation",
+    "fund_name",
+    "fund_number",
+    "bank_account_name",
+    "bank_name",
+    "account_number",
+    "branch_name",
+    "branch_code",
+    "account_type_banking",
+    "authorized_signatory_name",
+    "capacity",
+]
+
+
 def _write_header(ws: Worksheet, headers: list[str]) -> None:
     ws.append(headers)
     for col_idx in range(1, len(headers) + 1):
@@ -103,6 +138,7 @@ class ExcelReportBuilder:
         self._beneficiary_rows: list[dict] = []
         self._validation_rows: list[tuple[dict, ValidationStatus]] = []
         self._log_entries: list[ProcessingLogEntry] = []
+        self._consolidated_rows: list[dict] = []
 
     def add_form(
         self,
@@ -150,11 +186,31 @@ class ExcelReportBuilder:
 
         self._log_entries.append(log_entry)
 
+    def add_consolidated_profile(
+        self,
+        profile: dict[str, FieldValue],
+        person_key: str,
+        source_files: list[str],
+    ) -> None:
+        """
+        Records one row for the "Consolidated Investor Profile" sheet: the
+        merged person-level fields (entity_number, full_name, contact
+        details, banking details, etc.) picked up from ACROSS every
+        document in this person's batch — not just whichever single form
+        happened to have that field filled in. One call per batch/person.
+        """
+        flat = {fid: fv.value for fid, fv in profile.items()}
+        flat["person_key"] = person_key
+        flat["document_count"] = len(source_files)
+        flat["source_documents"] = ", ".join(source_files)
+        self._consolidated_rows.append(flat)
+
     def save(self, output_path: Path | None = None) -> Path:
         output_path = output_path or (settings.paths.output_dir / settings.excel_report_name)
         wb = Workbook()
         wb.remove(wb.active)
 
+        self._write_consolidated_profile(wb)
         self._write_investor_master(wb)
         self._write_beneficiary_details(wb)
         self._write_validation_flags(wb)
@@ -164,6 +220,27 @@ class ExcelReportBuilder:
         wb.save(output_path)
         logger.info("Saved consolidated Excel report to %s", output_path)
         return output_path
+
+    def _write_consolidated_profile(self, wb: Workbook) -> None:
+        """
+        One row per batch/person — the merged view an Ops reviewer actually
+        wants: "who is this, and what do we know about them from everything
+        they handed in", rather than having to cross-reference 4 separate
+        Investor Master rows to piece together one person's contact and
+        banking details.
+        """
+        ws = wb.create_sheet("Consolidated Investor Profile", 0)
+        if not self._consolidated_rows:
+            _write_header(ws, ["No data"])
+            return
+        all_keys = {k for row in self._consolidated_rows for k in row.keys()}
+        priority = [c for c in _CONSOLIDATED_PROFILE_PRIORITY_COLS if c in all_keys]
+        rest = sorted(all_keys - set(priority))
+        headers = priority + rest
+        _write_header(ws, headers)
+        for row in self._consolidated_rows:
+            ws.append([row.get(h, "") for h in headers])
+        _autosize(ws, headers)
 
     def _write_investor_master(self, wb: Workbook) -> None:
         ws = wb.create_sheet("Investor Master")
