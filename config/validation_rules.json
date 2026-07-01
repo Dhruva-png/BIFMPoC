@@ -47,8 +47,8 @@
     {
       "id": "contact_number_numeric",
       "applies_to": "contact_number",
-      "description": "Numeric, Botswana numbers typically 8 digits.",
-      "logic": {"type": "numeric_length", "expected_length": 8, "status_if_mismatch": "WARNING"}
+      "description": "Numeric. Botswana numbers are commonly 8 digits (local) or 9 digits (with a leading trunk/prefix digit such as 0). Both 8 and 9 digit numbers are valid and must NOT raise a warning. Any other length is flagged.",
+      "logic": {"type": "numeric_length", "expected_lengths": [8, 9], "status_if_mismatch": "WARNING"}
     },
     {
       "id": "branch_code_format",
@@ -102,6 +102,12 @@
       "applies_to": "kyc_completeness_flag",
       "description": "All 4 KYC document checkboxes (Certified ID, Proof of Address, Proof of Banking, Proof of Source) must be ticked. KYC only.",
       "logic": {"type": "kyc_completeness_check"}
+    },
+    {
+      "id": "fund_number_format",
+      "applies_to": "fund_number",
+      "description": "BIFM fund/entity numbers are commonly 8 or 9 digits, extracted from the handwritten row of the Core Fund Range table (see fund_category_present rule for the related fund_name check). Both lengths are valid - no warning is raised for either. Only a non-numeric or clearly implausible value is flagged.",
+      "logic": {"type": "numeric_length", "expected_lengths": [8, 9], "status_if_mismatch": "WARNING"}
     },
     {
       "id": "fund_category_present",

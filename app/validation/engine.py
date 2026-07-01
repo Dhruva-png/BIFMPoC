@@ -170,8 +170,19 @@ def _eval_numeric_length(extraction: ExtractionResult, field_id: str, rule: dict
     digits = re.sub(r"\D", "", str(value or ""))
     if not digits:
         return FieldValidationResult(field_id, value, ValidationStatus.FAIL, "Not numeric")
-    status = ValidationStatus.PASS if len(digits) == logic["expected_length"] else ValidationStatus(logic["status_if_mismatch"])
-    msg = "" if status == ValidationStatus.PASS else f"Expected {logic['expected_length']} digits, got {len(digits)}"
+
+    # Support either a single "expected_length" (legacy) or a list of
+    # "expected_lengths" (e.g. Botswana contact numbers valid at 8 or 9 digits).
+    allowed_lengths = logic.get("expected_lengths")
+    if allowed_lengths is None:
+        allowed_lengths = [logic["expected_length"]]
+
+    if len(digits) in allowed_lengths:
+        return FieldValidationResult(field_id, value, ValidationStatus.PASS)
+
+    status = ValidationStatus(logic["status_if_mismatch"])
+    expected_desc = " or ".join(str(n) for n in allowed_lengths)
+    msg = f"Expected {expected_desc} digits, got {len(digits)}"
     return FieldValidationResult(field_id, value, status, msg)
 
 
@@ -252,6 +263,7 @@ _RULE_DISPATCH = {
     "date_of_birth_past": lambda ex, rule: [_eval_date_of_birth_past(ex, rule)],
     "email_format": lambda ex, rule: [_eval_regex(ex, "email", rule)],
     "contact_number_numeric": lambda ex, rule: [_eval_numeric_length(ex, "contact_number", rule)],
+    "fund_number_format": lambda ex, rule: [_eval_numeric_length(ex, "fund_number", rule)],
     "minor_fields_required_if_acting_on_behalf": lambda ex, rule: _eval_conditional_required(ex, rule),
     "guardian_id_format": lambda ex, rule: [
         r for r in [_eval_exact_digits(ex.field_value("guardian_id_number"), rule["logic"]["length"],
@@ -279,6 +291,7 @@ _RULE_FORM_SCOPE: dict[str, set[str]] = {
     "date_of_birth_past": {"APPFORM", "KYC"},
     "kyc_completeness": {"KYC"},
     "fund_category_present": {"ADD", "DIS", "DIS_GSG", "DEBIT"},
+    "fund_number_format": {"ADD", "DIS", "DEBIT"},
     "branch_code_format": {"ADD", "DEBIT", "DIS", "DIS_GSG", "STATIC", "KYC"},
 }
 

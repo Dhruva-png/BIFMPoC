@@ -45,13 +45,52 @@ GUARDIAN_PAGE_NUMBER = 10
 # Prompt builder
 # ---------------------------------------------------------------------------
 
+# Fund fields that live inside the "Core fund range" table rather than a
+# single dedicated form field — see _FUND_TABLE_GUIDANCE below.
+_FUND_TABLE_HINT = "fund_table"
+
+_FUND_TABLE_GUIDANCE = (
+    "\nSPECIAL INSTRUCTIONS FOR fund_name / fund_number (Core Fund Range table):\n"
+    "These forms list SEVERAL funds in one table, grouped under risk-appetite headers "
+    "(e.g. 'You are very careful...', 'You are willing to take risks...', "
+    "'You're willing to risk more...'). Each row is one fund (some prefixed with '*' or "
+    "'**' — ignore those markers when extracting the name). There is USUALLY NOT a single "
+    "clean 'Fund Number' box — the fund number is often handwritten by the client to the "
+    "LEFT of, ABOVE, or directly BESIDE the row for the fund they picked, frequently right "
+    "next to or overlapping the 'Lump sum deposit' / 'Lump sum debit' amount column for "
+    "that same row.\n"
+    "To find the correct fund_name and fund_number:\n"
+    "1. Scan EVERY row of the fund table, not just the first row or a fixed position.\n"
+    "2. Identify the SELECTED fund: the row that has a handwritten amount in the Lump sum "
+    "deposit or Lump sum debit column, and/or a tick/cross in the Income Distribution "
+    "(Reinvest / Pay out) columns for that row. 'N/A' printed in a cell means that fund does "
+    "not offer that option and is NOT itself a selection signal.\n"
+    "3. fund_number is the handwritten digit string associated with that selected row (do "
+    "NOT confuse it with the deposit/debit amount itself). Botswana fund/entity numbers can "
+    "be either 8 or 9 digits — capture exactly what is written, do not pad, truncate, or "
+    "'correct' the digit count.\n"
+    "4. fund_name is the PRINTED fund name text of that same row (e.g. 'Bifm Pula Money "
+    "Market Fund'), not the risk-appetite header text above it.\n"
+    "5. If more than one row appears to have amounts filled in, pick the row with the most "
+    "complete evidence (amount AND a nearby handwritten number) and lower your confidence "
+    "score accordingly.\n"
+    "6. If the fund number truly cannot be found anywhere on the page, still return the "
+    "fund_name from the selected row and set fund_number to null rather than inventing one.\n"
+)
+
+
 def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
     lines = []
+    needs_fund_table_guidance = False
     for f in field_subset:
         opts = f" Allowed values: {f['options']}." if "options" in f else ""
         cond = f" (Only if: {f['condition']})" if f.get("condition") else ""
         lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}{cond}")
+        if f.get("extraction_hint") == _FUND_TABLE_HINT:
+            needs_fund_table_guidance = True
     field_block = "\n".join(lines)
+
+    fund_guidance = _FUND_TABLE_GUIDANCE if needs_fund_table_guidance else ""
 
     return (
         f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
@@ -61,7 +100,8 @@ def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
         "- Use surrounding context (field label, expected format) to disambiguate.\n"
         "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading INSIDE the box.\n"
         "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
-        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n\n"
+        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n"
+        f"{fund_guidance}\n"
         f"FIELDS TO EXTRACT:\n{field_block}\n\n"
         "Also extract any beneficiary table rows (name, relationship, split_percent).\n\n"
         "Respond ONLY with this exact JSON shape:\n"
@@ -212,6 +252,35 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
 
 
 # ---------------------------------------------------------------------------
+# Fund field cleanup
+# ---------------------------------------------------------------------------
+
+def _clean_fund_fields(fields: dict[str, FieldValue]) -> None:
+    """
+    Normalizes fund_name / fund_number in place after extraction from the
+    Core Fund Range table:
+      - Strips leading '*' / '**' risk-tier markers and stray whitespace from
+        fund_name (these are printed annotations on the form, not part of
+        the fund's actual name).
+      - Strips non-digit characters from fund_number while preserving the
+        digit string exactly as written (8 or 9 digits are both valid for
+        BIFM fund/entity numbers - no padding or truncation).
+    """
+    import re as _re
+
+    fund_name_fv = fields.get("fund_name")
+    if fund_name_fv and fund_name_fv.value:
+        cleaned = _re.sub(r"^\**\s*", "", str(fund_name_fv.value)).strip()
+        fund_name_fv.value = cleaned
+
+    fund_number_fv = fields.get("fund_number")
+    if fund_number_fv and fund_number_fv.value:
+        digits = _re.sub(r"\D", "", str(fund_number_fv.value))
+        if digits:
+            fund_number_fv.value = digits
+
+
+# ---------------------------------------------------------------------------
 # Public entry points (one per form type, plus the routing dispatcher)
 # ---------------------------------------------------------------------------
 
@@ -262,6 +331,7 @@ def _extract_appform(page_images: list[Path]) -> ExtractionResult:
     if "id_type" not in all_fields and "id_number" in all_fields:
         logger.warning("id_type not extracted directly - downstream validation will treat it as unknown")
 
+    _clean_fund_fields(all_fields)
     all_fields.update(_derive_metadata("APPFORM", all_fields))
 
     result = ExtractionResult(
@@ -300,6 +370,11 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
             if existing is None or fv.confidence > existing.confidence:
                 all_fields[fid] = fv
         all_beneficiaries.extend(beneficiaries)
+
+    # Normalize fund_name / fund_number pulled from the Core Fund Range table
+    # (strip '*'/'**' risk-tier markers, strip non-digits from fund_number)
+    # before deriving metadata that depends on fund_name (fund_category, cutoff).
+    _clean_fund_fields(all_fields)
 
     # Append system-derived metadata fields
     all_fields.update(_derive_metadata(form_code, all_fields))
