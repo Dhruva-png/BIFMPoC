@@ -24,6 +24,8 @@ This module:
 """
 from __future__ import annotations
 
+from typing import Any
+
 from app.models.schemas import ExtractionResult, FieldValue
 from app.utils.config_loader import get_fields_for_form
 from app.utils.logger import get_logger
@@ -67,28 +69,96 @@ def _is_blank(value) -> bool:
     return value is None or (isinstance(value, str) and value.strip() == "")
 
 
+def _normalize(value: Any) -> Any:
+    """Normalizes a value for equality-grouping purposes only (display value
+    is still taken from the original, un-normalized FieldValue)."""
+    if isinstance(value, str):
+        return value.strip().lower()
+    return value
+
+
 def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, FieldValue]:
     """
     Merges shareable fields across every document's extraction in the
-    batch into one profile. For each field, keeps the highest-confidence
-    non-blank value seen across all documents; ties go to whichever
-    document was merged first.
+    batch into one profile.
+
+    For each field, groups the non-blank values seen across all documents
+    in the batch by their normalized value, and takes the value with the
+    most documents agreeing (majority vote) - not simply the single
+    highest-confidence reading. This matters because OCR/extraction
+    confidence is a per-document signal about how cleanly a page was read;
+    it says nothing about whether that page's *content* is correct. A
+    cleanly-scanned KYC form with one wrong digit can score a higher
+    confidence than three consistent forms that were slightly harder to
+    read - the old "keep the highest confidence" logic would have
+    surfaced the wrong number. Majority vote uses the batch's redundancy
+    (the same person-level fact usually appears on several of their
+    forms) to catch that instead.
+
+    Ties (e.g. 2 documents say one value, 2 say another) are broken by
+    the highest confidence among the tied groups. Within the winning
+    group, the specific value/casing shown is taken from whichever member
+    has the highest confidence.
     """
     profile: dict[str, FieldValue] = {}
-    for extraction in extractions:
-        for field_id in SHAREABLE_FIELDS:
+
+    for field_id in SHAREABLE_FIELDS:
+        # Collect every non-blank (extraction, FieldValue) reading of this
+        # field across the batch.
+        candidates: list[tuple[ExtractionResult, FieldValue]] = []
+        for extraction in extractions:
             fv = extraction.fields.get(field_id)
             if fv is None or _is_blank(fv.value):
                 continue
-            existing = profile.get(field_id)
-            if existing is None or fv.confidence > existing.confidence:
-                profile[field_id] = FieldValue(
-                    field_id=field_id,
-                    value=fv.value,
-                    confidence=fv.confidence,
-                    source_page=fv.source_page,
-                    source=extraction.source_file,
-                )
+            candidates.append((extraction, fv))
+
+        if not candidates:
+            continue
+
+        # Group by normalized value.
+        groups: dict[Any, list[tuple[ExtractionResult, FieldValue]]] = {}
+        for extraction, fv in candidates:
+            groups.setdefault(_normalize(fv.value), []).append((extraction, fv))
+
+        # Winning group = most documents agreeing; ties broken by the
+        # highest confidence seen within that group.
+        def _group_rank(item: tuple[Any, list[tuple[ExtractionResult, FieldValue]]]) -> tuple[int, float]:
+            _, members = item
+            return (len(members), max(fv.confidence for _, fv in members))
+
+        _, winning_members = max(groups.items(), key=_group_rank)
+
+        # Within the winning group, display the highest-confidence reading
+        # (keeps original casing/formatting rather than the normalized form).
+        winner_extraction, winner_fv = max(winning_members, key=lambda pair: pair[1].confidence)
+
+        total_docs = len(candidates)
+        agreeing_docs = len(winning_members)
+        if len(groups) == 1:
+            agreement = f"{agreeing_docs}/{total_docs} document(s) agree"
+        else:
+            disagreeing_sources = ", ".join(
+                sorted(e.source_file for e, _ in candidates if _normalize(e.fields[field_id].value) != _normalize(winner_fv.value))
+            )
+            agreement = (
+                f"majority vote: {agreeing_docs}/{total_docs} documents agree on this value "
+                f"(differs on: {disagreeing_sources})"
+            )
+            logger.warning(
+                "Field '%s' disagreed across batch - majority value '%s' from %s used; "
+                "outlier(s) on: %s",
+                field_id, winner_fv.value, winner_extraction.source_file, disagreeing_sources,
+            )
+
+        profile[field_id] = FieldValue(
+            field_id=field_id,
+            value=winner_fv.value,
+            confidence=winner_fv.confidence,
+            source_page=winner_fv.source_page,
+            source=winner_extraction.source_file,
+            agreement=agreement,
+        )
+
     return profile
 
 

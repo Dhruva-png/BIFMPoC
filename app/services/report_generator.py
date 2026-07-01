@@ -30,6 +30,31 @@ FILL_FAIL    = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="
 HEADER_FONT  = Font(bold=True, color="FFFFFF")
 HEADER_FILL  = PatternFill(start_color="305496", end_color="305496", fill_type="solid")
 
+# Styling for the "detail" row inserted beneath every data row, showing
+# per-field confidence % and provenance (which document / page it was read
+# from, or how a consolidated value was chosen).
+DETAIL_FONT = Font(italic=True, size=9, color="6B6B6B")
+DETAIL_FILL = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+
+
+def _format_detail(fv) -> str:
+    """Formats one FieldValue's confidence + provenance for a detail cell."""
+    if fv is None:
+        return ""
+    bits = [f"{fv.confidence:.0f}% confidence"]
+    if getattr(fv, "agreement", None):
+        bits.append(fv.agreement)
+    elif fv.source == "extracted":
+        if fv.source_page:
+            bits.append(f"extracted p.{fv.source_page}")
+        else:
+            bits.append("extracted")
+    elif fv.source.startswith("backfilled:"):
+        bits.append(f"backfilled from {fv.source.split(':', 1)[1]}")
+    else:
+        bits.append(f"from {fv.source}")
+    return " — ".join(bits)
+
 _STATUS_FILL = {
     ValidationStatus.PASS:    FILL_PASS,
     ValidationStatus.WARNING: FILL_WARNING,
@@ -140,10 +165,12 @@ class ExcelReportBuilder:
 
     def __init__(self) -> None:
         self._investor_rows: list[dict] = []
+        self._investor_field_values: list[dict[str, FieldValue]] = []
         self._beneficiary_rows: list[dict] = []
         self._validation_rows: list[tuple[dict, ValidationStatus]] = []
         self._log_entries: list[ProcessingLogEntry] = []
         self._consolidated_rows: list[dict] = []
+        self._consolidated_field_values: list[dict[str, FieldValue]] = []
 
     def add_form(
         self,
@@ -165,6 +192,9 @@ class ExcelReportBuilder:
         flat["captured_by"] = log_entry.captured_by
         flat["authorized_by"] = log_entry.authorized_by
         self._investor_rows.append(flat)
+        # Keep the underlying FieldValues (confidence, source) alongside the
+        # flat row so the detail row can be rendered beneath it.
+        self._investor_field_values.append(dict(extraction.fields))
 
         for b in extraction.beneficiaries:
             self._beneficiary_rows.append({
@@ -209,6 +239,7 @@ class ExcelReportBuilder:
         flat["document_count"] = len(source_files)
         flat["source_documents"] = ", ".join(source_files)
         self._consolidated_rows.append(flat)
+        self._consolidated_field_values.append(dict(profile))
 
     def save(self, output_path: Path | None = None) -> Path:
         output_path = output_path or (settings.paths.output_dir / settings.excel_report_name)
@@ -243,8 +274,14 @@ class ExcelReportBuilder:
         rest = sorted(all_keys - set(priority))
         headers = priority + rest
         _write_header(ws, headers)
-        for row in self._consolidated_rows:
+        for row, field_values in zip(self._consolidated_rows, self._consolidated_field_values):
             ws.append([row.get(h, "") for h in headers])
+            ws.append([_format_detail(field_values.get(h)) for h in headers])
+            detail_row_idx = ws.max_row
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=detail_row_idx, column=col_idx)
+                cell.font = DETAIL_FONT
+                cell.fill = DETAIL_FILL
         _autosize(ws, headers)
 
     def _write_investor_master(self, wb: Workbook) -> None:
@@ -268,17 +305,22 @@ class ExcelReportBuilder:
             except (TypeError, ValueError):
                 return 99
 
-        rows_to_write = sorted(self._investor_rows, key=_priority_key)
+        # Keep each row's FieldValues attached through the sort so the detail
+        # row written underneath stays paired with the correct data row.
+        paired = sorted(
+            zip(self._investor_rows, self._investor_field_values),
+            key=lambda pair: _priority_key(pair[0]),
+        )
 
         _write_header(ws, headers)
-        for row in rows_to_write:
-            ws.append([row.get(h, "") for h in headers])
-
-        # Color-code rows by overall validation status
         status_col_idx = headers.index("overall_validation_status") + 1 if "overall_validation_status" in headers else None
-        for row_idx in range(2, ws.max_row + 1):
+        for row, field_values in paired:
+            ws.append([row.get(h, "") for h in headers])
+            data_row_idx = ws.max_row
+
+            # Color-code the data row by overall validation status.
             if status_col_idx:
-                status_val = ws.cell(row=row_idx, column=status_col_idx).value
+                status_val = ws.cell(row=data_row_idx, column=status_col_idx).value
                 fill = None
                 if status_val == "PASS":
                     fill = FILL_PASS
@@ -288,7 +330,17 @@ class ExcelReportBuilder:
                     fill = FILL_FAIL
                 if fill:
                     for col_idx in range(1, len(headers) + 1):
-                        ws.cell(row=row_idx, column=col_idx).fill = fill
+                        ws.cell(row=data_row_idx, column=col_idx).fill = fill
+
+            # Detail row: confidence % + provenance for each extracted field.
+            # Metadata columns (source_file, form_type, derived columns,
+            # workflow fields, ...) have no FieldValue, so they're left blank.
+            ws.append([_format_detail(field_values.get(h)) for h in headers])
+            detail_row_idx = ws.max_row
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=detail_row_idx, column=col_idx)
+                cell.font = DETAIL_FONT
+                cell.fill = DETAIL_FILL
 
         _autosize(ws, headers)
 

@@ -60,6 +60,11 @@ class FieldValue:
     # batch - see app.services.consolidator. Purely informational/auditable;
     # never affects validation logic.
     source: str = "extracted"
+    # Optional human-readable note on how a *consolidated* (batch-level)
+    # value was chosen, e.g. "3/4 documents agree; majority vote over 1
+    # disagreeing document". Only set by app.services.consolidator on
+    # profile-level FieldValues; None for plain per-document extractions.
+    agreement: Optional[str] = None
 
 
 @dataclass
