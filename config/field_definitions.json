@@ -118,6 +118,7 @@
       {"id": "contact_number", "section": "Investor Details", "label": "Contact Number", "mandatory": true, "source": "form_field", "type": "phone"},
       {"id": "email", "section": "Investor Details", "label": "Email Address", "mandatory": false, "source": "form_field", "type": "email"},
       {"id": "disinvestment_amount", "section": "Disinvestment Details", "label": "Disinvestment Amount (BWP)", "mandatory": false, "source": "form_field", "type": "currency"},
+      {"id": "disinvestment_percentage", "section": "Disinvestment Details", "label": "Disinvestment Percentage (%)", "mandatory": false, "source": "form_field", "type": "percentage"},
       {"id": "account_closure", "section": "Disinvestment Details", "label": "Close Account Flag (Yes/No)", "mandatory": false, "source": "checkbox", "type": "boolean"},
       {"id": "bank_account_name", "section": "Banking Details", "label": "Bank Account Name", "mandatory": false, "source": "form_field", "type": "text"},
       {"id": "bank_name", "section": "Banking Details", "label": "Bank Name", "mandatory": false, "source": "form_field", "type": "text"},

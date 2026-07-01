@@ -53,6 +53,12 @@ _INVESTOR_MASTER_PRIORITY_COLS = [
     "fund_category",       # derived: Money Market / Non-Money Market / GSGF
     "processing_cutoff",   # derived: 12:00 PM / 3:00 PM / Quarterly
     "overall_validation_status",
+    "instruction_status",  # Submitted / Captured / Approved / Rejected
+    "rejection_reason",
+    "channel",             # Email / Walk-in
+    "upload_date",
+    "captured_by",
+    "authorized_by",
     "contact_number",
     "email",
     "citizenship",
@@ -107,6 +113,16 @@ class ExcelReportBuilder:
         flat = extraction.to_flat_dict()
         flat["entity_number"] = validation.entity_number
         flat["overall_validation_status"] = validation.overall_status.value
+        # Workflow/audit metadata (Metadata Fields for Filing table) lives on
+        # the ProcessingLogEntry since it's determined at filing time, but the
+        # client expects to see it alongside the extracted data in Investor
+        # Master too, not buried only in the Processing Log sheet.
+        flat["instruction_status"] = log_entry.instruction_status
+        flat["rejection_reason"] = log_entry.rejection_reason
+        flat["channel"] = log_entry.channel
+        flat["upload_date"] = log_entry.upload_date
+        flat["captured_by"] = log_entry.captured_by
+        flat["authorized_by"] = log_entry.authorized_by
         self._investor_rows.append(flat)
 
         for b in extraction.beneficiaries:
@@ -202,7 +218,9 @@ class ExcelReportBuilder:
         headers = [
             "timestamp", "original_filename", "new_filename",
             "form_type_detected", "classification_confidence",
-            "validation_status", "destination_path", "processor_id",
+            "validation_status", "instruction_status", "rejection_reason",
+            "channel", "upload_date", "destination_path",
+            "captured_by", "authorized_by", "processor_id",
         ]
         _write_header(ws, headers)
         for entry in self._log_entries:

@@ -16,7 +16,7 @@ from app.utils.logger import get_logger
 logger = get_logger("main")
 
 
-def run_headless(intake: str | None) -> int:
+def run_headless(intake: str | None, channel: str = "Unknown") -> int:
     from app.core.pipeline import run_batch
     from app.llm.ollama_client import check_connection
 
@@ -27,7 +27,7 @@ def run_headless(intake: str | None) -> int:
         return 1
 
     intake_dir = Path(intake) if intake else None
-    outcomes, report_path = run_batch(intake_dir, progress_cb=print)
+    outcomes, report_path = run_batch(intake_dir, progress_cb=print, channel=channel)
 
     print("\n--- Batch Summary ---")
     for o in outcomes:
@@ -40,10 +40,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="BIFM Unit Trusts - local document processing POC")
     parser.add_argument("--headless", action="store_true", help="Run a batch without launching the GUI")
     parser.add_argument("--intake", type=str, default=None, help="Override the intake folder for this run")
+    parser.add_argument("--channel", type=str, default="Unknown", choices=["Email", "Walk-in", "Unknown"],
+                         help="Submission channel tag applied to every document in this run")
     args = parser.parse_args()
 
     if args.headless:
-        return run_headless(args.intake)
+        return run_headless(args.intake, args.channel)
 
     from app.ui.main_window import launch
     launch()

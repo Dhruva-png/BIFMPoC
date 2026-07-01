@@ -17,6 +17,31 @@ class ValidationStatus(str, Enum):
     FAIL = "FAIL"
 
 
+class InstructionStatus(str, Enum):
+    """
+    AWD-style workflow state (Section: 'Metadata Fields for Filing' in the
+    requirements doc). This is deliberately separate from ValidationStatus:
+    ValidationStatus is an OCR/data-quality signal, InstructionStatus is the
+    human workflow state. An OCR PASS does not mean AWD has approved it -
+    that decision belongs to the senior authorizer in the dual-capture step,
+    which is outside this POC's scope. This POC sets:
+      CAPTURED  - OCR extraction + validation completed with no FAIL
+      REJECTED  - validation FAILed (mandatory field missing / bad format)
+    APPROVED remains for the human authorizer to set downstream in AWD;
+    the column is included in the Excel output so Ops can populate it there.
+    """
+    SUBMITTED = "Submitted"
+    CAPTURED = "Captured"
+    APPROVED = "Approved"
+    REJECTED = "Rejected"
+
+
+class Channel(str, Enum):
+    EMAIL = "Email"
+    WALK_IN = "Walk-in"
+    UNKNOWN = "Unknown"
+
+
 class ConfidenceBand(str, Enum):
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
@@ -101,6 +126,13 @@ class ProcessingLogEntry:
     validation_status: str
     destination_path: str
     processor_id: str = "marvel.ai-local-poc"
+    # --- Metadata Fields for Filing (requirements doc table) ---
+    upload_date: str = ""                 # system timestamp at intake, not processing time
+    channel: str = Channel.UNKNOWN.value  # Email / Walk-in, tagged at upload
+    instruction_status: str = InstructionStatus.SUBMITTED.value
+    rejection_reason: str = ""            # populated automatically on FAIL, editable by Ops
+    captured_by: str = "marvel.ai-local-poc"  # User ID; this POC auto-captures via OCR
+    authorized_by: str = ""               # left blank - set by the human authorizer in AWD
 
     @staticmethod
     def now(**kwargs) -> "ProcessingLogEntry":

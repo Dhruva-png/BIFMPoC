@@ -40,7 +40,7 @@
       "purpose": "Dedicated withdrawal form for Global Sustainable Growth Fund",
       "classification_hints": ["disinvestment", "global sustainable growth", "gsg"],
       "distinguish_from": "DIS",
-      "distinguishing_rule": "Form lists only the GSG fund and references the 7-year lock-in"
+      "distinguishing_rule": "Form lists only the GSG fund, references a 1-year lock-in (not the 7-year lock-in shown on Letlotlo Education / Ya Masa Junior on the standard DIS form), and its quarterly withdrawal cut-off (7th of the last month of the quarter) instead of a daily cut-off time"
     },
     {
       "code": "STATIC",
@@ -61,6 +61,6 @@
     {"name": "BIFM Balanced Prudential Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 0},
     {"name": "BIFM Ya Masa Junior Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 7},
     {"name": "BIFM Local Equity Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 0},
-    {"name": "BIFM Global Sustainable Growth Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 0}
+    {"name": "BIFM Global Sustainable Growth Fund", "type": "Non-Money Market", "cutoff_time": "Quarterly - 7th of last month of quarter", "lock_in_years": 1}
   ]
 }

@@ -29,6 +29,7 @@ class BifmApp(tk.Tk):
         self.minsize(640, 480)
 
         self.intake_var = tk.StringVar(value=str(settings.paths.intake_dir))
+        self.channel_var = tk.StringVar(value="Unknown")
         self.status_var = tk.StringVar(value="Idle")
         self.last_report_path: Path | None = None
 
@@ -45,6 +46,14 @@ class BifmApp(tk.Tk):
         ttk.Label(top, text="Intake folder:").pack(side="left")
         ttk.Entry(top, textvariable=self.intake_var, width=55).pack(side="left", padx=6)
         ttk.Button(top, text="Browse...", command=self._browse_intake).pack(side="left")
+
+        channel_row = ttk.Frame(self)
+        channel_row.pack(fill="x", **pad)
+        ttk.Label(channel_row, text="Submission channel:").pack(side="left")
+        ttk.Combobox(
+            channel_row, textvariable=self.channel_var, state="readonly",
+            values=["Email", "Walk-in", "Unknown"], width=12,
+        ).pack(side="left", padx=6)
 
         actions = ttk.Frame(self)
         actions.pack(fill="x", **pad)
@@ -99,12 +108,12 @@ class BifmApp(tk.Tk):
         self.log_box.delete("1.0", "end")
         self.log_box.configure(state="disabled")
 
-        thread = threading.Thread(target=self._run_batch_worker, args=(intake_dir,), daemon=True)
+        thread = threading.Thread(target=self._run_batch_worker, args=(intake_dir, self.channel_var.get()), daemon=True)
         thread.start()
 
-    def _run_batch_worker(self, intake_dir: Path) -> None:
+    def _run_batch_worker(self, intake_dir: Path, channel: str) -> None:
         try:
-            outcomes, report_path = run_batch(intake_dir, progress_cb=self._append_log)
+            outcomes, report_path = run_batch(intake_dir, progress_cb=self._append_log, channel=channel)
             self.last_report_path = report_path
             summary = (
                 f"Done. {len(outcomes)} document(s) processed. "

@@ -17,10 +17,11 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from app.models.schemas import ExtractionResult, ProcessingLogEntry, ValidationReport
+from app.models.schemas import ExtractionResult, InstructionStatus, ProcessingLogEntry, ValidationReport
 from app.ocr.pdf_utils import render_pdf_to_images
 from app.services import classifier, filer
 from app.services.extractor import extract_form
@@ -58,12 +59,19 @@ def process_single_document(
     pdf_path: Path,
     report: ExcelReportBuilder,
     progress_cb: ProgressCallback = None,
+    channel: str = "Unknown",
 ) -> DocumentOutcome:
     """
     Runs one document through the full 5-stage pipeline.
     Never raises — errors are captured in the returned DocumentOutcome.
+
+    channel: "Email" or "Walk-in" — tagged at upload per the requirements
+    doc's "Channel (Email / Walk-in) - Tagged at upload" metadata field.
+    Defaults to "Unknown" when not supplied by the caller/UI.
     """
     try:
+        upload_date = datetime.fromtimestamp(pdf_path.stat().st_mtime).isoformat(timespec="seconds")
+
         # Stage 1: Render PDF pages to images
         _emit(progress_cb, f"Rendering pages for {pdf_path.name}...")
         page_images = render_pdf_to_images(pdf_path)
@@ -88,7 +96,7 @@ def process_single_document(
         _emit(progress_cb, f"Validating {pdf_path.name}...")
         validation_report = validate(extraction)
 
-        # Stage 5: File the document with standardized naming
+        # Stage 5: File the document with standardized naming + folder routing
         _emit(progress_cb, f"Filing {pdf_path.name}...")
         # Resolve entity_number: use extracted value or fall back to id_number / source file name
         entity_number = (
@@ -97,6 +105,20 @@ def process_single_document(
             or "N/A"
         )
         full_name = extraction.field_value("full_name")
+        fund_category = extraction.field_value("fund_category")
+
+        # Instruction Status / Rejection Reason (Metadata Fields for Filing).
+        # A validation FAIL means a mandatory field is missing/malformed —
+        # matches the client's own rejection examples (e.g. "wrong banking
+        # details"). WARNING/PASS stay "Captured", awaiting the human
+        # authorizer's Approve/Reject decision in AWD (out of this POC's scope).
+        if validation_report.overall_status.value == "FAIL":
+            instruction_status = InstructionStatus.REJECTED.value
+            failed = [r.field_id for r in validation_report.results if r.status.value == "FAIL"]
+            rejection_reason = f"Validation failed: {', '.join(failed)}" if failed else "Validation failed"
+        else:
+            instruction_status = InstructionStatus.CAPTURED.value
+            rejection_reason = ""
 
         log_entry = filer.file_document(
             pdf_path,
@@ -105,6 +127,11 @@ def process_single_document(
             full_name=full_name,
             validation_status=validation_report.overall_status.value,
             classification_confidence=classification.confidence,
+            fund_category=str(fund_category) if fund_category else None,
+            instruction_status=instruction_status,
+            rejection_reason=rejection_reason,
+            channel=channel,
+            upload_date=upload_date,
         )
 
         report.add_form(extraction, validation_report, log_entry)
@@ -134,11 +161,16 @@ def process_single_document(
 def run_batch(
     intake_dir: Path | None = None,
     progress_cb: ProgressCallback = None,
+    channel: str = "Unknown",
 ) -> tuple[list[DocumentOutcome], Path]:
     """
     Processes every PDF in intake_dir (default: settings.paths.intake_dir).
     Returns per-document outcomes in stable file order and the path to the
     saved Excel report.
+
+    channel: "Email" or "Walk-in" — applied to every document in this batch
+    (the UI offers this as a per-batch choice, since submission channel is
+    typically consistent within one intake drop).
 
     Documents are processed concurrently (settings.max_workers, default 2).
     Each document spends most of its time waiting on the Ollama HTTP call,
@@ -158,7 +190,7 @@ def run_batch(
     results: dict[int, DocumentOutcome] = {}
     with ThreadPoolExecutor(max_workers=max(1, settings.max_workers)) as pool:
         futures = {
-            pool.submit(process_single_document, pdf, report, progress_cb): i
+            pool.submit(process_single_document, pdf, report, progress_cb, channel): i
             for i, pdf in enumerate(pdf_files)
         }
         for future in as_completed(futures):

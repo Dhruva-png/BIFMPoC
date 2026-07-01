@@ -178,6 +178,11 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📂 Intake")
     mode = st.radio("Source", ["Upload files", "Use intake folder"], label_visibility="collapsed")
+    channel = st.selectbox(
+        "Submission channel", ["Email", "Walk-in", "Unknown"],
+        help="Tagged at upload per the requirements doc's metadata field. Applied to every "
+             "document in this batch.",
+    )
 
     uploaded_files = None
     intake_dir = settings.paths.intake_dir
@@ -275,7 +280,7 @@ if run_clicked:
         progress_box.info(f"Processing {total} document(s) — up to {settings.max_workers} in parallel...")
 
         with ThreadPoolExecutor(max_workers=max(1, settings.max_workers)) as pool:
-            futures = {pool.submit(process_single_document, p, report, progress_cb): p for p in pdf_paths}
+            futures = {pool.submit(process_single_document, p, report, progress_cb, channel): p for p in pdf_paths}
             done = 0
             for future in as_completed(futures):
                 outcomes.append(future.result())
