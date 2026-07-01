@@ -95,8 +95,6 @@ _CONSOLIDATED_PROFILE_PRIORITY_COLS = [
     "residential_address",
     "postal_address",
     "occupation",
-    "fund_name",
-    "fund_number",
     "bank_account_name",
     "bank_name",
     "account_number",

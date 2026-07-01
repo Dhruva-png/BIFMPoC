@@ -29,8 +29,9 @@ import streamlit as st
 from app.core.pipeline import DocumentOutcome, process_batch, process_single_document
 from app.llm.router import check_connection, active_provider
 from app.models.schemas import ValidationStatus
+from app.services.consolidator import SHAREABLE_FIELDS, build_person_profile
 from app.services.report_generator import ExcelReportBuilder
-from app.utils.config_loader import load_form_types
+from app.utils.config_loader import get_fields_for_form, load_form_types
 from config.settings import settings
 
 # --------------------------------------------------------------------------- #
@@ -119,6 +120,19 @@ st.markdown(
         display:inline-block; background:#EEF2F7; color:{MUTED}; font-size:0.7rem;
         padding:1px 7px; border-radius:999px; margin-left:4px;
     }}
+    .kv-item {{
+        background:#F7F9FC; border:1px solid #E3E8EE; border-radius:10px;
+        padding:8px 12px; margin-bottom:10px;
+    }}
+    .kv-label {{
+        color:{MUTED}; font-size:0.68rem; font-weight:700; text-transform:uppercase;
+        letter-spacing:.03em; margin-bottom:2px;
+    }}
+    .kv-value {{ color:{INK}; font-size:0.92rem; font-weight:600; word-break:break-word; }}
+    .profile-card {{
+        background:{BG_CARD}; border-radius:14px; padding:18px 20px 6px 20px;
+        border:1px solid #E3E8EE; box-shadow:0 2px 8px rgba(15,23,42,0.04); margin-bottom:14px;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -145,6 +159,40 @@ STATUS_CHIP = {
 def status_chip(status: str) -> str:
     cls, label = STATUS_CHIP.get(status, ("chip-warning", status))
     return f'<span class="status-chip {cls}">{label}</span>'
+
+
+# Fields shown once in the batch-level Investor Profile card rather than
+# repeated inside every single document's card below (name, ID, contact,
+# banking details are the same person's details regardless of which of
+# their 4 forms you're looking at).
+_IDENTITY_FIELD_IDS = set(SHAREABLE_FIELDS)
+
+# A handful of core identity fields worth flagging explicitly if NO document
+# in the batch captured them at all (nothing to backfill from).
+_CORE_IDENTITY_CHECK = ("full_name", "entity_number", "id_number", "contact_number", "email")
+
+
+def _pretty_label(field_id: str, form_code: str | None = None) -> str:
+    """Human-friendly label for a field id, preferring the form's own config label."""
+    if form_code:
+        for f in get_fields_for_form(form_code):
+            if f["id"] == field_id:
+                return f["label"]
+    return field_id.replace("_", " ").title()
+
+
+def _render_kv_grid(items: list[tuple[str, str]], n_cols: int = 3) -> None:
+    """Renders a compact grid of label/value chips - the 'concatenated summary' view."""
+    if not items:
+        return
+    cols = st.columns(n_cols)
+    for i, (label, value) in enumerate(items):
+        with cols[i % n_cols]:
+            st.markdown(
+                f'<div class="kv-item"><div class="kv-label">{label}</div>'
+                f'<div class="kv-value">{value}</div></div>',
+                unsafe_allow_html=True,
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -432,6 +480,43 @@ else:
         st.caption(f"📁 {filed_count} document(s) renamed & filed to `output/filed_documents/`")
 
     st.write("")
+
+    # ----------------------------------------------------------------- #
+    # Investor Profile — identity/contact/banking details captured ONCE
+    # across the whole batch, shown here a single time instead of being
+    # repeated (and re-validated as "missing") inside every document card.
+    # ----------------------------------------------------------------- #
+    all_extractions = [o.extraction for o in outcomes if o.extraction]
+    profile = build_person_profile(all_extractions) if all_extractions else {}
+
+    st.markdown(
+        '<div class="section-title">Investor Profile '
+        '<span class="derived-tag">consolidated across this batch</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="profile-card">', unsafe_allow_html=True)
+
+    profile_items = [
+        (_pretty_label(fid), str(fv.value))
+        for fid in SHAREABLE_FIELDS
+        if (fv := profile.get(fid)) and fv.value not in (None, "")
+    ]
+    if profile_items:
+        _render_kv_grid(profile_items, n_cols=4)
+    else:
+        st.caption("No shared identity/contact/banking details were captured across this batch.")
+
+    missing_core = [fid for fid in _CORE_IDENTITY_CHECK if not (profile.get(fid) and profile[fid].value)]
+    if missing_core:
+        st.warning(
+            "Not captured on **any** document in this batch: "
+            + ", ".join(_pretty_label(fid) for fid in missing_core)
+            + ". This needs to be sourced manually rather than backfilled.",
+            icon="⚠️",
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.write("")
     st.markdown('<div class="section-title">Document Detail</div>', unsafe_allow_html=True)
 
     for o in outcomes:
@@ -449,31 +534,28 @@ else:
 
             if o.error:
                 st.error(o.error)
+                continue
 
-            if o.extraction and o.extraction.fields:
-                # Separate derived/system fields from extracted fields for clarity
-                derived_ids = {
-                    "form_type", "fund_category", "processing_cutoff", "instruction_mode",
-                    "sub_instruction_type", "static_sub_type", "kyc_completeness_flag",
-                }
-                extracted_rows = [
-                    {"Field": fid, "Value": str(fv.value), "Confidence": f"{fv.confidence:.0f}%", "Source": "Extracted"}
+            # ---- Concatenated summary: every field worth this document's
+            # own card (fund/instruction/amount/derived details), skipping
+            # identity/contact/banking fields already shown once above so
+            # the same name/ID/DOB don't get repeated on every document.
+            derived_ids = {
+                "form_type", "fund_category", "processing_cutoff", "fund_category_priority",
+                "instruction_mode", "sub_instruction_type", "static_sub_type",
+                "kyc_completeness_flag",
+            }
+            if o.extraction:
+                st.caption("**Summary**")
+                summary_items = [
+                    (_pretty_label(fid, o.form_code), str(fv.value))
                     for fid, fv in o.extraction.fields.items()
-                    if fid not in derived_ids
+                    if fid not in _IDENTITY_FIELD_IDS and fv.value not in (None, "")
                 ]
-                derived_rows = [
-                    {"Field": fid, "Value": str(fv.value), "Confidence": "—", "Source": "Derived"}
-                    for fid, fv in o.extraction.fields.items()
-                    if fid in derived_ids
-                ]
-
-                if extracted_rows:
-                    st.caption("**Extracted Fields**")
-                    st.dataframe(pd.DataFrame(extracted_rows), width="stretch", hide_index=True)
-
-                if derived_rows:
-                    st.caption("**System-Derived Metadata**")
-                    st.dataframe(pd.DataFrame(derived_rows), width="stretch", hide_index=True)
+                if summary_items:
+                    _render_kv_grid(summary_items, n_cols=3)
+                else:
+                    st.caption("No instruction-specific fields were captured on this document.")
 
             if o.extraction and o.extraction.beneficiaries:
                 st.caption("**Beneficiaries**")
@@ -486,14 +568,72 @@ else:
                     hide_index=True,
                 )
 
+            # ---- Plain-language status: say what's actually still needed
+            # rather than a bare FAIL. Identity/contact/banking gaps are
+            # already surfaced once in the Investor Profile card above, so
+            # they're excluded here to avoid repeating the same warning on
+            # every single document - only this document's OWN
+            # instruction-specific issues are called out.
             if o.validation and o.validation.results:
-                failing = [
-                    {"Field": r.field_id, "Status": r.status.value, "Message": r.message, "Value": str(r.value or "")}
-                    for r in o.validation.results
-                    if r.status != ValidationStatus.PASS
+                doc_fails = [
+                    r for r in o.validation.results
+                    if r.status == ValidationStatus.FAIL and r.field_id not in _IDENTITY_FIELD_IDS
                 ]
-                st.caption("**Validation Issues**" if failing else "**Validation**")
-                if failing:
-                    st.dataframe(pd.DataFrame(failing), width="stretch", hide_index=True)
+                doc_warnings = [
+                    r for r in o.validation.results
+                    if r.status == ValidationStatus.WARNING and r.field_id not in _IDENTITY_FIELD_IDS
+                ]
+                identity_only_fail = (
+                    o.validation.overall_status == ValidationStatus.FAIL and not doc_fails
+                )
+
+                if not doc_fails and not doc_warnings:
+                    if identity_only_fail:
+                        st.info(
+                            "All of this document's own fields are captured — the only gap is "
+                            "investor identity, flagged once in the Investor Profile card above.",
+                            icon="ℹ️",
+                        )
+                    else:
+                        st.success("All required information captured and validated.", icon="✅")
                 else:
-                    st.success("All validation checks passed.", icon="✅")
+                    if doc_fails:
+                        st.error(
+                            "Still needed on this document: "
+                            + ", ".join(_pretty_label(r.field_id, o.form_code) for r in doc_fails),
+                            icon="⚠️",
+                        )
+                    if doc_warnings:
+                        st.warning(
+                            "Worth a second look: "
+                            + ", ".join(_pretty_label(r.field_id, o.form_code) for r in doc_warnings),
+                            icon="👀",
+                        )
+
+            # ---- Raw technical detail, tucked away for power users/debugging
+            with st.expander("Show raw extracted fields & validation checks", expanded=False):
+                if o.extraction and o.extraction.fields:
+                    extracted_rows = [
+                        {"Field": fid, "Value": str(fv.value), "Confidence": f"{fv.confidence:.0f}%", "Source": "Extracted"}
+                        for fid, fv in o.extraction.fields.items()
+                        if fid not in derived_ids
+                    ]
+                    derived_rows = [
+                        {"Field": fid, "Value": str(fv.value), "Confidence": "—", "Source": "Derived"}
+                        for fid, fv in o.extraction.fields.items()
+                        if fid in derived_ids
+                    ]
+                    if extracted_rows:
+                        st.caption("**Extracted Fields**")
+                        st.dataframe(pd.DataFrame(extracted_rows), width="stretch", hide_index=True)
+                    if derived_rows:
+                        st.caption("**System-Derived Metadata**")
+                        st.dataframe(pd.DataFrame(derived_rows), width="stretch", hide_index=True)
+
+                if o.validation and o.validation.results:
+                    all_checks = [
+                        {"Field": r.field_id, "Status": r.status.value, "Message": r.message, "Value": str(r.value or "")}
+                        for r in o.validation.results
+                    ]
+                    st.caption("**All Validation Checks**")
+                    st.dataframe(pd.DataFrame(all_checks), width="stretch", hide_index=True)

@@ -41,11 +41,21 @@ SHAREABLE_FIELDS: tuple[str, ...] = (
     "id_number", "id_type", "id_expiry_date", "date_of_birth", "gender",
     "citizenship", "email", "contact_number",
     "residential_address", "postal_address", "occupation",
-    "fund_name", "fund_number",
     "bank_account_name", "bank_name", "account_number",
     "branch_name", "branch_code", "account_type_banking",
     "authorized_signatory_name", "capacity",
 )
+# NOTE: fund_name / fund_number are deliberately NOT shareable. Which fund an
+# investor is adding to, disinvesting from, or debiting is instruction-
+# specific to that document (e.g. adding to Fund A while disinvesting from
+# Fund B in the same visit), never a person-level attribute like their name
+# or banking details. Backfilling it across documents previously caused a
+# document to display a fund_name copied from a sibling form while its own
+# fund_category/processing_cutoff/fund_category_priority (computed once at
+# extraction time, from that document's own fund_name) stayed "Unknown" -
+# a confusing, silently-wrong combination. If a document's own fund_name
+# truly wasn't extracted, it should surface as a genuine validation gap to
+# review, not be quietly papered over with an unrelated document's fund.
 
 # Backfilled values are discounted slightly below their source confidence -
 # they were read correctly off *some* page, but not this one, so a human
