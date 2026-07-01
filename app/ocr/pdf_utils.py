@@ -11,6 +11,7 @@ cross-check for classification keyword hints — not the primary extraction path
 from __future__ import annotations
 
 import shutil
+import threading
 from pathlib import Path
 
 from PIL import Image, ImageEnhance, ImageOps
@@ -19,6 +20,17 @@ from app.utils.logger import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
+
+# pypdfium2 wraps the PDFium C library, which is NOT thread-safe: calling
+# PdfDocument()/page.render()/doc.close() concurrently from multiple threads
+# (as pipeline.py's ThreadPoolExecutor does when processing a batch) corrupts
+# internal PDFium state and crashes the whole process on Windows with
+# "OSError: exception: access violation writing 0x...". This is not a
+# corrupt/password-protected file - it's a race condition. Serializing every
+# pdfium call behind this lock fixes it; the rest of each document's
+# processing (page enhancement, and especially the LLM call, which is the
+# slow part) still runs concurrently, so batch throughput barely changes.
+_PDFIUM_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # PDF renderer (pypdfium2 preferred, pdf2image fallback)
@@ -71,18 +83,30 @@ def _enhance_for_handwriting(img: Image.Image) -> Image.Image:
 # ---------------------------------------------------------------------------
 
 def _render_with_pypdfium2(pdf_path: Path, target_dir: Path) -> list[Path]:
-    doc = pdfium.PdfDocument(str(pdf_path))
-    image_paths: list[Path] = []
     scale = settings.pdf_render_dpi / 72.0
-    for i, page in enumerate(doc, start=1):
-        bitmap = page.render(scale=scale, rotation=0)
-        pil_img = bitmap.to_pil()
+
+    # Only the pdfium calls themselves need the lock - PDFium's C internals
+    # are what's unsafe across threads, not the PIL enhancement/save step
+    # that follows. Keeping the lock scoped this tightly means a slow batch
+    # of many documents still overlaps their (much slower) LLM calls freely;
+    # only the brief render step is ever serialized.
+    with _PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(str(pdf_path))
+        raw_pages = []
+        for page in doc:
+            bitmap = page.render(scale=scale, rotation=0)
+            raw_pages.append(bitmap.to_pil())
+            bitmap.close()
+            page.close()
+        doc.close()
+
+    image_paths: list[Path] = []
+    for i, pil_img in enumerate(raw_pages, start=1):
         img_path = target_dir / f"page_{i:03d}.png"
         if settings.ocr_enhance_images:
             pil_img = _enhance_for_handwriting(pil_img)
         pil_img.save(img_path, "PNG")
         image_paths.append(img_path)
-    doc.close()
     return image_paths
 
 
