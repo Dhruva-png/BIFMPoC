@@ -30,6 +30,23 @@ class GeminiSettings:
 
 
 @dataclass
+class GroqSettings:
+    """
+    Groq's free, no-credit-card cloud API - recommended fallback when
+    Google's Gemini free tier is unavailable for your account/region and
+    your machine can't run an 8B local vision model via Ollama at a
+    reasonable speed. Get a key at https://console.groq.com/keys (email or
+    Google sign-in, no card) and set it as GROQ_API_KEY.
+    """
+    api_key: str = os.environ.get("GROQ_API_KEY", "")
+    text_model: str = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
+    vision_model: str = os.environ.get("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+    request_timeout_seconds: int = int(os.environ.get("GROQ_REQUEST_TIMEOUT", "60"))
+    max_retries: int = 2
+    num_predict: int = int(os.environ.get("GROQ_NUM_PREDICT", "800"))
+
+
+@dataclass
 class OllamaSettings:
     host: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     text_model: str = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.2")
@@ -73,11 +90,14 @@ class PathSettings:
 
 @dataclass
 class AppSettings:
-    # "gemini" (default - free, fast, no local hardware needed) or "ollama"
-    # (fully local/offline, needs a GPU/enough RAM for an 8B vision model).
-    # Override with LLM_PROVIDER=ollama to go back to fully local.
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "gemini").lower()
+    # "groq" (default - free, no card needed, fast; recommended when
+    # Gemini's free tier is unavailable), "gemini" (free tier, cloud, no
+    # local hardware, but Google has been restricting no-billing access),
+    # or "ollama" (fully local/offline, needs a GPU/enough RAM for an 8B
+    # vision model). Override with LLM_PROVIDER=<gemini|ollama|groq>.
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "groq").lower()
     gemini: GeminiSettings = field(default_factory=GeminiSettings)
+    groq: GroqSettings = field(default_factory=GroqSettings)
     ollama: OllamaSettings = field(default_factory=OllamaSettings)
     paths: PathSettings = field(default_factory=PathSettings)
     # 220 DPI is a fast default: llava's vision encoder resizes everything to

@@ -167,13 +167,20 @@ with st.sidebar:
             f"Timeout: **{settings.ollama.request_timeout_seconds}s** per call  ·  "
             f"Keep-alive: **{settings.ollama.keep_alive}**"
         )
-    else:
+    elif settings.llm_provider == "gemini":
         if ollama_ok:
             st.success("Gemini API key valid", icon="✅")
         else:
-            st.error("Gemini unreachable — missing or invalid GEMINI_API_KEY", icon="⚠️")
+            st.error("Gemini unreachable — missing/invalid key, or quota is 0", icon="⚠️")
             st.caption("Get a free key at https://aistudio.google.com/apikey and set it as an environment variable.")
         st.caption(f"Vision/text model: **{settings.gemini.vision_model}** (free tier)")
+    else:
+        if ollama_ok:
+            st.success("Groq API key valid", icon="✅")
+        else:
+            st.error("Groq unreachable — missing or invalid GROQ_API_KEY", icon="⚠️")
+            st.caption("Get a free key (no card) at https://console.groq.com/keys and set it as an environment variable.")
+        st.caption(f"Vision model: **{settings.groq.vision_model}**  ·  Text model: **{settings.groq.text_model}** (free tier)")
     if not ollama_ok:
         pass  # error already shown above
     else:
@@ -206,8 +213,10 @@ with st.sidebar:
     if not ollama_ok:
         if settings.llm_provider == "ollama":
             st.caption("Start Ollama to enable processing.")
-        else:
+        elif settings.llm_provider == "gemini":
             st.caption("Fix the Gemini API key/quota issue above to enable processing.")
+        else:
+            st.caption("Fix the Groq API key issue above to enable processing.")
 
     with st.expander("Form types in scope"):
         for ft in load_form_types()["form_types"]:
