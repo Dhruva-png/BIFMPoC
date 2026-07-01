@@ -51,7 +51,8 @@ _INVESTOR_MASTER_PRIORITY_COLS = [
     "fund_name",
     "fund_number",
     "fund_category",       # derived: Money Market / Non-Money Market / GSGF
-    "processing_cutoff",   # derived: 12:00 PM / 3:00 PM / Quarterly
+    "processing_cutoff",   # derived: 1:00 PM / 3:00 PM / Quarterly
+    "fund_category_priority",  # derived: 1=MM (earliest cut-off, action first), 2=NMM, 3=GSGF
     "overall_validation_status",
     "instruction_status",  # Submitted / Captured / Approved / Rejected
     "rejection_reason",
@@ -63,6 +64,12 @@ _INVESTOR_MASTER_PRIORITY_COLS = [
     "email",
     "citizenship",
     "account_type",
+    "bank_account_name",
+    "bank_name",
+    "account_number",
+    "branch_name",
+    "branch_code",
+    "account_type_banking",
 ]
 
 
@@ -248,8 +255,25 @@ class ExcelReportBuilder:
             _write_header(ws, ["No data"])
             return
         headers = _ordered_investor_columns(self._investor_rows)
+
+        # MM has the earliest same-day cut-off (1PM, vs NMM's 3PM and GSGF's
+        # quarterly-only schedule), so MM instructions must be actioned
+        # first. Sort rows by fund_category_priority ascending (1=MM) so
+        # the most time-sensitive instructions surface at the top of the
+        # sheet; forms with no fund at all (APPFORM/STATIC/KYC) have no
+        # priority value and sort after every fund-bearing row. Ties keep
+        # their original (stable) order.
+        def _priority_key(row: dict) -> int:
+            value = row.get("fund_category_priority")
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return 99
+
+        rows_to_write = sorted(self._investor_rows, key=_priority_key)
+
         _write_header(ws, headers)
-        for row in self._investor_rows:
+        for row in rows_to_write:
             ws.append([row.get(h, "") for h in headers])
 
         # Color-code rows by overall validation status

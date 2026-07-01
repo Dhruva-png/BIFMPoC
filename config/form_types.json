@@ -56,7 +56,7 @@
     }
   ],
   "funds": [
-    {"name": "BIFM Pula Money Market Fund", "type": "Money Market", "cutoff_time": "12:00", "lock_in_years": 0},
+    {"name": "BIFM Pula Money Market Fund", "type": "Money Market", "cutoff_time": "13:00", "lock_in_years": 0},
     {"name": "BIFM Letlotlo Education Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 7},
     {"name": "BIFM Balanced Prudential Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 0},
     {"name": "BIFM Ya Masa Junior Fund", "type": "Non-Money Market", "cutoff_time": "15:00", "lock_in_years": 7},

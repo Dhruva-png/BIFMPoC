@@ -74,7 +74,7 @@ def _extract_surname(full_name: str | None) -> str:
 
 
 def _fund_bucket(fund_category: str | None) -> str:
-    """Step 3 segregation: Money Market (cut-off 1PM/12PM) vs Non-Money Market (3PM/quarterly)."""
+    """Step 3 segregation: Money Market (cut-off 1PM, prioritized - earliest same-day cut-off) vs Non-Money Market (3PM daily, or quarterly for GSGF)."""
     cat = (fund_category or "").lower()
     if "money market" in cat and "non" not in cat:
         return "MoneyMarket"

@@ -28,6 +28,7 @@ from app.llm.router import ask_vision, parse_json_response
 from app.models.schemas import Beneficiary, ExtractionResult, FieldValue
 from app.utils.config_loader import (
     derive_fund_category,
+    fund_category_priority,
     get_fields_for_form,
     get_mandatory_fields_for_form,
     load_field_definitions,
@@ -196,13 +197,16 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
         _add("fund_name", "BIFM Global Sustainable Growth Fund")
         _add("fund_category", "Non-Money Market (GSGF)")
         _add("processing_cutoff", "Quarterly - 7th of last month of quarter")
+        _add("fund_category_priority", fund_category_priority("Non-Money Market (GSGF)"))
     elif fund_name:
         fund_category, cutoff = derive_fund_category(fund_name)
         _add("fund_category", fund_category)
         _add("processing_cutoff", cutoff)
+        _add("fund_category_priority", fund_category_priority(fund_category))
     elif form_code in ("ADD", "DIS", "DEBIT"):
         _add("fund_category", "Unknown - Fund Name Not Extracted")
         _add("processing_cutoff", "Unknown")
+        _add("fund_category_priority", fund_category_priority(None))
 
     # Instruction mode for DIS (partial / percentage / full closure)
     if form_code in ("DIS", "DIS_GSG"):
