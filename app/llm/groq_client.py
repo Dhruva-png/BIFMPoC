@@ -95,14 +95,8 @@ class _TpmLimiter:
                 now = time.monotonic()
                 used = self._prune(now)
                 if used + estimated_tokens <= self._tpm_limit or not self._events:
-                    # Reserve the budget now (not after the response comes
-                    # back) so the *next* caller sees this request's spend
-                    # immediately, not a full round-trip later.
                     self._events.append((now, estimated_tokens))
                     return
-                # Not enough headroom yet - wait until the oldest event ages
-                # out of the window, then re-check (another thread may have
-                # freed up space too).
                 wait_for = self._window - (now - self._events[0][0]) + 0.25
             time.sleep(max(wait_for, 0.25))
 
@@ -155,9 +149,7 @@ class LLMResponse:
 def _require_api_key() -> str:
     if not settings.groq.api_key:
         raise GroqError(
-            "GROQ_API_KEY is not set. Get a free key (no card required) at "
-            "https://console.groq.com/keys and set it as an environment "
-            "variable, or set LLM_PROVIDER=ollama to run fully local instead."
+            "GROQ_API_KEY is not set. Set LLM_PROVIDER=ollama to run fully local instead."
         )
     return settings.groq.api_key
 
@@ -196,9 +188,6 @@ def _post(model: str, body: dict) -> dict:
     max_attempts = settings.groq.max_retries + 1
 
     for attempt in range(1, max_attempts + 1):
-        # Proactively wait for TPM budget instead of firing blind and
-        # finding out via a 429 - this is what actually stops concurrent
-        # workers from stacking up and exceeding the account's real limit.
         reserved = _estimate_tokens(body)
         _tpm_limiter.acquire(reserved)
         try:
@@ -210,10 +199,6 @@ def _post(model: str, body: dict) -> dict:
                 timeout=settings.groq.request_timeout_seconds,
             )
             if resp.status_code == 429:
-                # We still reserved `reserved` tokens above even though this
-                # call didn't actually consume them server-side - correct
-                # the ledger back down so we don't self-throttle harder than
-                # necessary on the retry.
                 _tpm_limiter.record_actual(reserved, 0)
                 retry_after = _parse_rate_limit(resp)
                 last_exc = GroqError("Rate limited (429) - free tier request/token limit hit")
@@ -253,9 +238,6 @@ def _post(model: str, body: dict) -> dict:
                 time.sleep(2)
 
         except requests.exceptions.HTTPError as exc:
-            # Surface the actual API error message (bad key, bad model name, etc.)
-            # instead of a bare status code - this is the #1 thing people get
-            # wrong on first setup.
             detail = ""
             try:
                 detail = resp.json().get("error", {}).get("message", "")
@@ -327,9 +309,6 @@ def ask_vision(prompt: str, image_path: Path, json_mode: bool = True) -> LLMResp
                 {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
             ],
         }],
-        # Deterministic decoding for transcription, matching the other
-        # backends' settings - sampling noise just adds inconsistent
-        # character-level reads on handwriting.
         "temperature": 0.0,
         "top_p": 0.1,
         "max_completion_tokens": settings.groq.num_predict,
