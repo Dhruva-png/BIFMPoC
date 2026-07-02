@@ -32,8 +32,12 @@ from app.models.schemas import ValidationStatus
 from app.services.consolidator import SHAREABLE_FIELDS, build_person_profile
 from app.services.report_generator import ExcelReportBuilder
 from app.utils.config_loader import get_fields_for_form, load_form_types
+from app.utils.confidence import needs_recheck
 from config.settings import settings
 
+# --------------------------------------------------------------------------- #
+# Page config & theme
+# --------------------------------------------------------------------------- #
 st.set_page_config(
     page_title="BIFM Unit Trusts — Document Processing",
     page_icon="📄",
@@ -46,7 +50,7 @@ ACCENT  = "#C9A24B"
 PASS_C  = "#1E8E5A"
 WARN_C  = "#B7791F"
 FAIL_C  = "#C0392B"
-BG_CARD = "#FFFFFFE6"
+BG_CARD = "#FFFFFF"
 INK     = "#1B2733"
 MUTED   = "#5C6B7A"
 
@@ -135,6 +139,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# --------------------------------------------------------------------------- #
+# Session state
+# --------------------------------------------------------------------------- #
 if "outcomes" not in st.session_state:
     st.session_state["outcomes"] = []
 if "report_path" not in st.session_state:
@@ -154,8 +161,15 @@ def status_chip(status: str) -> str:
     cls, label = STATUS_CHIP.get(status, ("chip-warning", status))
     return f'<span class="status-chip {cls}">{label}</span>'
 
+
+# Fields shown once in the batch-level Investor Profile card rather than
+# repeated inside every single document's card below (name, ID, contact,
+# banking details are the same person's details regardless of which of
+# their 4 forms you're looking at).
 _IDENTITY_FIELD_IDS = set(SHAREABLE_FIELDS)
 
+# A handful of core identity fields worth flagging explicitly if NO document
+# in the batch captured them at all (nothing to backfill from).
 _CORE_IDENTITY_CHECK = ("full_name", "entity_number", "id_number", "contact_number", "email")
 
 
@@ -181,6 +195,10 @@ def _render_kv_grid(items: list[tuple[str, str]], n_cols: int = 3) -> None:
                 unsafe_allow_html=True,
             )
 
+
+# --------------------------------------------------------------------------- #
+# Sidebar
+# --------------------------------------------------------------------------- #
 with st.sidebar:
     st.markdown("### ⚙️ System Status")
     st.caption(f"LLM provider: **{active_provider()}**  ·  set via `LLM_PROVIDER` env var")
@@ -259,6 +277,9 @@ with st.sidebar:
             cat_icon = "🟢" if fund["type"] == "Money Market" else "🔵"
             st.markdown(f"{cat_icon} **{fund['name']}** · Cut-off: `{fund['cutoff_time']}`")
 
+# --------------------------------------------------------------------------- #
+# Header
+# --------------------------------------------------------------------------- #
 st.markdown(
     """
     <div class="bifm-header">
@@ -273,6 +294,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# --------------------------------------------------------------------------- #
+# Run the batch
+# --------------------------------------------------------------------------- #
 def _resolve_pdf_paths() -> list[Path]:
     if mode == "Upload files":
         if not uploaded_files:
@@ -296,6 +320,9 @@ if run_clicked:
         log_box = st.empty()
         progress_bar = st.progress(0.0)
 
+        # Thread-safe log queue: worker threads enqueue messages here;
+        # only the main thread calls st.* functions (Streamlit context is
+        # not available on ThreadPoolExecutor workers).
         import queue as _queue
         _log_q: _queue.Queue = _queue.Queue()
 
@@ -324,6 +351,13 @@ if run_clicked:
             f"up to {settings.max_workers} in parallel..."
         )
 
+        # process_batch treats every PDF in this upload as ONE PERSON's set
+        # of forms: it extracts all of them (concurrently, throttled to
+        # Groq's TPM budget internally), merges identity/contact/banking
+        # fields across all the documents, backfills blanks from that
+        # merged profile, then validates/files/reports each one. Run it on
+        # a background thread so the Streamlit main thread stays free to
+        # poll the progress log (worker threads must never touch st.*).
         _batch_result: dict[str, list] = {}
 
         def _run_batch() -> None:
@@ -350,6 +384,9 @@ if run_clicked:
         st.success(f"Batch complete — {total} document(s) processed.")
         st.rerun()
 
+# --------------------------------------------------------------------------- #
+# Results dashboard
+# --------------------------------------------------------------------------- #
 outcomes: list[DocumentOutcome] = st.session_state.outcomes
 
 if not outcomes:
@@ -401,7 +438,10 @@ else:
             {
                 "Document":   o.filename,
                 "Form Type":  o.form_code,
-                "Confidence": f"{o.classification_confidence:.0f}%",
+                "Confidence": (
+                    f"{o.classification_confidence:.0f}%"
+                    + (" ⚠" if needs_recheck(o.classification_confidence) else "")
+                ),
                 "Status":     o.validation_status,
                 "Fund Category": (
                     o.extraction.field_value("fund_category") if o.extraction else ""
@@ -445,6 +485,11 @@ else:
 
     st.write("")
 
+    # ----------------------------------------------------------------- #
+    # Investor Profile — identity/contact/banking details captured ONCE
+    # across the whole batch, shown here a single time instead of being
+    # repeated (and re-validated as "missing") inside every document card.
+    # ----------------------------------------------------------------- #
     all_extractions = [o.extraction for o in outcomes if o.extraction]
     profile = build_person_profile(all_extractions) if all_extractions else {}
 
@@ -488,6 +533,7 @@ else:
 
         with st.expander(
             f"{o.filename}  ·  {o.form_code}{fund_cat}  ·  {o.classification_confidence:.0f}% confidence"
+            + (" ⚠ recheck recommended" if needs_recheck(o.classification_confidence) else "")
         ):
             st.markdown(chip, unsafe_allow_html=True)
 
@@ -495,6 +541,10 @@ else:
                 st.error(o.error)
                 continue
 
+            # ---- Concatenated summary: every field worth this document's
+            # own card (fund/instruction/amount/derived details), skipping
+            # identity/contact/banking fields already shown once above so
+            # the same name/ID/DOB don't get repeated on every document.
             derived_ids = {
                 "form_type", "fund_category", "processing_cutoff", "fund_category_priority",
                 "instruction_mode", "sub_instruction_type", "static_sub_type",
@@ -523,6 +573,12 @@ else:
                     hide_index=True,
                 )
 
+            # ---- Plain-language status: say what's actually still needed
+            # rather than a bare FAIL. Identity/contact/banking gaps are
+            # already surfaced once in the Investor Profile card above, so
+            # they're excluded here to avoid repeating the same warning on
+            # every single document - only this document's OWN
+            # instruction-specific issues are called out.
             if o.validation and o.validation.results:
                 doc_fails = [
                     r for r in o.validation.results
@@ -559,10 +615,16 @@ else:
                             icon="👀",
                         )
 
+            # ---- Raw technical detail, tucked away for power users/debugging
             with st.expander("Show raw extracted fields & validation checks", expanded=False):
                 if o.extraction and o.extraction.fields:
                     extracted_rows = [
-                        {"Field": fid, "Value": str(fv.value), "Confidence": f"{fv.confidence:.0f}%", "Source": "Extracted"}
+                        {
+                            "Field": fid,
+                            "Value": str(fv.value),
+                            "Confidence": f"{fv.confidence:.0f}%" + (" ⚠" if needs_recheck(fv.confidence) else ""),
+                            "Source": "Extracted",
+                        }
                         for fid, fv in o.extraction.fields.items()
                         if fid not in derived_ids
                     ]

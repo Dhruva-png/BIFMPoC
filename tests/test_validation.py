@@ -46,10 +46,16 @@ def test_happy_path_with_no_beneficiaries_is_warning_not_fail():
     assert report.overall_status == ValidationStatus.WARNING
 
 
-def test_omang_wrong_digit_count_fails():
+def test_omang_digit_check_disabled_for_now():
+    # id_number_format is disabled in config/validation_rules.json ("enabled":
+    # false) at the client's request, so a malformed Omang no longer fails
+    # validation on its own right now. Flip "enabled" back to true (or delete
+    # it) to restore the exact-9-digit check, at which point this should go
+    # back to asserting ValidationStatus.FAIL like it used to.
     extraction = _make_extraction(id_number="12345")
     report = validate(extraction)
-    assert report.overall_status == ValidationStatus.FAIL
+    assert not any(r.field_id == "id_number" for r in report.results)
+    assert report.overall_status != ValidationStatus.FAIL
 
 
 def test_gender_derived_from_5th_digit_male():
@@ -68,11 +74,12 @@ def test_gender_derived_from_5th_digit_female():
     assert gender_result.value == "Female"
 
 
-def test_passport_skips_digit_validation_but_warns():
+def test_id_number_format_rule_currently_disabled():
+    # Same disabled-rule note as above - no id_number finding is produced
+    # at all right now, for any id_type, since the rule is switched off.
     extraction = _make_extraction(id_type="Passport", id_number="AB1234567XYZ")
     report = validate(extraction)
-    id_result = next(r for r in report.results if r.field_id == "id_number")
-    assert id_result.status == ValidationStatus.WARNING
+    assert not any(r.field_id == "id_number" for r in report.results)
 
 
 def test_birth_certificate_skips_expiry_validation():

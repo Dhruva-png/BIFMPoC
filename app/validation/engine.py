@@ -344,6 +344,8 @@ def validate(extraction: ExtractionResult) -> ValidationReport:
 
     # 2. Cross-cutting rule evaluation (only rules applicable to this form type)
     for rule in rules_config.get("rules", []):
+        if rule.get("enabled", True) is False:
+            continue
         rule_id = rule["id"]
         if not _rule_applies_to_form(rule_id, form_code):
             continue

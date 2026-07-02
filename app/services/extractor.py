@@ -27,6 +27,7 @@ from pathlib import Path
 
 from app.llm.router import ask_vision, parse_json_response
 from app.models.schemas import Beneficiary, ExtractionResult, FieldValue
+from app.utils.confidence import CONFIDENCE_CEILING, cap_confidence
 from app.utils.config_loader import (
     derive_fund_category,
     fund_category_priority,
@@ -137,7 +138,7 @@ def _extract_fields_from_page(
         if payload is None:
             continue
         value = payload.get("value") if isinstance(payload, dict) else payload
-        confidence = float(payload.get("confidence", 0)) if isinstance(payload, dict) else 0.0
+        confidence = cap_confidence(payload.get("confidence", 0)) if isinstance(payload, dict) else 0.0
         if value is not None:
             fields[fid] = FieldValue(
                 field_id=fid,
@@ -224,7 +225,7 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
     """
     derived: dict[str, FieldValue] = {}
 
-    def _add(field_id: str, value, confidence: float = 100.0) -> None:
+    def _add(field_id: str, value, confidence: float = CONFIDENCE_CEILING) -> None:
         derived[field_id] = FieldValue(field_id=field_id, value=value, confidence=confidence)
 
     # Form type label

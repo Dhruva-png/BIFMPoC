@@ -106,6 +106,7 @@ def _extract_only(
         _emit(progress_cb, f"Classifying {pdf_path.name}...")
         classification = classifier.classify_form(page_images[0])
 
+        # Disambiguate GSG vs Standard disinvestment when confidence is borderline
         if classification.form_code in ("DIS", "DIS_GSG") and classification.confidence < HIGH_CONFIDENCE_MIN:
             _emit(progress_cb, f"Disambiguating DIS vs DIS_GSG for {pdf_path.name}...")
             classification = classifier.disambiguate_gsg_vs_standard(page_images[0])
@@ -154,6 +155,11 @@ def _validate_and_file(
         full_name = extraction.field_value("full_name")
         fund_category = extraction.field_value("fund_category")
 
+        # Instruction Status / Rejection Reason (Metadata Fields for Filing).
+        # A validation FAIL means a mandatory field is missing/malformed —
+        # matches the client's own rejection examples (e.g. "wrong banking
+        # details"). WARNING/PASS stay "Captured", awaiting the human
+        # authorizer's Approve/Reject decision in AWD (out of this POC's scope).
         if validation_report.overall_status.value == "FAIL":
             instruction_status = InstructionStatus.REJECTED.value
             failed = [r.field_id for r in validation_report.results if r.status.value == "FAIL"]

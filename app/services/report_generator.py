@@ -19,6 +19,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.models.schemas import ExtractionResult, FieldValue, ProcessingLogEntry, ValidationReport, ValidationStatus
+from app.utils.confidence import needs_recheck
 from app.utils.logger import get_logger
 from config.settings import settings
 
@@ -62,7 +63,10 @@ def _format_detail(fv, own_source_file: str | None = None) -> str:
         bits.append(f"backfilled from {fv.source.split(':', 1)[1]}")
     else:
         bits.append(f"from {fv.source}")
-    return " — ".join(bits)
+    detail = " — ".join(bits)
+    if needs_recheck(fv.confidence):
+        detail += " — ⚠ recommend recheck"
+    return detail
 
 _STATUS_FILL = {
     ValidationStatus.PASS:    FILL_PASS,

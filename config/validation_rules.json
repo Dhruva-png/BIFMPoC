@@ -2,8 +2,9 @@
   "rules": [
     {
       "id": "id_number_format",
+      "enabled": false,
       "applies_to": "id_number",
-      "description": "Omang / Birth Certificate must be exactly 9 numeric digits. Passport format varies by country - no digit validation.",
+      "description": "DISABLED FOR NOW (per request) - re-enable by removing \"enabled\": false. Omang / Birth Certificate must be exactly 9 numeric digits. Passport format varies by country - no digit validation.",
       "logic": {
         "type": "conditional_on_id_type",
         "Omang": {"type": "exact_digits", "length": 9},
@@ -26,7 +27,7 @@
     {
       "id": "id_expiry_future",
       "applies_to": "id_expiry_date",
-      "description": "ID Expiry Date must be in the future relative to processing date. Skip entirely if ID Type = Birth Certificate.",
+      "description": "ID Expiry Date must be in the future relative to processing date. Skip entirely if ID Type = Birth Certificate. This field is only ever read off the KYC form; on every other form it is absent until backfilled from a sibling KYC document for the same investor (see SHAREABLE_FIELDS in consolidator.py) - the rule still applies wherever the value ends up.",
       "logic": {
         "type": "future_date",
         "skip_if": {"field": "id_type", "equals": "Birth Certificate"}
