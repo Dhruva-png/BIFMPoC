@@ -106,10 +106,14 @@ def _extract_only(
         _emit(progress_cb, f"Classifying {pdf_path.name}...")
         classification = classifier.classify_form(page_images[0])
 
-        # Disambiguate GSG vs Standard disinvestment when confidence is borderline
+        # Disambiguate GSG vs Standard disinvestment when confidence is borderline.
+        # The fund table this needs to look at is on page 2 (page 1 is the
+        # cover/instructions page on the DIS template) - same cover-page
+        # layout issue as field extraction, see extractor._extract_standard_form.
         if classification.form_code in ("DIS", "DIS_GSG") and classification.confidence < HIGH_CONFIDENCE_MIN:
             _emit(progress_cb, f"Disambiguating DIS vs DIS_GSG for {pdf_path.name}...")
-            classification = classifier.disambiguate_gsg_vs_standard(page_images[0])
+            fund_table_page = page_images[1] if len(page_images) > 1 else page_images[0]
+            classification = classifier.disambiguate_gsg_vs_standard(fund_table_page)
 
         form_code = classification.form_code
         _emit(progress_cb, f"{pdf_path.name}: classified as '{classification.form_name}' ({classification.confidence:.0f}% confidence)")

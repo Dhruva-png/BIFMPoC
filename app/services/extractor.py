@@ -450,8 +450,10 @@ def _extract_appform(page_images: list[Path]) -> ExtractionResult:
 def _extract_standard_form(form_code: str, page_images: list[Path]) -> ExtractionResult:
     """
     General extractor for ADD, DEBIT, DIS, DIS_GSG, STATIC, KYC.
-    Sends ALL form fields in one vision call against page 1 (and page 2 if multi-page).
-    For longer forms (STATIC has Form A + Form B sections), we send all pages.
+    Sends the first two pages in one vision call each and merges the result
+    (page 1 is a cover/instructions page with no form data on the BIFM
+    template for every form here except KYC, where page 1 is the form
+    itself - see the pages_to_process comment below).
     """
     field_defs = get_fields_for_form(form_code)
     form_label = load_field_definitions().get(form_code, {}).get("label", form_code)
@@ -461,7 +463,16 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
 
     # For STATIC forms that may span two pages (Form A and Form B are separate sections),
     # run extraction on up to 2 pages and merge.
-    pages_to_process = page_images[:2] if form_code == "STATIC" else [page_images[0]]
+    # BIFM's own PDF templates put a cover/instructions page ("please read
+    # carefully", cut-off times) FIRST on every form except KYC - the actual
+    # Investor Details + fund table + banking section is page 2. Sending
+    # only page_images[0] for DIS/ADD/DEBIT/DIS_GSG means the model is shown
+    # a page with no investor data on it at all, and returns nothing for
+    # every field. KYC is the one form whose page 1 genuinely is the form.
+    if form_code == "KYC":
+        pages_to_process = page_images[:1]
+    else:
+        pages_to_process = page_images[:2]
 
     for page_img in pages_to_process:
         fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label, form_code)
