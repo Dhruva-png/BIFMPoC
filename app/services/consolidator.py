@@ -30,6 +30,7 @@ from typing import Any
 
 from app.models.schemas import ExtractionResult, FieldValue
 from app.utils.config_loader import get_field_type, get_fields_for_form
+from app.utils.confidence import RECHECK_THRESHOLD
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -195,7 +196,23 @@ def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, Field
             _, members = item
             return (len(members), max(fv.confidence for _, fv in members))
 
-        _, winning_members = max(groups.items(), key=_group_rank)
+        winning_key, winning_members = max(groups.items(), key=_group_rank)
+
+        # A result only counts as a real majority/plurality if its group is
+        # STRICTLY larger than every other group. If two or more groups are
+        # tied for the largest size (e.g. three documents each giving a
+        # different account number - a 1/1/1 split, or 2/2), there is no
+        # value more than one document actually supports; picking one via
+        # the confidence tie-break and calling it "majority vote: 1/3 agree"
+        # is not a majority at all - it just silently rewards whichever
+        # document happened to score highest confidence (in practice,
+        # almost always the KYC form, since its clean printed grid reads
+        # more cleanly than handwritten free-form fields elsewhere). That
+        # false confidence is exactly what caused near-every field to
+        # resolve to the KYC document regardless of what the other forms
+        # actually said. Genuine ties are surfaced as unresolved instead.
+        group_sizes = sorted((len(m) for m in groups.values()), reverse=True)
+        is_genuine_tie = len(group_sizes) > 1 and group_sizes[0] == group_sizes[1]
 
         # Within the winning group, display the highest-confidence reading
         # (keeps original casing/formatting rather than the normalized form).
@@ -205,6 +222,22 @@ def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, Field
         agreeing_docs = len(winning_members)
         if len(groups) == 1:
             agreement = f"{agreeing_docs}/{total_docs} document(s) agree"
+            resolved_confidence = winner_fv.confidence
+        elif is_genuine_tie:
+            all_sources = ", ".join(sorted(e.source_file for e, _ in candidates))
+            agreement = (
+                f"NO MAJORITY — {len(groups)}-way tie across {total_docs} documents, no value has "
+                f"more support than another (sources: {all_sources}) — best guess shown from "
+                f"{winner_extraction.source_file}, needs manual review before relying on this value"
+            )
+            # Never let an unresolved tie masquerade as a confident answer -
+            # this also keeps it out of backfill (see backfill_from_profile).
+            resolved_confidence = min(winner_fv.confidence, RECHECK_THRESHOLD - 0.1)
+            logger.warning(
+                "Field '%s' has NO majority across batch (%s-way tie, %d docs total) - "
+                "showing best guess '%s' from %s but NOT backfilling it elsewhere",
+                field_id, len(groups), total_docs, winner_fv.value, winner_extraction.source_file,
+            )
         else:
             disagreeing_sources = ", ".join(
                 sorted(e.source_file for e, _ in candidates if _normalize(field_id, e.fields[field_id].value) != _normalize(field_id, winner_fv.value))
@@ -213,6 +246,7 @@ def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, Field
                 f"majority vote: {agreeing_docs}/{total_docs} documents agree on this value "
                 f"(differs on: {disagreeing_sources})"
             )
+            resolved_confidence = winner_fv.confidence
             logger.warning(
                 "Field '%s' disagreed across batch - majority value '%s' from %s used; "
                 "outlier(s) on: %s",
@@ -222,7 +256,7 @@ def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, Field
         profile[field_id] = FieldValue(
             field_id=field_id,
             value=winner_fv.value,
-            confidence=winner_fv.confidence,
+            confidence=resolved_confidence,
             source_page=winner_fv.source_page,
             source=winner_extraction.source_file,
             agreement=agreement,
@@ -254,6 +288,11 @@ def backfill_from_profile(
             continue
         source_fv = profile.get(field_id)
         if source_fv is None or source_fv.source == extraction.source_file:
+            continue
+        if source_fv.agreement and source_fv.agreement.startswith("NO MAJORITY"):
+            # Don't propagate an unresolved tie onto other documents - a
+            # coin-flip guess copied onto a blank field is worse than
+            # leaving it blank and flagged for manual entry.
             continue
 
         extraction.fields[field_id] = FieldValue(
