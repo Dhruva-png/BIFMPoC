@@ -37,18 +37,27 @@ DETAIL_FONT = Font(italic=True, size=9, color="6B6B6B")
 DETAIL_FILL = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
 
 
-def _format_detail(fv) -> str:
-    """Formats one FieldValue's confidence + provenance for a detail cell."""
+def _format_detail(fv, own_source_file: str | None = None) -> str:
+    """
+    Formats one FieldValue's confidence + provenance for a detail cell.
+
+    `own_source_file` is the filename of the document the *row* itself
+    represents (e.g. "DIS - AMOLEMO.pdf") - used so a plain on-document
+    extraction still names the document it came from, not just "extracted",
+    since the detail row is read on its own when the sheet is filtered/
+    scrolled and shouldn't require cross-referencing the source_file column.
+    """
     if fv is None:
         return ""
     bits = [f"{fv.confidence:.0f}% confidence"]
     if getattr(fv, "agreement", None):
-        bits.append(fv.agreement)
+        bits.append(f"{fv.agreement} — value taken from {fv.source}")
     elif fv.source == "extracted":
+        doc = own_source_file or "this document"
         if fv.source_page:
-            bits.append(f"extracted p.{fv.source_page}")
+            bits.append(f"extracted from {doc}, p.{fv.source_page}")
         else:
-            bits.append("extracted")
+            bits.append(f"extracted from {doc}")
     elif fv.source.startswith("backfilled:"):
         bits.append(f"backfilled from {fv.source.split(':', 1)[1]}")
     else:
@@ -332,10 +341,12 @@ class ExcelReportBuilder:
                     for col_idx in range(1, len(headers) + 1):
                         ws.cell(row=data_row_idx, column=col_idx).fill = fill
 
-            # Detail row: confidence % + provenance for each extracted field.
-            # Metadata columns (source_file, form_type, derived columns,
-            # workflow fields, ...) have no FieldValue, so they're left blank.
-            ws.append([_format_detail(field_values.get(h)) for h in headers])
+            # Detail row: confidence % + provenance (source document/page)
+            # for each extracted field. Metadata columns (source_file,
+            # form_type, derived columns, workflow fields, ...) have no
+            # FieldValue, so they're left blank.
+            own_source_file = row.get("source_file")
+            ws.append([_format_detail(field_values.get(h), own_source_file) for h in headers])
             detail_row_idx = ws.max_row
             for col_idx in range(1, len(headers) + 1):
                 cell = ws.cell(row=detail_row_idx, column=col_idx)

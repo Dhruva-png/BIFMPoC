@@ -22,6 +22,7 @@ Design:
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from app.llm.router import ask_vision, parse_json_response
@@ -165,6 +166,54 @@ def _page_number(image_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Shared truthiness helpers for checkbox / amount-sourced fields
+# ---------------------------------------------------------------------------
+
+_CHECKED_TOKENS = {"true", "yes", "y", "1", "checked", "ticked", "x", "✓", "on"}
+
+
+def _is_checked(value) -> bool:
+    """
+    Normalizes a checkbox-sourced field value to True/False. Vision-LLM
+    extraction can hand back a native JSON boolean, or any of several
+    string spellings for "ticked" (e.g. "Yes", "Checked", "X", "1") - this
+    is the single place that vocabulary is defined so every checkbox field
+    (account_closure, KYC document flags, etc.) is interpreted consistently
+    instead of each call site inventing its own partial token list.
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in _CHECKED_TOKENS
+
+
+def _has_amount(fv: FieldValue | None) -> bool:
+    """
+    True if a currency/percentage FieldValue actually carries a usable
+    amount. Deliberately distinct from a plain truthiness check on
+    fv.value: a legitimate extracted amount of 0 is falsy in Python
+    (`0 == False`), and blank/placeholder strings like "", "N/A", "-"
+    should NOT count as an amount having been written in that column.
+    """
+    if fv is None or fv.value is None:
+        return False
+    text = str(fv.value).strip()
+    if text == "" or text.lower() in ("n/a", "na", "-", "none"):
+        return False
+    stripped = re.sub(r"[^0-9.\-]", "", text)
+    if stripped in ("", "-", "."):
+        # Non-numeric but non-blank (extraction glitch/handwriting noise) -
+        # still treat as "something was written here" rather than
+        # silently dropping it from consideration.
+        return True
+    try:
+        return float(stripped) != 0
+    except ValueError:
+        return True
+
+
+# ---------------------------------------------------------------------------
 # Derived metadata fields
 # ---------------------------------------------------------------------------
 
@@ -208,19 +257,34 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
         _add("processing_cutoff", "Unknown")
         _add("fund_category_priority", fund_category_priority(None))
 
-    # Instruction mode for DIS (partial / percentage / full closure)
+    # Instruction mode for DIS / DIS_GSG - one of three mutually exclusive
+    # modes, in priority order:
+    #   1. Full Closure     - the "close account" checkbox at the foot of
+    #                         the form is ticked. This overrides everything
+    #                         else: an investor closing the account may
+    #                         still have stray digits in the amount/percent
+    #                         boxes, but the tick is the authoritative signal.
+    #   2. Percentage       - the dedicated disinvestment_percentage column
+    #                         has a number written in it.
+    #   3. Partial Withdrawal - a currency amount is written in the
+    #                         deposit/withdrawal (disinvestment_amount)
+    #                         column, with no closure tick and no percentage.
+    #   Unknown             - none of the above could be determined -
+    #                         surfaced so it gets flagged for manual review
+    #                         rather than silently defaulting to a mode.
     if form_code in ("DIS", "DIS_GSG"):
         closure = fields.get("account_closure")
         dis_amount = fields.get("disinvestment_amount")
         dis_pct = fields.get("disinvestment_percentage")
-        if closure and str(closure.value).lower() in ("yes", "true", "1"):
+
+        if _is_checked(closure.value if closure else None):
             _add("instruction_mode", "Full Closure")
-        elif dis_pct and dis_pct.value:
+        elif _has_amount(dis_pct):
             _add("instruction_mode", "Percentage")
-        elif dis_amount and dis_amount.value:
-            _add("instruction_mode", "Partial Amount")
+        elif _has_amount(dis_amount):
+            _add("instruction_mode", "Partial Withdrawal")
         else:
-            _add("instruction_mode", "Unknown")
+            _add("instruction_mode", "Unknown", confidence=0.0)
 
     # Sub-instruction type for DEBIT
     if form_code == "DEBIT":
@@ -247,7 +311,7 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
         kyc_fields = ["kyc_certified_id", "kyc_proof_address", "kyc_proof_banking", "kyc_proof_source"]
         ticked = [
             fid for fid in kyc_fields
-            if fields.get(fid) and str(fields[fid].value).lower() in ("true", "yes", "1", "checked")
+            if fields.get(fid) and _is_checked(fields[fid].value)
         ]
         all_complete = len(ticked) == 4
         _add("kyc_completeness_flag", "Complete" if all_complete else f"Incomplete ({len(ticked)}/4 documents provided)")

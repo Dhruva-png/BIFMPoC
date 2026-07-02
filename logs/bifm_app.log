@@ -1,468 +1,131 @@
-2026-07-01 13:33:32 | INFO     | app.core.pipeline | Rendering pages for STATIC - AMOLEMO.pdf...
-2026-07-01 13:33:32 | INFO     | app.core.pipeline | Rendering pages for DIS - AMOLEMO.pdf...
-2026-07-01 13:33:32 | INFO     | app.ocr.pdf_utils | Rendering STATIC - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 13:33:32 | INFO     | app.ocr.pdf_utils | Rendering DIS - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 13:33:38 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - AMOLEMO.pdf
-2026-07-01 13:33:38 | INFO     | app.core.pipeline | Classifying DIS - AMOLEMO.pdf...
-2026-07-01 13:33:38 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from STATIC - AMOLEMO.pdf
-2026-07-01 13:33:38 | INFO     | app.core.pipeline | Classifying STATIC - AMOLEMO.pdf...
-2026-07-01 13:33:39 | INFO     | app.services.classifier | Classified DIS - AMOLEMO as DIS (100% confidence)
-2026-07-01 13:33:39 | INFO     | app.core.pipeline | DIS - AMOLEMO.pdf: classified as 'Disinvestment Form (Standard)' (100% confidence)
-2026-07-01 13:33:39 | INFO     | app.core.pipeline | Extracting fields from DIS - AMOLEMO.pdf (DIS)...
-2026-07-01 13:33:40 | INFO     | app.services.classifier | Classified STATIC - AMOLEMO as STATIC (95% confidence)
-2026-07-01 13:33:40 | INFO     | app.core.pipeline | STATIC - AMOLEMO.pdf: classified as 'Static / Update Investor Details Form' (95% confidence)
-2026-07-01 13:33:40 | INFO     | app.core.pipeline | Extracting fields from STATIC - AMOLEMO.pdf (STATIC)...
-2026-07-01 13:33:41 | INFO     | app.services.extractor | Extracted 4 field(s) from DIS - AMOLEMO (DIS)
-2026-07-01 13:33:41 | INFO     | app.core.pipeline | Validating DIS - AMOLEMO.pdf...
-2026-07-01 13:33:41 | INFO     | app.validation.engine | Validated DIS - AMOLEMO (DIS) → FAIL (10 checks)
-2026-07-01 13:33:41 | INFO     | app.core.pipeline | Filing DIS - AMOLEMO.pdf...
-2026-07-01 13:33:41 | INFO     | app.services.filer | Filed DIS - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DIS_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBERFUND_NAME.pdf
-2026-07-01 13:33:41 | INFO     | app.core.pipeline | DIS - AMOLEMO.pdf: complete → FAIL
-2026-07-01 13:33:41 | INFO     | app.core.pipeline | Rendering pages for DEBIT - AMOLEMO.pdf...
-2026-07-01 13:33:41 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 13:33:44 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - AMOLEMO.pdf
-2026-07-01 13:33:44 | INFO     | app.core.pipeline | Classifying DEBIT - AMOLEMO.pdf...
-2026-07-01 13:33:45 | INFO     | app.services.extractor | Extracted 9 field(s) from STATIC - AMOLEMO (STATIC)
-2026-07-01 13:33:45 | INFO     | app.core.pipeline | Validating STATIC - AMOLEMO.pdf...
-2026-07-01 13:33:45 | INFO     | app.validation.engine | Validated STATIC - AMOLEMO (STATIC) → WARNING (5 checks)
-2026-07-01 13:33:45 | INFO     | app.core.pipeline | Filing STATIC - AMOLEMO.pdf...
-2026-07-01 13:33:45 | INFO     | app.services.filer | Filed STATIC - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\STATIC_381346789_MANTIWE_20260701.pdf
-2026-07-01 13:33:45 | INFO     | app.core.pipeline | STATIC - AMOLEMO.pdf: complete → WARNING
-2026-07-01 13:33:45 | INFO     | app.core.pipeline | Rendering pages for ADD - AMOLEMO.pdf...
-2026-07-01 13:33:45 | INFO     | app.ocr.pdf_utils | Rendering ADD - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 13:33:46 | INFO     | app.services.classifier | Classified DEBIT - AMOLEMO as DEBIT (100% confidence)
-2026-07-01 13:33:46 | INFO     | app.core.pipeline | DEBIT - AMOLEMO.pdf: classified as 'Debit Order Form' (100% confidence)
-2026-07-01 13:33:46 | INFO     | app.core.pipeline | Extracting fields from DEBIT - AMOLEMO.pdf (DEBIT)...
-2026-07-01 13:33:46 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/3). Backing off 7.0s. If this happens often, slow down BIFM_MAX_WORKERS.
-2026-07-01 13:33:49 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - AMOLEMO.pdf
-2026-07-01 13:33:49 | INFO     | app.core.pipeline | Classifying ADD - AMOLEMO.pdf...
-2026-07-01 13:33:49 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/3). Backing off 2.0s. If this happens often, slow down BIFM_MAX_WORKERS.
-2026-07-01 13:33:53 | INFO     | app.services.classifier | Classified ADD - AMOLEMO as ADD (100% confidence)
-2026-07-01 13:33:53 | INFO     | app.core.pipeline | ADD - AMOLEMO.pdf: classified as 'Additional Investment Form' (100% confidence)
-2026-07-01 13:33:53 | INFO     | app.core.pipeline | Extracting fields from ADD - AMOLEMO.pdf (ADD)...
-2026-07-01 13:33:54 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/3). Backing off 6.0s. If this happens often, slow down BIFM_MAX_WORKERS.
-2026-07-01 13:33:54 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 2/3). Backing off 6.0s. If this happens often, slow down BIFM_MAX_WORKERS.
-2026-07-01 13:34:01 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 3/3). Backing off 6.0s. If this happens often, slow down BIFM_MAX_WORKERS.
-2026-07-01 13:34:01 | ERROR    | app.llm.groq_client | Groq API error (attempt 3/3): 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions Rate limit reached for model `meta-llama/llama-4-scout-17b-16e-instruct` in organization `org_01kw19cxcme80bxxrshkxmqpps` service tier `on_demand` on tokens per minute (TPM): Limit 30000, Used 29321, Requested 3254. Please try again in 5.149999999s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing
-2026-07-01 13:34:01 | ERROR    | app.core.pipeline | Failed to process DEBIT - AMOLEMO.pdf
-Traceback (most recent call last):
-  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\groq_client.py", line 128, in _post
-    resp.raise_for_status()
-  File "C:\Users\dhruv\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\local-packages\Python311\site-packages\requests\models.py", line 1024, in raise_for_status
-    raise HTTPError(http_error_msg, response=self)
-requests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\core\pipeline.py", line 93, in process_single_document
-    extraction = extract_form(form_code, page_images)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\services\extractor.py", line 229, in extract_form
-    return _extract_standard_form(form_code, page_images)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\services\extractor.py", line 296, in _extract_standard_form
-    fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label)
-                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\services\extractor.py", line 85, in _extract_fields_from_page
-    response = ask_vision(prompt, image_path, json_mode=True)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\router.py", line 52, in ask_vision
-    return _backend.ask_vision(prompt, image_path, json_mode=json_mode)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\groq_client.py", line 233, in ask_vision
-    data = _post(settings.groq.vision_model, body)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\app\llm\groq_client.py", line 164, in _post
-    raise GroqError(f"Groq request failed: {last_exc}") from last_exc
-app.llm.groq_client.GroqError: Groq request failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
-2026-07-01 13:34:01 | INFO     | app.core.pipeline | ERROR processing DEBIT - AMOLEMO.pdf: Groq request failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
-2026-07-01 13:34:02 | INFO     | app.services.extractor | Extracted 3 field(s) from ADD - AMOLEMO (ADD)
-2026-07-01 13:34:02 | INFO     | app.core.pipeline | Validating ADD - AMOLEMO.pdf...
-2026-07-01 13:34:02 | INFO     | app.validation.engine | Validated ADD - AMOLEMO (ADD) → FAIL (12 checks)
-2026-07-01 13:34:02 | INFO     | app.core.pipeline | Filing ADD - AMOLEMO.pdf...
-2026-07-01 13:34:02 | INFO     | app.services.filer | Filed ADD - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\ADD_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBEREMAILFUND_NAMEFUND_NUMBER.pdf
-2026-07-01 13:34:02 | INFO     | app.core.pipeline | ADD - AMOLEMO.pdf: complete → FAIL
-2026-07-01 13:34:02 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
-2026-07-01 14:22:23 | INFO     | app.core.pipeline | Rendering pages for STATIC - AMOLEMO.pdf...
-2026-07-01 14:22:23 | INFO     | app.core.pipeline | Rendering pages for DIS - AMOLEMO.pdf...
-2026-07-01 14:22:23 | INFO     | app.ocr.pdf_utils | Rendering STATIC - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 14:22:23 | INFO     | app.ocr.pdf_utils | Rendering DIS - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 14:22:29 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - AMOLEMO.pdf
-2026-07-01 14:22:29 | INFO     | app.core.pipeline | Classifying DIS - AMOLEMO.pdf...
-2026-07-01 14:22:30 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from STATIC - AMOLEMO.pdf
-2026-07-01 14:22:30 | INFO     | app.core.pipeline | Classifying STATIC - AMOLEMO.pdf...
-2026-07-01 14:22:31 | INFO     | app.services.classifier | Classified DIS - AMOLEMO as DIS (100% confidence)
-2026-07-01 14:22:31 | INFO     | app.core.pipeline | DIS - AMOLEMO.pdf: classified as 'Disinvestment Form (Standard)' (100% confidence)
-2026-07-01 14:22:31 | INFO     | app.core.pipeline | Extracting fields from DIS - AMOLEMO.pdf (DIS)...
-2026-07-01 14:22:32 | INFO     | app.services.classifier | Classified STATIC - AMOLEMO as STATIC (95% confidence)
-2026-07-01 14:22:32 | INFO     | app.core.pipeline | STATIC - AMOLEMO.pdf: classified as 'Static / Update Investor Details Form' (95% confidence)
-2026-07-01 14:22:32 | INFO     | app.core.pipeline | Extracting fields from STATIC - AMOLEMO.pdf (STATIC)...
-2026-07-01 14:22:33 | INFO     | app.services.extractor | Extracted 4 field(s) from DIS - AMOLEMO (DIS)
-2026-07-01 14:22:33 | INFO     | app.core.pipeline | Rendering pages for DEBIT - AMOLEMO.pdf...
-2026-07-01 14:22:33 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 14:22:38 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - AMOLEMO.pdf
-2026-07-01 14:22:38 | INFO     | app.core.pipeline | Classifying DEBIT - AMOLEMO.pdf...
-2026-07-01 14:22:39 | INFO     | app.services.extractor | Extracted 9 field(s) from STATIC - AMOLEMO (STATIC)
-2026-07-01 14:22:39 | INFO     | app.core.pipeline | Rendering pages for ADD - AMOLEMO.pdf...
-2026-07-01 14:22:39 | INFO     | app.ocr.pdf_utils | Rendering ADD - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 14:22:39 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/5). Backing off 1.0s. If this happens often, slow down BIFM_MAX_WORKERS or lower GROQ_TPM_LIMIT.
-2026-07-01 14:22:43 | INFO     | app.services.classifier | Classified DEBIT - AMOLEMO as DEBIT (100% confidence)
-2026-07-01 14:22:43 | INFO     | app.core.pipeline | DEBIT - AMOLEMO.pdf: classified as 'Debit Order Form' (100% confidence)
-2026-07-01 14:22:43 | INFO     | app.core.pipeline | Extracting fields from DEBIT - AMOLEMO.pdf (DEBIT)...
-2026-07-01 14:22:44 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/5). Backing off 6.0s. If this happens often, slow down BIFM_MAX_WORKERS or lower GROQ_TPM_LIMIT.
-2026-07-01 14:22:45 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - AMOLEMO.pdf
-2026-07-01 14:22:45 | INFO     | app.core.pipeline | Classifying ADD - AMOLEMO.pdf...
-2026-07-01 14:23:32 | INFO     | app.services.classifier | Classified ADD - AMOLEMO as ADD (100% confidence)
-2026-07-01 14:23:32 | INFO     | app.core.pipeline | ADD - AMOLEMO.pdf: classified as 'Additional Investment Form' (100% confidence)
-2026-07-01 14:23:32 | INFO     | app.core.pipeline | Extracting fields from ADD - AMOLEMO.pdf (ADD)...
-2026-07-01 14:23:34 | INFO     | app.services.extractor | Extracted 3 field(s) from ADD - AMOLEMO (ADD)
-2026-07-01 14:23:35 | INFO     | app.services.extractor | Extracted 3 field(s) from DEBIT - AMOLEMO (DEBIT)
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Consolidating 4 document(s) in this batch — 6 person-level field(s) available to backfill.
-2026-07-01 14:23:35 | INFO     | app.services.consolidator | Backfilled 5 field(s) on DIS - AMOLEMO (DIS) from other documents in this batch: entity_number, full_name, id_number, email, contact_number
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | DIS - AMOLEMO: backfilled entity_number, full_name, id_number, email, contact_number from other documents in this batch
-2026-07-01 14:23:35 | INFO     | app.services.consolidator | Backfilled 6 field(s) on DEBIT - AMOLEMO (DEBIT) from other documents in this batch: entity_number, full_name, id_number, id_expiry_date, email, contact_number
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | DEBIT - AMOLEMO: backfilled entity_number, full_name, id_number, id_expiry_date, email, contact_number from other documents in this batch
-2026-07-01 14:23:35 | INFO     | app.services.consolidator | Backfilled 4 field(s) on ADD - AMOLEMO (ADD) from other documents in this batch: entity_number, full_name, email, contact_number
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | ADD - AMOLEMO: backfilled entity_number, full_name, email, contact_number from other documents in this batch
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Validating STATIC - AMOLEMO.pdf...
-2026-07-01 14:23:35 | INFO     | app.validation.engine | Validated STATIC - AMOLEMO (STATIC) → WARNING (5 checks)
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Filing STATIC - AMOLEMO.pdf...
-2026-07-01 14:23:35 | INFO     | app.services.filer | Filed STATIC - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\STATIC_381346789_MANTIWE_20260701_1.pdf
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | STATIC - AMOLEMO.pdf: complete → WARNING
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Validating DIS - AMOLEMO.pdf...
-2026-07-01 14:23:35 | INFO     | app.validation.engine | Validated DIS - AMOLEMO (DIS) → FAIL (7 checks)
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Filing DIS - AMOLEMO.pdf...
-2026-07-01 14:23:35 | INFO     | app.services.filer | Filed DIS - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DIS_381346789_MANTIWE_20260701_VALIDATIONFAILEDFUND_NAME.pdf
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | DIS - AMOLEMO.pdf: complete → FAIL
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Validating DEBIT - AMOLEMO.pdf...
-2026-07-01 14:23:35 | INFO     | app.validation.engine | Validated DEBIT - AMOLEMO (DEBIT) → FAIL (7 checks)
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Filing DEBIT - AMOLEMO.pdf...
-2026-07-01 14:23:35 | INFO     | app.services.filer | Filed DEBIT - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DEBIT_381346789_MANTIWE_20260701_VALIDATIONFAILEDINSTRUCTION_TYPE.pdf
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | DEBIT - AMOLEMO.pdf: complete → FAIL
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Validating ADD - AMOLEMO.pdf...
-2026-07-01 14:23:35 | INFO     | app.validation.engine | Validated ADD - AMOLEMO (ADD) → FAIL (8 checks)
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Filing ADD - AMOLEMO.pdf...
-2026-07-01 14:23:35 | INFO     | app.services.filer | Filed ADD - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\ADD_381346789_MANTIWE_20260701_VALIDATIONFAILEDFUND_NAMEFUND_NUMBER.pdf
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | ADD - AMOLEMO.pdf: complete → FAIL
-2026-07-01 14:23:35 | INFO     | app.core.pipeline | Consolidated profile for 'AMOLEMO' added (4 document(s)).
-2026-07-01 14:23:35 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
-2026-07-01 16:10:18 | INFO     | app.core.pipeline | Rendering pages for STATIC - AMOLEMO.pdf...
-2026-07-01 16:10:18 | INFO     | app.core.pipeline | Rendering pages for DIS - AMOLEMO.pdf...
-2026-07-01 16:10:18 | INFO     | app.ocr.pdf_utils | Rendering STATIC - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 16:10:18 | INFO     | app.ocr.pdf_utils | Rendering DIS - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 16:10:23 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - AMOLEMO.pdf
-2026-07-01 16:10:23 | INFO     | app.core.pipeline | Classifying DIS - AMOLEMO.pdf...
-2026-07-01 16:10:24 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from STATIC - AMOLEMO.pdf
-2026-07-01 16:10:24 | INFO     | app.core.pipeline | Classifying STATIC - AMOLEMO.pdf...
-2026-07-01 16:10:58 | INFO     | app.services.classifier | Classified DIS - AMOLEMO as DIS (100% confidence)
-2026-07-01 16:10:58 | INFO     | app.core.pipeline | DIS - AMOLEMO.pdf: classified as 'Disinvestment Form (Standard)' (100% confidence)
-2026-07-01 16:10:58 | INFO     | app.core.pipeline | Extracting fields from DIS - AMOLEMO.pdf (DIS)...
-2026-07-01 16:11:04 | INFO     | app.services.classifier | Classified STATIC - AMOLEMO as STATIC (95% confidence)
-2026-07-01 16:11:04 | INFO     | app.core.pipeline | STATIC - AMOLEMO.pdf: classified as 'Static / Update Investor Details Form' (95% confidence)
-2026-07-01 16:11:04 | INFO     | app.core.pipeline | Extracting fields from STATIC - AMOLEMO.pdf (STATIC)...
-2026-07-01 16:11:39 | INFO     | app.services.extractor | Extracted 4 field(s) from DIS - AMOLEMO (DIS)
-2026-07-01 16:11:39 | INFO     | app.core.pipeline | Rendering pages for DEBIT - AMOLEMO.pdf...
-2026-07-01 16:11:39 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 16:11:43 | INFO     | app.services.extractor | Extracted 9 field(s) from STATIC - AMOLEMO (STATIC)
-2026-07-01 16:11:43 | INFO     | app.core.pipeline | Rendering pages for ADD - AMOLEMO.pdf...
-2026-07-01 16:11:43 | INFO     | app.ocr.pdf_utils | Rendering ADD - AMOLEMO.pdf at 220 DPI via pypdfium2
-2026-07-01 16:11:44 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - AMOLEMO.pdf
-2026-07-01 16:11:44 | INFO     | app.core.pipeline | Classifying DEBIT - AMOLEMO.pdf...
-2026-07-01 16:11:49 | INFO     | app.services.classifier | Classified DEBIT - AMOLEMO as DEBIT (100% confidence)
-2026-07-01 16:11:49 | INFO     | app.core.pipeline | DEBIT - AMOLEMO.pdf: classified as 'Debit Order Form' (100% confidence)
-2026-07-01 16:11:49 | INFO     | app.core.pipeline | Extracting fields from DEBIT - AMOLEMO.pdf (DEBIT)...
-2026-07-01 16:11:49 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - AMOLEMO.pdf
-2026-07-01 16:11:49 | INFO     | app.core.pipeline | Classifying ADD - AMOLEMO.pdf...
-2026-07-01 16:11:52 | INFO     | app.services.extractor | Extracted 3 field(s) from DEBIT - AMOLEMO (DEBIT)
-2026-07-01 16:12:01 | INFO     | app.services.classifier | Classified ADD - AMOLEMO as ADD (100% confidence)
-2026-07-01 16:12:01 | INFO     | app.core.pipeline | ADD - AMOLEMO.pdf: classified as 'Additional Investment Form' (100% confidence)
-2026-07-01 16:12:01 | INFO     | app.core.pipeline | Extracting fields from ADD - AMOLEMO.pdf (ADD)...
-2026-07-01 16:12:22 | INFO     | app.services.extractor | Extracted 3 field(s) from ADD - AMOLEMO (ADD)
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Consolidating 4 document(s) in this batch — 6 person-level field(s) available to backfill.
-2026-07-01 16:12:22 | INFO     | app.services.consolidator | Backfilled 5 field(s) on DIS - AMOLEMO (DIS) from other documents in this batch: entity_number, full_name, id_number, email, contact_number
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | DIS - AMOLEMO: backfilled entity_number, full_name, id_number, email, contact_number from other documents in this batch
-2026-07-01 16:12:22 | INFO     | app.services.consolidator | Backfilled 6 field(s) on DEBIT - AMOLEMO (DEBIT) from other documents in this batch: entity_number, full_name, id_number, id_expiry_date, email, contact_number
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | DEBIT - AMOLEMO: backfilled entity_number, full_name, id_number, id_expiry_date, email, contact_number from other documents in this batch
-2026-07-01 16:12:22 | INFO     | app.services.consolidator | Backfilled 4 field(s) on ADD - AMOLEMO (ADD) from other documents in this batch: entity_number, full_name, email, contact_number
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | ADD - AMOLEMO: backfilled entity_number, full_name, email, contact_number from other documents in this batch
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Validating STATIC - AMOLEMO.pdf...
-2026-07-01 16:12:22 | INFO     | app.validation.engine | Validated STATIC - AMOLEMO (STATIC) → WARNING (5 checks)
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Filing STATIC - AMOLEMO.pdf...
-2026-07-01 16:12:22 | INFO     | app.services.filer | Filed STATIC - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\STATIC_381346789_MANTIWE_20260701_1_2.pdf
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | STATIC - AMOLEMO.pdf: complete → WARNING
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Validating DIS - AMOLEMO.pdf...
-2026-07-01 16:12:22 | INFO     | app.validation.engine | Validated DIS - AMOLEMO (DIS) → FAIL (8 checks)
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Filing DIS - AMOLEMO.pdf...
-2026-07-01 16:12:22 | INFO     | app.services.filer | Filed DIS - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DIS_381346789_MANTIWE_20260701_VALIDATIONFAILEDFUND_NAME_1.pdf
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | DIS - AMOLEMO.pdf: complete → FAIL
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Validating DEBIT - AMOLEMO.pdf...
-2026-07-01 16:12:22 | INFO     | app.validation.engine | Validated DEBIT - AMOLEMO (DEBIT) → FAIL (8 checks)
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Filing DEBIT - AMOLEMO.pdf...
-2026-07-01 16:12:22 | INFO     | app.services.filer | Filed DEBIT - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DEBIT_381346789_MANTIWE_20260701_VALIDATIONFAILEDINSTRUCTION_TYPE_1.pdf
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | DEBIT - AMOLEMO.pdf: complete → FAIL
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Validating ADD - AMOLEMO.pdf...
-2026-07-01 16:12:22 | INFO     | app.validation.engine | Validated ADD - AMOLEMO (ADD) → FAIL (9 checks)
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Filing ADD - AMOLEMO.pdf...
-2026-07-01 16:12:22 | INFO     | app.services.filer | Filed ADD - AMOLEMO.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\ADD_381346789_MANTIWE_20260701_VALIDATIONFAILEDFUND_NAMEFUND_NUMBER_1.pdf
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | ADD - AMOLEMO.pdf: complete → FAIL
-2026-07-01 16:12:22 | INFO     | app.core.pipeline | Consolidated profile for 'AMOLEMO' added (4 document(s)).
-2026-07-01 16:12:22 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
-2026-07-01 16:21:11 | INFO     | app.core.pipeline | Rendering pages for DIS - NAOMI.pdf...
-2026-07-01 16:21:11 | INFO     | app.core.pipeline | Rendering pages for DEBIT - NAOMI.pdf...
-2026-07-01 16:21:11 | INFO     | app.ocr.pdf_utils | Rendering DIS - NAOMI.pdf at 220 DPI via pypdfium2
-2026-07-01 16:21:11 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - NAOMI.pdf at 220 DPI via pypdfium2
-2026-07-01 16:21:15 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - NAOMI.pdf
-2026-07-01 16:21:15 | INFO     | app.core.pipeline | Classifying DIS - NAOMI.pdf...
-2026-07-01 16:21:18 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - NAOMI.pdf
-2026-07-01 16:21:18 | INFO     | app.core.pipeline | Classifying DEBIT - NAOMI.pdf...
-2026-07-01 16:22:39 | ERROR    | app.llm.groq_client | Could not reach Groq API (attempt 1/5): ('Connection aborted.', TimeoutError('The write operation timed out'))
-2026-07-01 16:22:40 | ERROR    | app.llm.groq_client | Could not reach Groq API (attempt 1/5): ('Connection aborted.', TimeoutError('The write operation timed out'))
-2026-07-01 16:23:37 | INFO     | app.services.classifier | Classified DIS - NAOMI as DIS (100% confidence)
-2026-07-01 16:23:37 | INFO     | app.core.pipeline | DIS - NAOMI.pdf: classified as 'Disinvestment Form (Standard)' (100% confidence)
-2026-07-01 16:23:37 | INFO     | app.core.pipeline | Extracting fields from DIS - NAOMI.pdf (DIS)...
-2026-07-01 16:23:42 | INFO     | app.services.classifier | Classified DEBIT - NAOMI as DEBIT (100% confidence)
-2026-07-01 16:23:42 | INFO     | app.core.pipeline | DEBIT - NAOMI.pdf: classified as 'Debit Order Form' (100% confidence)
-2026-07-01 16:23:42 | INFO     | app.core.pipeline | Extracting fields from DEBIT - NAOMI.pdf (DEBIT)...
-2026-07-01 16:24:15 | INFO     | app.services.extractor | Extracted 5 field(s) from DIS - NAOMI (DIS)
-2026-07-01 16:24:15 | INFO     | app.core.pipeline | Rendering pages for ADD - NAOMI.pdf...
-2026-07-01 16:24:15 | INFO     | app.ocr.pdf_utils | Rendering ADD - NAOMI.pdf at 220 DPI via pypdfium2
-2026-07-01 16:24:21 | INFO     | app.services.extractor | Extracted 4 field(s) from DEBIT - NAOMI (DEBIT)
-2026-07-01 16:24:22 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - NAOMI.pdf
-2026-07-01 16:24:22 | INFO     | app.core.pipeline | Classifying ADD - NAOMI.pdf...
-2026-07-01 16:25:04 | INFO     | app.services.classifier | Classified ADD - NAOMI as ADD (100% confidence)
-2026-07-01 16:25:04 | INFO     | app.core.pipeline | ADD - NAOMI.pdf: classified as 'Additional Investment Form' (100% confidence)
-2026-07-01 16:25:04 | INFO     | app.core.pipeline | Extracting fields from ADD - NAOMI.pdf (ADD)...
-2026-07-01 16:25:34 | INFO     | app.services.extractor | Extracted 4 field(s) from ADD - NAOMI (ADD)
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | Validating DIS - NAOMI.pdf...
-2026-07-01 16:25:34 | INFO     | app.validation.engine | Validated DIS - NAOMI (DIS) → FAIL (11 checks)
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | Filing DIS - NAOMI.pdf...
-2026-07-01 16:25:34 | INFO     | app.services.filer | Filed DIS - NAOMI.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DIS_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBERFUND_NAME_1.pdf
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | DIS - NAOMI.pdf: complete → FAIL
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | Validating DEBIT - NAOMI.pdf...
-2026-07-01 16:25:34 | INFO     | app.validation.engine | Validated DEBIT - NAOMI (DEBIT) → FAIL (11 checks)
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | Filing DEBIT - NAOMI.pdf...
-2026-07-01 16:25:34 | INFO     | app.services.filer | Filed DEBIT - NAOMI.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DEBIT_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBERINSTRUCTION_TYPE.pdf
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | DEBIT - NAOMI.pdf: complete → FAIL
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | Validating ADD - NAOMI.pdf...
-2026-07-01 16:25:34 | INFO     | app.validation.engine | Validated ADD - NAOMI (ADD) → FAIL (13 checks)
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | Filing ADD - NAOMI.pdf...
-2026-07-01 16:25:34 | INFO     | app.services.filer | Filed ADD - NAOMI.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\ADD_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBEREMAILFUND_NAMEFUND_NUMBER_1.pdf
-2026-07-01 16:25:34 | INFO     | app.core.pipeline | ADD - NAOMI.pdf: complete → FAIL
-2026-07-01 16:25:35 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
-2026-07-01 16:27:37 | INFO     | app.core.pipeline | Rendering pages for ADD - GAOLATHE - Copy.pdf...
-2026-07-01 16:27:37 | INFO     | app.core.pipeline | Rendering pages for DEBIT - GAOLATHE.pdf...
-2026-07-01 16:27:37 | INFO     | app.ocr.pdf_utils | Rendering ADD - GAOLATHE - Copy.pdf at 220 DPI via pypdfium2
-2026-07-01 16:27:37 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - GAOLATHE.pdf at 220 DPI via pypdfium2
-2026-07-01 16:27:44 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - GAOLATHE - Copy.pdf
-2026-07-01 16:27:44 | INFO     | app.core.pipeline | Classifying ADD - GAOLATHE - Copy.pdf...
-2026-07-01 16:27:45 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - GAOLATHE.pdf
-2026-07-01 16:27:45 | INFO     | app.core.pipeline | Classifying DEBIT - GAOLATHE.pdf...
-2026-07-01 16:28:57 | INFO     | app.services.classifier | Classified ADD - GAOLATHE - Copy as ADD (100% confidence)
-2026-07-01 16:28:57 | INFO     | app.core.pipeline | ADD - GAOLATHE - Copy.pdf: classified as 'Additional Investment Form' (100% confidence)
-2026-07-01 16:28:57 | INFO     | app.core.pipeline | Extracting fields from ADD - GAOLATHE - Copy.pdf (ADD)...
-2026-07-01 16:28:57 | INFO     | app.services.classifier | Classified DEBIT - GAOLATHE as DEBIT (100% confidence)
-2026-07-01 16:28:57 | INFO     | app.core.pipeline | DEBIT - GAOLATHE.pdf: classified as 'Debit Order Form' (100% confidence)
-2026-07-01 16:28:57 | INFO     | app.core.pipeline | Extracting fields from DEBIT - GAOLATHE.pdf (DEBIT)...
-2026-07-01 16:29:54 | INFO     | app.services.extractor | Extracted 4 field(s) from DEBIT - GAOLATHE (DEBIT)
-2026-07-01 16:29:54 | INFO     | app.core.pipeline | Rendering pages for DIS - GAOLATHE.pdf...
-2026-07-01 16:29:54 | INFO     | app.ocr.pdf_utils | Rendering DIS - GAOLATHE.pdf at 220 DPI via pypdfium2
-2026-07-01 16:29:55 | INFO     | app.services.extractor | Extracted 4 field(s) from ADD - GAOLATHE - Copy (ADD)
-2026-07-01 16:29:55 | INFO     | app.core.pipeline | Rendering pages for GSGF - GAOLATLHE.pdf...
-2026-07-01 16:29:55 | INFO     | app.ocr.pdf_utils | Rendering GSGF - GAOLATLHE.pdf at 220 DPI via pypdfium2
-2026-07-01 16:29:59 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - GAOLATHE.pdf
-2026-07-01 16:29:59 | INFO     | app.core.pipeline | Classifying DIS - GAOLATHE.pdf...
-2026-07-01 16:30:00 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from GSGF - GAOLATLHE.pdf
-2026-07-01 16:30:00 | INFO     | app.core.pipeline | Classifying GSGF - GAOLATLHE.pdf...
-2026-07-01 16:31:07 | INFO     | app.services.classifier | Classified DIS - GAOLATHE as DIS (100% confidence)
-2026-07-01 16:31:07 | INFO     | app.core.pipeline | DIS - GAOLATHE.pdf: classified as 'Disinvestment Form (Standard)' (100% confidence)
-2026-07-01 16:31:07 | INFO     | app.core.pipeline | Extracting fields from DIS - GAOLATHE.pdf (DIS)...
-2026-07-01 16:31:13 | INFO     | app.services.classifier | Classified GSGF - GAOLATLHE as DIS_GSG (100% confidence)
-2026-07-01 16:31:13 | INFO     | app.core.pipeline | GSGF - GAOLATLHE.pdf: classified as 'Disinvestment Form (GSG)' (100% confidence)
-2026-07-01 16:31:13 | INFO     | app.core.pipeline | Extracting fields from GSGF - GAOLATLHE.pdf (DIS_GSG)...
-2026-07-01 16:31:41 | INFO     | app.services.extractor | Extracted 6 field(s) from GSGF - GAOLATLHE (DIS_GSG)
-2026-07-01 16:31:41 | INFO     | app.services.extractor | Extracted 5 field(s) from DIS - GAOLATHE (DIS)
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Consolidating 4 document(s) in this batch — 1 person-level field(s) available to backfill.
-2026-07-01 16:31:41 | INFO     | app.services.consolidator | Backfilled 1 field(s) on ADD - GAOLATHE - Copy (ADD) from other documents in this batch: fund_name
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | ADD - GAOLATHE - Copy: backfilled fund_name from other documents in this batch
-2026-07-01 16:31:41 | INFO     | app.services.consolidator | Backfilled 1 field(s) on DEBIT - GAOLATHE (DEBIT) from other documents in this batch: fund_name
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | DEBIT - GAOLATHE: backfilled fund_name from other documents in this batch
-2026-07-01 16:31:41 | INFO     | app.services.consolidator | Backfilled 1 field(s) on DIS - GAOLATHE (DIS) from other documents in this batch: fund_name
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | DIS - GAOLATHE: backfilled fund_name from other documents in this batch
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Validating ADD - GAOLATHE - Copy.pdf...
-2026-07-01 16:31:41 | INFO     | app.validation.engine | Validated ADD - GAOLATHE - Copy (ADD) → FAIL (12 checks)
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Filing ADD - GAOLATHE - Copy.pdf...
-2026-07-01 16:31:41 | INFO     | app.services.filer | Filed ADD - GAOLATHE - Copy.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\ADD_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBEREMAILFUND_NUMBER.pdf
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | ADD - GAOLATHE - Copy.pdf: complete → FAIL
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Validating DEBIT - GAOLATHE.pdf...
-2026-07-01 16:31:41 | INFO     | app.validation.engine | Validated DEBIT - GAOLATHE (DEBIT) → FAIL (11 checks)
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Filing DEBIT - GAOLATHE.pdf...
-2026-07-01 16:31:41 | INFO     | app.services.filer | Filed DEBIT - GAOLATHE.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DEBIT_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBERINSTRUCTION_TYPE_1.pdf
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | DEBIT - GAOLATHE.pdf: complete → FAIL
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Validating DIS - GAOLATHE.pdf...
-2026-07-01 16:31:41 | INFO     | app.validation.engine | Validated DIS - GAOLATHE (DIS) → FAIL (10 checks)
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Filing DIS - GAOLATHE.pdf...
-2026-07-01 16:31:41 | INFO     | app.services.filer | Filed DIS - GAOLATHE.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DIS_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBER.pdf
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | DIS - GAOLATHE.pdf: complete → FAIL
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Validating GSGF - GAOLATLHE.pdf...
-2026-07-01 16:31:41 | INFO     | app.validation.engine | Validated GSGF - GAOLATLHE (DIS_GSG) → FAIL (9 checks)
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Filing GSGF - GAOLATLHE.pdf...
-2026-07-01 16:31:41 | INFO     | app.services.filer | Filed GSGF - GAOLATLHE.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DIS_GSG_NA_UNKNOWN_20260701_VALIDATIONFAILEDENTITY_NUMBERFULL_NAMECONTACT_NUMBER.pdf
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | GSGF - GAOLATLHE.pdf: complete → FAIL
-2026-07-01 16:31:41 | INFO     | app.core.pipeline | Consolidated profile for 'Copy' added (4 document(s)).
-2026-07-01 16:31:42 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
-2026-07-01 16:59:40 | INFO     | app.core.pipeline | Rendering pages for KYC - ONALENNA.pdf...
-2026-07-01 16:59:40 | INFO     | app.core.pipeline | Rendering pages for GSGF - ONALENNA BOGOSING.pdf...
-2026-07-01 16:59:40 | INFO     | app.ocr.pdf_utils | Rendering KYC - ONALENNA.pdf at 220 DPI via pypdfium2
-2026-07-01 16:59:40 | INFO     | app.ocr.pdf_utils | Rendering GSGF - ONALENNA BOGOSING.pdf at 220 DPI via pypdfium2
-2026-07-01 16:59:41 | INFO     | app.ocr.pdf_utils | Rendered 1 page(s) from KYC - ONALENNA.pdf
-2026-07-01 16:59:41 | INFO     | app.core.pipeline | Classifying KYC - ONALENNA.pdf...
-2026-07-01 16:59:42 | INFO     | app.services.classifier | Classified KYC - ONALENNA as KYC (100% confidence)
-2026-07-01 16:59:42 | INFO     | app.core.pipeline | KYC - ONALENNA.pdf: classified as 'KYC (Know Your Customer)' (100% confidence)
-2026-07-01 16:59:42 | INFO     | app.core.pipeline | Extracting fields from KYC - ONALENNA.pdf (KYC)...
-2026-07-01 16:59:44 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from GSGF - ONALENNA BOGOSING.pdf
-2026-07-01 16:59:44 | INFO     | app.core.pipeline | Classifying GSGF - ONALENNA BOGOSING.pdf...
-2026-07-01 16:59:45 | INFO     | app.services.extractor | Extracted 28 field(s) from KYC - ONALENNA (KYC)
-2026-07-01 16:59:45 | INFO     | app.core.pipeline | Rendering pages for DIS - ONALENNA BOGOSING.pdf...
-2026-07-01 16:59:45 | INFO     | app.ocr.pdf_utils | Rendering DIS - ONALENNA BOGOSING.pdf at 220 DPI via pypdfium2
-2026-07-01 16:59:47 | INFO     | app.services.classifier | Classified GSGF - ONALENNA BOGOSING as DIS_GSG (100% confidence)
-2026-07-01 16:59:47 | INFO     | app.core.pipeline | GSGF - ONALENNA BOGOSING.pdf: classified as 'Disinvestment Form (GSG)' (100% confidence)
-2026-07-01 16:59:47 | INFO     | app.core.pipeline | Extracting fields from GSGF - ONALENNA BOGOSING.pdf (DIS_GSG)...
-2026-07-01 16:59:47 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - ONALENNA BOGOSING.pdf
-2026-07-01 16:59:47 | INFO     | app.core.pipeline | Classifying DIS - ONALENNA BOGOSING.pdf...
-2026-07-01 16:59:49 | INFO     | app.services.extractor | Extracted 6 field(s) from GSGF - ONALENNA BOGOSING (DIS_GSG)
-2026-07-01 16:59:49 | INFO     | app.core.pipeline | Rendering pages for DEBIT - ONALENNA BOGOSING.pdf...
-2026-07-01 16:59:49 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - ONALENNA BOGOSING.pdf at 220 DPI via pypdfium2
-2026-07-01 16:59:49 | INFO     | app.services.classifier | Classified DIS - ONALENNA BOGOSING as DIS (100% confidence)
-2026-07-01 16:59:49 | INFO     | app.core.pipeline | DIS - ONALENNA BOGOSING.pdf: classified as 'Disinvestment Form (Standard)' (100% confidence)
-2026-07-01 16:59:49 | INFO     | app.core.pipeline | Extracting fields from DIS - ONALENNA BOGOSING.pdf (DIS)...
-2026-07-01 16:59:50 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/5). Backing off 1.0s. If this happens often, slow down BIFM_MAX_WORKERS or lower GROQ_TPM_LIMIT.
-2026-07-01 16:59:53 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - ONALENNA BOGOSING.pdf
-2026-07-01 16:59:53 | INFO     | app.core.pipeline | Classifying DEBIT - ONALENNA BOGOSING.pdf...
-2026-07-01 16:59:54 | INFO     | app.services.extractor | Extracted 5 field(s) from DIS - ONALENNA BOGOSING (DIS)
-2026-07-01 16:59:54 | INFO     | app.core.pipeline | Rendering pages for ADD - ONALENNA.pdf...
-2026-07-01 16:59:54 | INFO     | app.ocr.pdf_utils | Rendering ADD - ONALENNA.pdf at 220 DPI via pypdfium2
-2026-07-01 16:59:55 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/5). Backing off 6.0s. If this happens often, slow down BIFM_MAX_WORKERS or lower GROQ_TPM_LIMIT.
-2026-07-01 17:00:00 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - ONALENNA.pdf
-2026-07-01 17:00:00 | INFO     | app.core.pipeline | Classifying ADD - ONALENNA.pdf...
-2026-07-01 17:00:42 | INFO     | app.services.classifier | Classified DEBIT - ONALENNA BOGOSING as DEBIT (100% confidence)
-2026-07-01 17:00:42 | INFO     | app.core.pipeline | DEBIT - ONALENNA BOGOSING.pdf: classified as 'Debit Order Form' (100% confidence)
-2026-07-01 17:00:42 | INFO     | app.core.pipeline | Extracting fields from DEBIT - ONALENNA BOGOSING.pdf (DEBIT)...
-2026-07-01 17:00:45 | INFO     | app.services.extractor | Extracted 4 field(s) from DEBIT - ONALENNA BOGOSING (DEBIT)
-2026-07-01 17:00:46 | INFO     | app.services.classifier | Classified ADD - ONALENNA as ADD (100% confidence)
-2026-07-01 17:00:46 | INFO     | app.core.pipeline | ADD - ONALENNA.pdf: classified as 'Additional Investment Form' (100% confidence)
-2026-07-01 17:00:46 | INFO     | app.core.pipeline | Extracting fields from ADD - ONALENNA.pdf (ADD)...
-2026-07-01 17:00:51 | INFO     | app.services.extractor | Extracted 4 field(s) from ADD - ONALENNA (ADD)
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Consolidating 5 document(s) in this batch — 18 person-level field(s) available to backfill.
-2026-07-01 17:00:51 | INFO     | app.services.consolidator | Backfilled 11 field(s) on GSGF - ONALENNA BOGOSING (DIS_GSG) from other documents in this batch: entity_number, full_name, id_number, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | GSGF - ONALENNA BOGOSING: backfilled entity_number, full_name, id_number, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking from other documents in this batch
-2026-07-01 17:00:51 | INFO     | app.services.consolidator | Backfilled 12 field(s) on DIS - ONALENNA BOGOSING (DIS) from other documents in this batch: entity_number, full_name, id_number, email, contact_number, fund_name, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | DIS - ONALENNA BOGOSING: backfilled entity_number, full_name, id_number, email, contact_number, fund_name, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking from other documents in this batch
-2026-07-01 17:00:51 | INFO     | app.services.consolidator | Backfilled 13 field(s) on DEBIT - ONALENNA BOGOSING (DEBIT) from other documents in this batch: entity_number, full_name, id_number, id_expiry_date, email, contact_number, fund_name, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | DEBIT - ONALENNA BOGOSING: backfilled entity_number, full_name, id_number, id_expiry_date, email, contact_number, fund_name, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking from other documents in this batch
-2026-07-01 17:00:51 | INFO     | app.services.consolidator | Backfilled 11 field(s) on ADD - ONALENNA (ADD) from other documents in this batch: entity_number, full_name, email, contact_number, fund_name, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | ADD - ONALENNA: backfilled entity_number, full_name, email, contact_number, fund_name, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking from other documents in this batch
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Validating KYC - ONALENNA.pdf...
-2026-07-01 17:00:51 | INFO     | app.validation.engine | Validated KYC - ONALENNA (KYC) → FAIL (8 checks)
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Filing KYC - ONALENNA.pdf...
-2026-07-01 17:00:51 | INFO     | app.services.filer | Filed KYC - ONALENNA.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\KYC_38344272_BOGOSING_20260701_VALIDATIONFAILEDID_EXPIRY_DATE.pdf
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | KYC - ONALENNA.pdf: complete → FAIL
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Validating GSGF - ONALENNA BOGOSING.pdf...
-2026-07-01 17:00:51 | INFO     | app.validation.engine | Validated GSGF - ONALENNA BOGOSING (DIS_GSG) → WARNING (6 checks)
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Filing GSGF - ONALENNA BOGOSING.pdf...
-2026-07-01 17:00:51 | INFO     | app.services.filer | Filed GSGF - ONALENNA BOGOSING.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\DIS_GSG_38344272_BOGOSING_20260701.pdf
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | GSGF - ONALENNA BOGOSING.pdf: complete → WARNING
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Validating DIS - ONALENNA BOGOSING.pdf...
-2026-07-01 17:00:51 | INFO     | app.validation.engine | Validated DIS - ONALENNA BOGOSING (DIS) → WARNING (7 checks)
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Filing DIS - ONALENNA BOGOSING.pdf...
-2026-07-01 17:00:51 | INFO     | app.services.filer | Filed DIS - ONALENNA BOGOSING.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\DIS_38344272_BOGOSING_20260701.pdf
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | DIS - ONALENNA BOGOSING.pdf: complete → WARNING
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Validating DEBIT - ONALENNA BOGOSING.pdf...
-2026-07-01 17:00:51 | INFO     | app.validation.engine | Validated DEBIT - ONALENNA BOGOSING (DEBIT) → FAIL (8 checks)
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Filing DEBIT - ONALENNA BOGOSING.pdf...
-2026-07-01 17:00:51 | INFO     | app.services.filer | Filed DEBIT - ONALENNA BOGOSING.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DEBIT_38344272_BOGOSING_20260701_VALIDATIONFAILEDINSTRUCTION_TYPEID_EXPIRY_DATE.pdf
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | DEBIT - ONALENNA BOGOSING.pdf: complete → FAIL
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Validating ADD - ONALENNA.pdf...
-2026-07-01 17:00:51 | INFO     | app.validation.engine | Validated ADD - ONALENNA (ADD) → FAIL (8 checks)
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Filing ADD - ONALENNA.pdf...
-2026-07-01 17:00:51 | INFO     | app.services.filer | Filed ADD - ONALENNA.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\ADD_38344272_BOGOSING_20260701_VALIDATIONFAILEDFUND_NUMBER.pdf
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | ADD - ONALENNA.pdf: complete → FAIL
-2026-07-01 17:00:51 | INFO     | app.core.pipeline | Consolidated profile for 'ONALENNA' added (5 document(s)).
-2026-07-01 17:00:51 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
-2026-07-01 22:24:05 | INFO     | app.core.pipeline | Rendering pages for KYC - ONALENNA.pdf...
-2026-07-01 22:24:05 | INFO     | app.core.pipeline | Rendering pages for GSGF - ONALENNA BOGOSING.pdf...
-2026-07-01 22:24:05 | INFO     | app.ocr.pdf_utils | Rendering KYC - ONALENNA.pdf at 220 DPI via pypdfium2
-2026-07-01 22:24:05 | INFO     | app.ocr.pdf_utils | Rendering GSGF - ONALENNA BOGOSING.pdf at 220 DPI via pypdfium2
-2026-07-01 22:24:06 | INFO     | app.ocr.pdf_utils | Rendered 1 page(s) from KYC - ONALENNA.pdf
-2026-07-01 22:24:06 | INFO     | app.core.pipeline | Classifying KYC - ONALENNA.pdf...
-2026-07-01 22:24:08 | INFO     | app.services.classifier | Classified KYC - ONALENNA as KYC (100% confidence)
-2026-07-01 22:24:08 | INFO     | app.core.pipeline | KYC - ONALENNA.pdf: classified as 'KYC (Know Your Customer)' (100% confidence)
-2026-07-01 22:24:08 | INFO     | app.core.pipeline | Extracting fields from KYC - ONALENNA.pdf (KYC)...
-2026-07-01 22:24:09 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from GSGF - ONALENNA BOGOSING.pdf
-2026-07-01 22:24:09 | INFO     | app.core.pipeline | Classifying GSGF - ONALENNA BOGOSING.pdf...
-2026-07-01 22:24:12 | INFO     | app.services.classifier | Classified GSGF - ONALENNA BOGOSING as DIS_GSG (100% confidence)
-2026-07-01 22:24:12 | INFO     | app.core.pipeline | GSGF - ONALENNA BOGOSING.pdf: classified as 'Disinvestment Form (GSG)' (100% confidence)
-2026-07-01 22:24:12 | INFO     | app.core.pipeline | Extracting fields from GSGF - ONALENNA BOGOSING.pdf (DIS_GSG)...
-2026-07-01 22:24:12 | INFO     | app.services.extractor | Extracted 28 field(s) from KYC - ONALENNA (KYC)
-2026-07-01 22:24:12 | INFO     | app.core.pipeline | Rendering pages for DIS - ONALENNA BOGOSING.pdf...
-2026-07-01 22:24:12 | INFO     | app.ocr.pdf_utils | Rendering DIS - ONALENNA BOGOSING.pdf at 220 DPI via pypdfium2
-2026-07-01 22:24:15 | INFO     | app.services.extractor | Extracted 6 field(s) from GSGF - ONALENNA BOGOSING (DIS_GSG)
-2026-07-01 22:24:15 | INFO     | app.core.pipeline | Rendering pages for DEBIT - ONALENNA BOGOSING.pdf...
-2026-07-01 22:24:15 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - ONALENNA BOGOSING.pdf at 220 DPI via pypdfium2
-2026-07-01 22:24:16 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - ONALENNA BOGOSING.pdf
-2026-07-01 22:24:16 | INFO     | app.core.pipeline | Classifying DIS - ONALENNA BOGOSING.pdf...
-2026-07-01 22:24:19 | INFO     | app.services.classifier | Classified DIS - ONALENNA BOGOSING as DIS (100% confidence)
-2026-07-01 22:24:19 | INFO     | app.core.pipeline | DIS - ONALENNA BOGOSING.pdf: classified as 'Disinvestment Form (Standard)' (100% confidence)
-2026-07-01 22:24:19 | INFO     | app.core.pipeline | Extracting fields from DIS - ONALENNA BOGOSING.pdf (DIS)...
-2026-07-01 22:24:20 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - ONALENNA BOGOSING.pdf
-2026-07-01 22:24:20 | INFO     | app.core.pipeline | Classifying DEBIT - ONALENNA BOGOSING.pdf...
-2026-07-01 22:24:22 | INFO     | app.services.extractor | Extracted 5 field(s) from DIS - ONALENNA BOGOSING (DIS)
-2026-07-01 22:24:22 | INFO     | app.core.pipeline | Rendering pages for ADD - ONALENNA.pdf...
-2026-07-01 22:24:22 | INFO     | app.ocr.pdf_utils | Rendering ADD - ONALENNA.pdf at 220 DPI via pypdfium2
-2026-07-01 22:24:22 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/5). Backing off 3.0s. If this happens often, slow down BIFM_MAX_WORKERS or lower GROQ_TPM_LIMIT.
-2026-07-01 22:24:28 | INFO     | app.services.classifier | Classified DEBIT - ONALENNA BOGOSING as DEBIT (100% confidence)
-2026-07-01 22:24:28 | INFO     | app.core.pipeline | DEBIT - ONALENNA BOGOSING.pdf: classified as 'Debit Order Form' (100% confidence)
-2026-07-01 22:24:28 | INFO     | app.core.pipeline | Extracting fields from DEBIT - ONALENNA BOGOSING.pdf (DEBIT)...
-2026-07-01 22:24:28 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - ONALENNA.pdf
-2026-07-01 22:24:28 | INFO     | app.core.pipeline | Classifying ADD - ONALENNA.pdf...
-2026-07-01 22:25:08 | INFO     | app.services.classifier | Classified ADD - ONALENNA as ADD (100% confidence)
-2026-07-01 22:25:08 | INFO     | app.core.pipeline | ADD - ONALENNA.pdf: classified as 'Additional Investment Form' (100% confidence)
-2026-07-01 22:25:08 | INFO     | app.core.pipeline | Extracting fields from ADD - ONALENNA.pdf (ADD)...
-2026-07-01 22:25:12 | INFO     | app.services.extractor | Extracted 4 field(s) from ADD - ONALENNA (ADD)
-2026-07-01 22:25:12 | INFO     | app.services.extractor | Extracted 4 field(s) from DEBIT - ONALENNA BOGOSING (DEBIT)
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Consolidating 5 document(s) in this batch — 17 person-level field(s) available to backfill.
-2026-07-01 22:25:12 | INFO     | app.services.consolidator | Backfilled 11 field(s) on GSGF - ONALENNA BOGOSING (DIS_GSG) from other documents in this batch: entity_number, full_name, id_number, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | GSGF - ONALENNA BOGOSING: backfilled entity_number, full_name, id_number, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking from other documents in this batch
-2026-07-01 22:25:12 | INFO     | app.services.consolidator | Backfilled 11 field(s) on DIS - ONALENNA BOGOSING (DIS) from other documents in this batch: entity_number, full_name, id_number, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | DIS - ONALENNA BOGOSING: backfilled entity_number, full_name, id_number, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking from other documents in this batch
-2026-07-01 22:25:12 | INFO     | app.services.consolidator | Backfilled 12 field(s) on DEBIT - ONALENNA BOGOSING (DEBIT) from other documents in this batch: entity_number, full_name, id_number, id_expiry_date, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | DEBIT - ONALENNA BOGOSING: backfilled entity_number, full_name, id_number, id_expiry_date, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking from other documents in this batch
-2026-07-01 22:25:12 | INFO     | app.services.consolidator | Backfilled 10 field(s) on ADD - ONALENNA (ADD) from other documents in this batch: entity_number, full_name, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | ADD - ONALENNA: backfilled entity_number, full_name, email, contact_number, bank_account_name, bank_name, account_number, branch_name, branch_code, account_type_banking from other documents in this batch
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Validating KYC - ONALENNA.pdf...
-2026-07-01 22:25:12 | INFO     | app.validation.engine | Validated KYC - ONALENNA (KYC) → FAIL (8 checks)
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Filing KYC - ONALENNA.pdf...
-2026-07-01 22:25:12 | INFO     | app.services.filer | Filed KYC - ONALENNA.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\KYC_38344272_BOGOSING_20260701_VALIDATIONFAILEDID_EXPIRY_DATE_1.pdf
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | KYC - ONALENNA.pdf: complete → FAIL
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Validating GSGF - ONALENNA BOGOSING.pdf...
-2026-07-01 22:25:12 | INFO     | app.validation.engine | Validated GSGF - ONALENNA BOGOSING (DIS_GSG) → WARNING (6 checks)
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Filing GSGF - ONALENNA BOGOSING.pdf...
-2026-07-01 22:25:12 | INFO     | app.services.filer | Filed GSGF - ONALENNA BOGOSING.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\DIS_GSG_38344272_BOGOSING_20260701_1.pdf
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | GSGF - ONALENNA BOGOSING.pdf: complete → WARNING
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Validating DIS - ONALENNA BOGOSING.pdf...
-2026-07-01 22:25:12 | INFO     | app.validation.engine | Validated DIS - ONALENNA BOGOSING (DIS) → FAIL (8 checks)
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Filing DIS - ONALENNA BOGOSING.pdf...
-2026-07-01 22:25:12 | INFO     | app.services.filer | Filed DIS - ONALENNA BOGOSING.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DIS_38344272_BOGOSING_20260701_VALIDATIONFAILEDFUND_NAME.pdf
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | DIS - ONALENNA BOGOSING.pdf: complete → FAIL
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Validating DEBIT - ONALENNA BOGOSING.pdf...
-2026-07-01 22:25:12 | INFO     | app.validation.engine | Validated DEBIT - ONALENNA BOGOSING (DEBIT) → FAIL (8 checks)
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Filing DEBIT - ONALENNA BOGOSING.pdf...
-2026-07-01 22:25:12 | INFO     | app.services.filer | Filed DEBIT - ONALENNA BOGOSING.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\DEBIT_38344272_BOGOSING_20260701_VALIDATIONFAILEDINSTRUCTION_TYPEID_EXPIRY_DATE_1.pdf
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | DEBIT - ONALENNA BOGOSING.pdf: complete → FAIL
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Validating ADD - ONALENNA.pdf...
-2026-07-01 22:25:12 | INFO     | app.validation.engine | Validated ADD - ONALENNA (ADD) → FAIL (9 checks)
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Filing ADD - ONALENNA.pdf...
-2026-07-01 22:25:12 | INFO     | app.services.filer | Filed ADD - ONALENNA.pdf -> 2026\07-July\01\NonMoneyMarket\Captured\Rejected\ADD_38344272_BOGOSING_20260701_VALIDATIONFAILEDFUND_NAMEFUND_NUMBER.pdf
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | ADD - ONALENNA.pdf: complete → FAIL
-2026-07-01 22:25:12 | INFO     | app.core.pipeline | Consolidated profile for 'ONALENNA' added (5 document(s)).
-2026-07-01 22:25:12 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
+2026-07-02 06:03:01 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (7 checks)
+2026-07-02 06:03:01 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (14 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:03:01 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (14 checks)
+2026-07-02 06:05:12 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (8 checks)
+2026-07-02 06:05:12 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (14 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:05:12 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (14 checks)
+2026-07-02 06:08:06 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (8 checks)
+2026-07-02 06:08:06 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (14 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:08:06 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (14 checks)
+2026-07-02 06:08:16 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (8 checks)
+2026-07-02 06:08:16 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (14 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:08:16 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (14 checks)
+2026-07-02 06:10:47 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (8 checks)
+2026-07-02 06:10:47 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (14 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:10:47 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (14 checks)
+2026-07-02 06:11:03 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (8 checks)
+2026-07-02 06:11:03 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:11:03 | WARNING  | app.services.consolidator | Field 'contact_number' disagreed across batch - majority value '71234567' from A.pdf used; outlier(s) on: D.pdf
+2026-07-02 06:11:03 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value ' k amolemo ' from B.pdf used; outlier(s) on: A.pdf
+2026-07-02 06:11:03 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'John Smith' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (14 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:11:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (14 checks)
+2026-07-02 06:11:14 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (8 checks)
+2026-07-02 06:11:14 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:11:14 | WARNING  | app.services.consolidator | Field 'contact_number' disagreed across batch - majority value '71234567' from A.pdf used; outlier(s) on: D.pdf
+2026-07-02 06:11:14 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'John Smith' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (14 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (13 checks)
+2026-07-02 06:11:14 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (14 checks)

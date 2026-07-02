@@ -252,6 +252,25 @@ def _eval_fund_category_present(extraction: ExtractionResult, rule: dict) -> Fie
     return FieldValidationResult("fund_category", value, ValidationStatus.PASS)
 
 
+def _eval_instruction_mode_present(extraction: ExtractionResult, rule: dict) -> FieldValidationResult:
+    """
+    DIS / DIS_GSG: exactly one of the three signals (closure tick, a
+    percentage in its own column, or an amount in the deposit/withdrawal
+    column) must have been found, so instruction_mode resolved to something
+    other than "Unknown". If none was found, the form was likely misread
+    or genuinely left blank by the investor - either way it needs a human
+    to look at it before the instruction is actioned.
+    """
+    value = extraction.field_value("instruction_mode")
+    if _is_blank(value) or str(value) == "Unknown":
+        return FieldValidationResult(
+            "instruction_mode", value, ValidationStatus.WARNING,
+            "Could not determine instruction mode - no closure tick, percentage, "
+            "or withdrawal/deposit amount was found",
+        )
+    return FieldValidationResult("instruction_mode", value, ValidationStatus.PASS)
+
+
 # ---------------------------------------------------------------------------
 # Rule dispatch table
 # ---------------------------------------------------------------------------
@@ -277,6 +296,7 @@ _RULE_DISPATCH = {
     "branch_code_format": lambda ex, rule: [_eval_branch_code_format(ex, rule)],
     "kyc_completeness": lambda ex, rule: [_eval_kyc_completeness(ex, rule)],
     "fund_category_present": lambda ex, rule: [_eval_fund_category_present(ex, rule)],
+    "instruction_mode_present": lambda ex, rule: [_eval_instruction_mode_present(ex, rule)],
 }
 
 # Rules that only apply to certain form types (empty set = applies to all)
@@ -291,6 +311,7 @@ _RULE_FORM_SCOPE: dict[str, set[str]] = {
     "date_of_birth_past": {"APPFORM", "KYC"},
     "kyc_completeness": {"KYC"},
     "fund_category_present": {"ADD", "DIS", "DIS_GSG", "DEBIT"},
+    "instruction_mode_present": {"DIS", "DIS_GSG"},
     "fund_number_format": {"ADD", "DIS", "DEBIT"},
     "branch_code_format": {"ADD", "DEBIT", "DIS", "DIS_GSG", "STATIC", "KYC"},
 }

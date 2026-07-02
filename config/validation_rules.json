@@ -114,6 +114,12 @@
       "applies_to": "fund_category",
       "description": "Fund category (MM/NMM/GSGF) and processing cut-off must be determinable from the extracted fund name. ADD, DEBIT, DIS, DIS_GSG only.",
       "logic": {"type": "fund_category_present"}
+    },
+    {
+      "id": "instruction_mode_present",
+      "applies_to": "instruction_mode",
+      "description": "Instruction mode must resolve to Full Closure, Percentage, or Partial Withdrawal. Full Closure is set by the close-account tick at the foot of the form; Percentage by a value in the disinvestment percentage column; Partial Withdrawal by an amount in the deposit/withdrawal amount column. If none of the three signals is found the form needs manual review. DIS, DIS_GSG only.",
+      "logic": {"type": "instruction_mode_present"}
     }
   ],
   "confidence_thresholds": {

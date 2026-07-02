@@ -108,7 +108,7 @@ The system generates these fields automatically (per requirements doc) — they 
 | `form_type` | Derived from classification |
 | `fund_category` | Money Market / Non-Money Market / Non-Money Market (GSGF) |
 | `processing_cutoff` | 12:00 PM (MM) / 3:00 PM (NMM) / Quarterly (GSGF) |
-| `instruction_mode` | Partial Amount / Percentage / Full Closure (DIS only) |
+| `instruction_mode` | Full Closure / Percentage / Partial Withdrawal / Unknown (DIS, DIS_GSG) — priority: closure tick > percentage column > deposit/withdrawal amount column |
 | `sub_instruction_type` | Cancel / Change / New (DEBIT only) |
 | `static_sub_type` | Change of Personal Details / Update Banking Details (STATIC only) |
 | `kyc_completeness_flag` | Complete / Incomplete (N/4 documents provided) (KYC only) |

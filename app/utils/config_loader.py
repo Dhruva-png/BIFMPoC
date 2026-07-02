@@ -61,6 +61,30 @@ def get_mandatory_fields_for_form(form_code: str) -> list[str]:
     return form_def.get("mandatory_fields", [])
 
 
+@lru_cache(maxsize=1)
+def _field_type_index() -> dict[str, str]:
+    """
+    Builds a field_id -> type lookup across every form's field list.
+    Field IDs that are shared across multiple forms (entity_number,
+    full_name, contact_number, ...) always carry the same type, so a
+    single global index is safe and lets callers (e.g. the batch
+    consolidator's majority-vote grouping) normalize a value correctly
+    without having to know which form it came from.
+    """
+    index: dict[str, str] = {}
+    for form_def in load_field_definitions().values():
+        for f in form_def.get("fields", []):
+            index.setdefault(f["id"], f.get("type", "text"))
+    return index
+
+
+def get_field_type(field_id: str) -> str:
+    """Returns the declared type for a field_id (e.g. 'phone', 'date',
+    'currency', 'id_number', 'email', 'text'), defaulting to 'text' for
+    unknown/system-derived field ids."""
+    return _field_type_index().get(field_id, "text")
+
+
 def get_fund_info(fund_name: str) -> dict | None:
     """
     Look up fund metadata by name (case-insensitive substring match).
@@ -144,3 +168,4 @@ def clear_config_cache() -> None:
     load_form_types.cache_clear()
     load_field_definitions.cache_clear()
     load_validation_rules.cache_clear()
+    _field_type_index.cache_clear()

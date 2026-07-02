@@ -24,10 +24,12 @@ This module:
 """
 from __future__ import annotations
 
+import re
+from datetime import datetime
 from typing import Any
 
 from app.models.schemas import ExtractionResult, FieldValue
-from app.utils.config_loader import get_fields_for_form
+from app.utils.config_loader import get_field_type, get_fields_for_form
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -69,12 +71,79 @@ def _is_blank(value) -> bool:
     return value is None or (isinstance(value, str) and value.strip() == "")
 
 
-def _normalize(value: Any) -> Any:
-    """Normalizes a value for equality-grouping purposes only (display value
-    is still taken from the original, un-normalized FieldValue)."""
-    if isinstance(value, str):
-        return value.strip().lower()
-    return value
+_DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%d %B %Y", "%d %b %Y", "%m/%d/%Y"]
+
+
+def _normalize(field_id: str, value: Any) -> Any:
+    """
+    Normalizes a value for equality-grouping purposes only (the value shown
+    in the report is still taken from the original, un-normalized
+    FieldValue). This is field-type aware: the previous version only did a
+    blanket strip+lowercase on strings, which meant the exact same
+    real-world value written slightly differently on two documents -
+    "71 234 567" vs "71234567", "2024-03-01" vs "01/03/2024", "P 5,000.00"
+    vs "5000" - was treated as two *different* answers. That silently
+    fragmented what should have been one clear majority into several
+    groups of one, so the "majority vote" frequently ended up picking
+    whichever single document had the highest confidence score instead of
+    the value most documents actually agreed on - i.e. the reported bug.
+    """
+    if value is None:
+        return None
+
+    field_type = get_field_type(field_id)
+    text = str(value).strip()
+    if text == "":
+        return None
+
+    if field_type in ("phone",):
+        digits = re.sub(r"\D", "", text)
+        # Drop a Botswana country code or a single leading trunk '0' so
+        # the same number written as "71234567", "071234567", "+267 71
+        # 234 567" or "267-71-234-567" all collapse to the same 8-digit
+        # core for comparison.
+        if digits.startswith("267") and len(digits) > 8:
+            digits = digits[3:]
+        if digits.startswith("0") and len(digits) == 9:
+            digits = digits[1:]
+        return digits
+
+    if field_type in ("id_number",):
+        # Omang/Birth Certificate digits, or an alphanumeric passport
+        # number - strip formatting punctuation/spaces, keep case-
+        # insensitive comparison for passports.
+        return re.sub(r"[\s\-]", "", text).upper()
+
+    if field_type in ("currency", "percentage"):
+        stripped = re.sub(r"[^0-9.\-]", "", text)
+        try:
+            return round(float(stripped), 2)
+        except ValueError:
+            return text.lower()
+
+    if field_type == "date":
+        for fmt in _DATE_FORMATS:
+            try:
+                return datetime.strptime(text, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return text.strip().lower()
+
+    if field_type == "email":
+        return text.strip().lower()
+
+    if field_type in ("text", "enum"):
+        # Collapse repeated internal whitespace, drop punctuation noise
+        # (periods after initials, stray commas/dashes), and casefold -
+        # handles "K.  Amolemo", " K Amolemo ", "k amolemo" all being the
+        # same name, while still treating genuinely different text as
+        # different (no more aggressive merging than that).
+        no_punct = re.sub(r"[.,\-]", " ", text)
+        collapsed = re.sub(r"\s+", " ", no_punct).strip().casefold()
+        return collapsed
+
+    # Fallback for any other/unknown type.
+    return text.casefold() if isinstance(value, str) else value
 
 
 def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, FieldValue]:
@@ -118,7 +187,7 @@ def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, Field
         # Group by normalized value.
         groups: dict[Any, list[tuple[ExtractionResult, FieldValue]]] = {}
         for extraction, fv in candidates:
-            groups.setdefault(_normalize(fv.value), []).append((extraction, fv))
+            groups.setdefault(_normalize(field_id, fv.value), []).append((extraction, fv))
 
         # Winning group = most documents agreeing; ties broken by the
         # highest confidence seen within that group.
@@ -138,7 +207,7 @@ def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, Field
             agreement = f"{agreeing_docs}/{total_docs} document(s) agree"
         else:
             disagreeing_sources = ", ".join(
-                sorted(e.source_file for e, _ in candidates if _normalize(e.fields[field_id].value) != _normalize(winner_fv.value))
+                sorted(e.source_file for e, _ in candidates if _normalize(field_id, e.fields[field_id].value) != _normalize(field_id, winner_fv.value))
             )
             agreement = (
                 f"majority vote: {agreeing_docs}/{total_docs} documents agree on this value "
