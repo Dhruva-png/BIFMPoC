@@ -59,7 +59,7 @@ _FUND_TABLE_GUIDANCE_COMMON = (
     "Prudential Fund', '* Bifm Ya Masa Junior Fund', 'Bifm Local Equity Fund', "
     "'** Bifm Global Sustainable Growth Fund' — ignore the '*'/'**' lock-in markers "
     "when extracting the name). The fund name itself is PRINTED, not handwritten. "
-    "The fund number is a handwritten digit string (8 or 9 digits — capture exactly "
+    "The fund number is a handwritten digit string (7 to 13 digits — capture exactly "
     "what is written, do not pad, truncate, or 'correct' the digit count) that sits in "
     "the 'Fund number' column of whichever row the client selected.\n"
     "To find the correct fund_name and fund_number:\n"
@@ -364,7 +364,7 @@ def _clean_fund_fields(fields: dict[str, FieldValue]) -> None:
         fund_name (these are printed annotations on the form, not part of
         the fund's actual name).
       - Strips non-digit characters from fund_number while preserving the
-        digit string exactly as written (8 or 9 digits are both valid for
+        digit string exactly as written (7 to 13 digits are all valid for
         BIFM fund/entity numbers - no padding or truncation).
     """
     import re as _re
