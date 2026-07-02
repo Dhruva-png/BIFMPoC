@@ -27,7 +27,7 @@
     {
       "id": "id_expiry_future",
       "applies_to": "id_expiry_date",
-      "description": "ID Expiry Date must be in the future relative to processing date. Skip entirely if ID Type = Birth Certificate. This field is only ever read off the KYC form; on every other form it is absent until backfilled from a sibling KYC document for the same investor (see SHAREABLE_FIELDS in consolidator.py) - the rule still applies wherever the value ends up.",
+      "description": "ID Expiry Date must be in the future relative to processing date. Skip entirely if ID Type = Birth Certificate. id_expiry_date is a KYC-only field - scoped to KYC in engine.py's _RULE_FORM_SCOPE so it is never checked (or reported as \"not captured\") on ADD/DIS/DIS_GSG/DEBIT/STATIC/APPFORM, even after a KYC sibling's value has been backfilled onto those documents for display purposes.",
       "logic": {
         "type": "future_date",
         "skip_if": {"field": "id_type", "equals": "Birth Certificate"}

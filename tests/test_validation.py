@@ -11,7 +11,7 @@ from app.models.schemas import Beneficiary, ExtractionResult, FieldValue, Valida
 from app.validation.engine import validate
 
 
-def _make_extraction(**overrides) -> ExtractionResult:
+def _make_extraction(form_code: str = "APPFORM", **overrides) -> ExtractionResult:
     base = {
         "full_name": "Kabo Mantjue",
         "id_number": "123416789",
@@ -28,7 +28,7 @@ def _make_extraction(**overrides) -> ExtractionResult:
     }
     base.update(overrides)
     fields = {k: FieldValue(field_id=k, value=v, confidence=95.0) for k, v in base.items() if v is not None}
-    return ExtractionResult(source_file="test.pdf", form_code="APPFORM", fields=fields)
+    return ExtractionResult(source_file="test.pdf", form_code=form_code, fields=fields)
 
 
 def test_happy_path_passes():
@@ -83,7 +83,8 @@ def test_id_number_format_rule_currently_disabled():
 
 
 def test_birth_certificate_skips_expiry_validation():
-    extraction = _make_extraction(id_type="Birth Certificate", id_number="987654321", id_expiry_date=None)
+    # id_expiry_future is scoped to KYC only.
+    extraction = _make_extraction(form_code="KYC", id_type="Birth Certificate", id_number="987654321", id_expiry_date=None)
     report = validate(extraction)
     expiry_result = next(r for r in report.results if r.field_id == "id_expiry_date")
     assert expiry_result.status == ValidationStatus.PASS
@@ -91,10 +92,18 @@ def test_birth_certificate_skips_expiry_validation():
 
 
 def test_expired_id_fails():
-    extraction = _make_extraction(id_expiry_date="2020-01-01")
+    extraction = _make_extraction(form_code="KYC", id_expiry_date="2020-01-01")
     report = validate(extraction)
     expiry_result = next(r for r in report.results if r.field_id == "id_expiry_date")
     assert expiry_result.status == ValidationStatus.FAIL
+
+
+def test_id_expiry_not_checked_on_non_kyc_forms():
+    # The actual bug report: id_expiry_date must never be checked for
+    # (or warned about as "not captured") on any form other than KYC.
+    extraction = _make_extraction(form_code="APPFORM", id_expiry_date=None)
+    report = validate(extraction)
+    assert not any(r.field_id == "id_expiry_date" for r in report.results)
 
 
 def test_invalid_email_fails():

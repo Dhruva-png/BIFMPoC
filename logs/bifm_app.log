@@ -249,3 +249,66 @@
 2026-07-02 11:02:50 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (12 checks)
 2026-07-02 11:02:50 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (12 checks)
 2026-07-02 11:02:50 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (13 checks)
+2026-07-02 11:15:03 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (6 checks)
+2026-07-02 11:15:03 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 11:15:03 | WARNING  | app.services.consolidator | Field 'contact_number' disagreed across batch - majority value '71234567' from A.pdf used; outlier(s) on: D.pdf
+2026-07-02 11:15:03 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'John Smith' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (KYC) → WARNING (7 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (KYC) → FAIL (7 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (12 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
+2026-07-02 11:15:03 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (12 checks)
+2026-07-02 11:17:41 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (6 checks)
+2026-07-02 11:17:41 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 11:17:41 | WARNING  | app.services.consolidator | Field 'contact_number' disagreed across batch - majority value '71234567' from A.pdf used; outlier(s) on: D.pdf
+2026-07-02 11:17:41 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'John Smith' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (KYC) → WARNING (7 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (KYC) → FAIL (7 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (12 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
+2026-07-02 11:17:41 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (12 checks)
+2026-07-02 11:17:58 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (6 checks)
+2026-07-02 11:17:58 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'Correct Name' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 11:17:58 | WARNING  | app.services.consolidator | Field 'contact_number' disagreed across batch - majority value '71234567' from A.pdf used; outlier(s) on: D.pdf
+2026-07-02 11:17:58 | WARNING  | app.services.consolidator | Field 'full_name' disagreed across batch - majority value 'John Smith' from A.pdf used; outlier(s) on: B.pdf
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (KYC) → WARNING (7 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (KYC) → FAIL (7 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (12 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
+2026-07-02 11:17:58 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (12 checks)

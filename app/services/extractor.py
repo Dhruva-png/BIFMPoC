@@ -48,41 +48,72 @@ GUARDIAN_PAGE_NUMBER = 10
 # Prompt builder
 # ---------------------------------------------------------------------------
 
-# Fund fields that live inside the "Core fund range" table rather than a
-# single dedicated form field — see _FUND_TABLE_GUIDANCE below.
+# Fund fields that live inside a "Core fund range" / fund-list table rather
+# than a single dedicated form field — see _fund_table_guidance() below.
 _FUND_TABLE_HINT = "fund_table"
 
-_FUND_TABLE_GUIDANCE = (
-    "\nSPECIAL INSTRUCTIONS FOR fund_name / fund_number (Core Fund Range table):\n"
-    "These forms list SEVERAL funds in one table, grouped under risk-appetite headers "
-    "(e.g. 'You are very careful...', 'You are willing to take risks...', "
-    "'You're willing to risk more...'). Each row is one fund (some prefixed with '*' or "
-    "'**' — ignore those markers when extracting the name). There is USUALLY NOT a single "
-    "clean 'Fund Number' box — the fund number is often handwritten by the client to the "
-    "LEFT of, ABOVE, or directly BESIDE the row for the fund they picked, frequently right "
-    "next to or overlapping the 'Lump sum deposit' / 'Lump sum debit' amount column for "
-    "that same row.\n"
+_FUND_TABLE_GUIDANCE_COMMON = (
+    "\nSPECIAL INSTRUCTIONS FOR fund_name / fund_number (fund list table):\n"
+    "This form lists SEVERAL BIFM Unit Trust funds as fixed rows in a table (e.g. "
+    "'Bifm Pula Money Market Fund', '* Bifm Letlotlo Education Fund', 'Bifm Balanced "
+    "Prudential Fund', '* Bifm Ya Masa Junior Fund', 'Bifm Local Equity Fund', "
+    "'** Bifm Global Sustainable Growth Fund' — ignore the '*'/'**' lock-in markers "
+    "when extracting the name). The fund name itself is PRINTED, not handwritten. "
+    "The fund number is a handwritten digit string (8 or 9 digits — capture exactly "
+    "what is written, do not pad, truncate, or 'correct' the digit count) that sits in "
+    "the 'Fund number' column of whichever row the client selected.\n"
     "To find the correct fund_name and fund_number:\n"
-    "1. Scan EVERY row of the fund table, not just the first row or a fixed position.\n"
-    "2. Identify the SELECTED fund: the row that has a handwritten amount in the Lump sum "
-    "deposit or Lump sum debit column, and/or a tick/cross in the Income Distribution "
-    "(Reinvest / Pay out) columns for that row. 'N/A' printed in a cell means that fund does "
-    "not offer that option and is NOT itself a selection signal.\n"
-    "3. fund_number is the handwritten digit string associated with that selected row (do "
-    "NOT confuse it with the deposit/debit amount itself). Botswana fund/entity numbers can "
-    "be either 8 or 9 digits — capture exactly what is written, do not pad, truncate, or "
-    "'correct' the digit count.\n"
-    "4. fund_name is the PRINTED fund name text of that same row (e.g. 'Bifm Pula Money "
-    "Market Fund'), not the risk-appetite header text above it.\n"
-    "5. If more than one row appears to have amounts filled in, pick the row with the most "
-    "complete evidence (amount AND a nearby handwritten number) and lower your confidence "
-    "score accordingly.\n"
+    "1. Scan EVERY row of the table, not just the first row or a fixed position.\n"
+)
+
+_FUND_TABLE_GUIDANCE_SINGLE_TABLE = (
+    "2. Identify the SELECTED fund: the row that has a handwritten amount (or, on a "
+    "Disinvestment form, a handwritten percentage) filled in, and/or a tick in that "
+    "row's Income Distribution (Reinvest / Pay out) columns if present. 'N/A' printed "
+    "in a cell means that fund does not offer that option and is NOT itself a selection "
+    "signal.\n"
+    "3. fund_number is the handwritten digit string on that same row - do NOT confuse "
+    "it with the deposit/withdrawal amount or percentage itself.\n"
+    "4. fund_name is the PRINTED fund name text of that same row, not the risk-appetite "
+    "header text above it (e.g. 'You are very careful and want to protect your capital').\n"
+    "5. If more than one row appears to have amounts filled in, pick the row with the "
+    "most complete evidence (amount/percentage AND a nearby handwritten fund number) and "
+    "lower your confidence score accordingly.\n"
     "6. If the fund number truly cannot be found anywhere on the page, still return the "
     "fund_name from the selected row and set fund_number to null rather than inventing one.\n"
 )
 
+_FUND_TABLE_GUIDANCE_DEBIT = (
+    "2. This Debit Order form has up to THREE separate fund tables, only one of which is "
+    "in use - first check which instruction was ticked in section 3/4 "
+    "('Cancel my existing debit order(s)', 'Changes to my existing debit order(s)', or "
+    "section 4 'New debit order instructions'), then read ONLY the table under that ticked "
+    "instruction:\n"
+    "   - Cancel table columns: Bifm Unit Trust Fund(s) | Fund number | Cancellation date.\n"
+    "   - Change table columns: Bifm Unit Trust Fund(s) | Fund number | Increase to (BWP) | "
+    "Decrease to (BWP) | ** Existing amount.\n"
+    "   - New debit order table columns: Bifm Unit Trust Fund(s) | Fund number | New amount (BWP).\n"
+    "3. Within that one active table, the SELECTED fund is the row with a handwritten Fund "
+    "number and/or a handwritten value in ANY of that table's amount/date columns (Increase "
+    "to, Decrease to, Existing amount, New amount, or Cancellation date). A row with only a "
+    "Fund number and no amount can still be the selected row if amounts genuinely weren't "
+    "captured - use judgement and lower confidence when evidence is thin.\n"
+    "4. fund_number is the handwritten digit string in that row's 'Fund number' column - do "
+    "NOT confuse it with any of the amount columns.\n"
+    "5. fund_name is the PRINTED fund name text of that same row (e.g. 'Bifm Pula Money "
+    "Market Fund'), ignoring '*'/'**' markers.\n"
+    "6. If the fund number truly cannot be found, still return the fund_name from the "
+    "selected row and set fund_number to null rather than inventing one.\n"
+)
 
-def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
+
+def _fund_table_guidance(form_code: str) -> str:
+    if form_code == "DEBIT":
+        return _FUND_TABLE_GUIDANCE_COMMON + _FUND_TABLE_GUIDANCE_DEBIT
+    return _FUND_TABLE_GUIDANCE_COMMON + _FUND_TABLE_GUIDANCE_SINGLE_TABLE
+
+
+def _build_field_prompt(field_subset: list[dict], form_label: str, form_code: str = "") -> str:
     lines = []
     needs_fund_table_guidance = False
     for f in field_subset:
@@ -93,7 +124,7 @@ def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
             needs_fund_table_guidance = True
     field_block = "\n".join(lines)
 
-    fund_guidance = _FUND_TABLE_GUIDANCE if needs_fund_table_guidance else ""
+    fund_guidance = _fund_table_guidance(form_code) if needs_fund_table_guidance else ""
 
     return (
         f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
@@ -123,8 +154,9 @@ def _extract_fields_from_page(
     image_path: Path,
     field_subset: list[dict],
     form_label: str,
+    form_code: str = "",
 ) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
-    prompt = _build_field_prompt(field_subset, form_label)
+    prompt = _build_field_prompt(field_subset, form_label, form_code)
     response = ask_vision(prompt, image_path, json_mode=True)
 
     try:
@@ -432,7 +464,7 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
     pages_to_process = page_images[:2] if form_code == "STATIC" else [page_images[0]]
 
     for page_img in pages_to_process:
-        fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label)
+        fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label, form_code)
         # Merge: don't overwrite a higher-confidence extraction from a prior page
         for fid, fv in fields.items():
             existing = all_fields.get(fid)

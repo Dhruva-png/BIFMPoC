@@ -309,6 +309,7 @@ _RULE_FORM_SCOPE: dict[str, set[str]] = {
     "communication_channel_default": {"APPFORM"},
     "beneficiary_split_total": {"APPFORM"},
     "date_of_birth_past": {"APPFORM", "KYC"},
+    "id_expiry_future": {"KYC"},
     "kyc_completeness": {"KYC"},
     "fund_category_present": {"ADD", "DIS", "DIS_GSG", "DEBIT"},
     "instruction_mode_present": {"DIS", "DIS_GSG"},
