@@ -368,3 +368,27 @@
 2026-07-02 11:27:31 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
 2026-07-02 11:27:31 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
 2026-07-02 11:27:31 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (12 checks)
+2026-07-02 11:37:30 | INFO     | app.services.consolidator | Backfilled 4 field(s) on DIS - AMOLEMO.pdf (DIS) from other documents in this batch: entity_number, full_name, email, contact_number
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated DIS - AMOLEMO.pdf (DIS) → WARNING (6 checks)
+2026-07-02 11:37:30 | WARNING  | app.services.consolidator | Field 'full_name' has NO majority across batch (2-way tie, 2 docs total) - showing best guess 'Correct Name' from A.pdf but NOT backfilling it elsewhere
+2026-07-02 11:37:30 | WARNING  | app.services.consolidator | Field 'contact_number' disagreed across batch - majority value '71234567' from A.pdf used; outlier(s) on: D.pdf
+2026-07-02 11:37:30 | WARNING  | app.services.consolidator | Field 'full_name' has NO majority across batch (2-way tie, 2 docs total) - showing best guess 'John Smith' from A.pdf but NOT backfilling it elsewhere
+2026-07-02 11:37:30 | WARNING  | app.services.consolidator | Field 'account_number' has NO majority across batch (3-way tie, 3 docs total) - showing best guess '1078631' from KYC.pdf but NOT backfilling it elsewhere
+2026-07-02 11:37:30 | WARNING  | app.services.consolidator | Field 'email' disagreed across batch - majority value 'right@example.com' from A.pdf used; outlier(s) on: C.pdf
+2026-07-02 11:37:30 | INFO     | app.services.consolidator | Backfilled 1 field(s) on D.pdf (DIS) from other documents in this batch: email
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (KYC) → WARNING (7 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (KYC) → FAIL (7 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (12 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → WARNING (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → PASS (11 checks)
+2026-07-02 11:37:30 | INFO     | app.validation.engine | Validated test.pdf (APPFORM) → FAIL (12 checks)
