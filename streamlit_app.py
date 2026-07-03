@@ -135,6 +135,32 @@ st.markdown(
         background:{BG_CARD}; border-radius:14px; padding:18px 20px 6px 20px;
         border:1px solid #E3E8EE; box-shadow:0 2px 8px rgba(15,23,42,0.04); margin-bottom:14px;
     }}
+
+    /* Our cards/expanders always sit on a light background (BG_CARD or
+       similar), but plain Streamlit text (captions, markdown paragraphs,
+       list items, code blocks) otherwise inherits whatever text color the
+       viewer's Streamlit theme uses - which is near-white in dark mode,
+       making it unreadable against our light backgrounds. Force a dark,
+       readable color on those plain elements specifically. Elements that
+       already set their own explicit color (status chips, kv-item
+       label/value, derived-tag, metric-card label/value) are excluded via
+       :not() so their pass/warn/fail color-coding is untouched. */
+    .stApp div[data-testid="stExpander"] p,
+    .stApp div[data-testid="stExpander"] li,
+    .stApp div[data-testid="stExpander"] label,
+    .stApp div[data-testid="stExpander"] span:not(.status-chip),
+    .stApp div[data-testid="stExpander"] summary,
+    .stApp [data-testid="stCaptionContainer"],
+    .stApp [data-testid="stMarkdownContainer"] p,
+    .metric-card p, .profile-card p, .profile-card li {{
+        color: {INK} !important;
+    }}
+    /* st.code / st.json blocks: force a readable light-on-dark pairing
+       explicitly rather than relying on the ambient theme. */
+    .stApp [data-testid="stCodeBlock"] pre,
+    .stApp [data-testid="stCodeBlock"] code {{
+        background: #1B2733 !important; color: #E7ECF2 !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
