@@ -48,8 +48,8 @@ st.set_page_config(
 
 PRIMARY = "#0F4C81"
 ACCENT  = "#C9A24B"
-PASS_C  = "#1E8E5A"
-WARN_C  = "#B7791F"
+PASS_C  = "#146039"
+WARN_C  = "#835311"
 FAIL_C  = "#C0392B"
 BG_CARD = "#FFFFFF"
 INK     = "#1B2733"
@@ -80,6 +80,22 @@ st.markdown(
         color: #E7ECF2 !important; opacity: 1 !important;
     }}
     [data-testid="stSidebar"] small {{ color: #C9D4E0 !important; opacity: 1 !important; }}
+    /* Sidebar markdown headers (e.g. "### Intake") and radio-option labels
+       were picking up a stray accent-color highlight background from
+       Streamlit's own widget styling. Force them fully transparent. */
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4,
+    [data-testid="stSidebar"] h5, [data-testid="stSidebar"] h6,
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] *,
+    [data-testid="stSidebar"] [data-testid="stHeadingWithActionElements"],
+    [data-testid="stSidebar"] [role="radiogroup"],
+    [data-testid="stSidebar"] [role="radiogroup"] *,
+    [data-testid="stSidebar"] label {{
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+    }}
 
     .bifm-header {{
         display:flex; align-items:center; gap:14px;
@@ -321,6 +337,23 @@ with st.sidebar:
         for fund in load_form_types().get("funds", []):
             cat_icon = "🟢" if fund["type"] == "Money Market" else "🔵"
             st.markdown(f"{cat_icon} **{fund['name']}** · Cut-off: `{fund['cutoff_time']}`")
+
+# --------------------------------------------------------------------------- #
+# Logo (white card)
+# --------------------------------------------------------------------------- #
+_logo_path = Path(__file__).parent / "app" / "ui" / "assets" / "kgisl_marvel_logo.png"
+if _logo_path.exists():
+    st.markdown(
+        """
+        <div style="background:#FFFFFF; border-radius:14px; padding:14px 20px;
+                    margin-bottom:10px; border:1px solid #E3E8EE;
+                    box-shadow:0 2px 8px rgba(15,23,42,0.04);
+                    display:flex; align-items:center;">
+        """,
+        unsafe_allow_html=True,
+    )
+    st.image(str(_logo_path), width=220)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------- #
 # Header
