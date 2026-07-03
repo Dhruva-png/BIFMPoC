@@ -55,34 +55,63 @@ BG_CARD = "#FFFFFF"
 INK     = "#1B2733"
 MUTED   = "#5C6B7A"
 
+# Sidebar-only palette (dark panel sitting to the left of the light canvas).
+SB_BG_TOP  = "#0B1420"
+SB_BG_BOT  = "#17222F"
+SB_CARD    = "#1D2A3A"
+SB_BORDER  = "rgba(255,255,255,0.09)"
+SB_TEXT    = "#EDF2F7"
+SB_MUTED   = "#9FB0C3"
+BORDER     = "#E3E8EE"
+
 st.markdown(
     f"""
     <style>
-    .stApp {{ background: linear-gradient(180deg, #F4F7FB 0%, #EEF2F7 100%); }}
-    [data-testid="stSidebar"] {{ background: {INK}; }}
-    [data-testid="stSidebar"] * {{ color: #F3F6FA !important; opacity: 1 !important; }}
-    [data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,0.15); }}
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    html, body, .stApp {{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }}
+    .stApp {{
+        background:
+            radial-gradient(1100px 550px at 100% -10%, rgba(15,76,129,0.07) 0%, rgba(15,76,129,0) 60%),
+            linear-gradient(180deg, #F4F7FB 0%, #EEF2F7 100%);
+    }}
+    .block-container {{ padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1320px; }}
+
+    /* ============================================================ */
+    /* SIDEBAR SHELL                                                  */
+    /* ============================================================ */
+    [data-testid="stSidebar"] {{
+        background: linear-gradient(190deg, {SB_BG_TOP} 0%, {SB_BG_BOT} 100%);
+        border-right: 1px solid rgba(255,255,255,0.06);
+    }}
+    [data-testid="stSidebar"] * {{ color: {SB_TEXT} !important; opacity: 1 !important; }}
+    [data-testid="stSidebar"] hr {{ border-color: {SB_BORDER}; margin: 1.15rem 0; }}
+    [data-testid="stSidebar"] ::-webkit-scrollbar {{ width: 8px; }}
+    [data-testid="stSidebar"] ::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.15); border-radius: 8px; }}
+    [data-testid="stSidebar"] ::-webkit-scrollbar-track {{ background: transparent; }}
+
+    /* Section headings, e.g. "### System Status" / "### Intake" */
+    [data-testid="stSidebar"] h3 {{
+        font-size: 0.86rem !important; font-weight: 800 !important; letter-spacing: .04em;
+        text-transform: uppercase; color: {SB_TEXT} !important;
+        padding-bottom: 9px; margin: 0 0 6px 0 !important;
+        border-bottom: 1px solid {SB_BORDER};
+    }}
+
     /* Streamlit renders st.caption text at reduced opacity by default, which
        combined with the dark sidebar background made it very low-contrast.
        Force full opacity and a legible light gray. */
     [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
     [data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {{
-        color: #C9D4E0 !important; opacity: 1 !important;
+        color: {SB_MUTED} !important; opacity: 1 !important; line-height: 1.5;
     }}
-    /* st.info / st.warning / st.error boxes inside the sidebar */
-    [data-testid="stSidebar"] [data-testid="stAlertContentInfo"],
-    [data-testid="stSidebar"] [data-testid="stAlertContentInfo"] * {{
-        color: #E7ECF2 !important; opacity: 1 !important;
-    }}
-    /* File uploader helper text ("Drag and drop..." / "200MB per file...") */
-    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"],
-    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] * {{
-        color: #E7ECF2 !important; opacity: 1 !important;
-    }}
-    [data-testid="stSidebar"] small {{ color: #C9D4E0 !important; opacity: 1 !important; }}
-    /* Sidebar markdown headers (e.g. "### Intake") and radio-option labels
-       were picking up a stray accent-color highlight background from
-       Streamlit's own widget styling. Force them fully transparent. */
+    [data-testid="stSidebar"] small {{ color: {SB_MUTED} !important; opacity: 1 !important; }}
+
+    /* Sidebar markdown headers and radio-option labels were picking up a
+       stray accent-color highlight background from Streamlit's own widget
+       styling. Force them fully transparent. */
     [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
     [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4,
     [data-testid="stSidebar"] h5, [data-testid="stSidebar"] h6,
@@ -95,20 +124,73 @@ st.markdown(
         background-color: transparent !important;
         box-shadow: none !important;
     }}
-    /* Radio option labels specifically (not every <label> in the sidebar -
-       that was too broad and clobbered other widgets like the select
-       dropdown's option list). */
     [data-testid="stSidebar"] [role="radiogroup"] label {{
-        background: transparent !important;
+        background: transparent !important; padding: 2px 0;
+    }}
+    [data-testid="stSidebar"] [data-testid="stRadio"] {{
+        background: {SB_CARD}; border: 1px solid {SB_BORDER};
+        border-radius: 10px; padding: 10px 12px 4px 12px;
     }}
 
+    /* ---- st.success / st.info / st.warning / st.error in the sidebar ---- */
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"] {{
+        border-radius: 10px !important;
+        background: {SB_CARD} !important;
+        border: 1px solid {SB_BORDER} !important;
+        padding: 0.75rem 0.95rem !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) {{
+        border-left: 3px solid #2FBF71 !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) {{
+        border-left: 3px solid #4E9BFF !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) {{
+        border-left: 3px solid {ACCENT} !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) {{
+        border-left: 3px solid #F0685C !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stAlertContentSuccess"],
+    [data-testid="stSidebar"] [data-testid="stAlertContentSuccess"] *,
+    [data-testid="stSidebar"] [data-testid="stAlertContentInfo"],
+    [data-testid="stSidebar"] [data-testid="stAlertContentInfo"] *,
+    [data-testid="stSidebar"] [data-testid="stAlertContentWarning"],
+    [data-testid="stSidebar"] [data-testid="stAlertContentWarning"] *,
+    [data-testid="stSidebar"] [data-testid="stAlertContentError"],
+    [data-testid="stSidebar"] [data-testid="stAlertContentError"] * {{
+        color: {SB_TEXT} !important; opacity: 1 !important;
+    }}
+
+    /* File uploader helper text ("Drag and drop..." / "200MB per file...") */
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"],
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] * {{
+        color: #DCE6F0 !important; opacity: 1 !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
+        background: {SB_CARD} !important;
+        border: 1.5px dashed rgba(255,255,255,0.22) !important;
+        border-radius: 12px !important;
+        transition: border-color .15s ease;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {{
+        border-color: {ACCENT} !important;
+    }}
+
+    /* Selectbox / text input controls sitting on the dark sidebar */
+    [data-testid="stSidebar"] [data-baseweb="select"] > div,
+    [data-testid="stSidebar"] [data-testid="stTextInput"] input {{
+        background: {SB_CARD} !important;
+        border: 1px solid {SB_BORDER} !important;
+        border-radius: 8px !important;
+    }}
     /* Selectbox: closed control sits on the dark sidebar, so its text needs
        to be light. The open dropdown menu is rendered by Streamlit in a
        white popover, so its option text needs to stay dark - regardless of
        our sidebar-wide light-text rule (the popover isn't a descendant of
        stSidebar in the DOM, but we pin it explicitly to be safe). */
     [data-testid="stSidebar"] [data-baseweb="select"] * {{
-        color: #F3F6FA !important;
+        color: {SB_TEXT} !important;
     }}
     [data-baseweb="popover"] [data-baseweb="menu"],
     [data-baseweb="popover"] ul[role="listbox"] {{
@@ -124,16 +206,29 @@ st.markdown(
         background: #EEF2F7 !important;
     }}
 
+    /* Sidebar expanders: dark card, light text */
+    [data-testid="stSidebar"] div[data-testid="stExpander"] {{
+        background: {SB_CARD} !important;
+        border: 1px solid {SB_BORDER} !important;
+        border-radius: 10px !important;
+        overflow: hidden;
+    }}
+    [data-testid="stSidebar"] div[data-testid="stExpander"] * {{ color: {SB_TEXT} !important; }}
+    [data-testid="stSidebar"] details summary {{ padding: 4px 2px; transition: background .15s ease; }}
+    [data-testid="stSidebar"] details summary:hover {{ background: rgba(255,255,255,0.04); }}
+    [data-testid="stSidebar"] details summary p {{ color: {SB_TEXT} !important; font-weight: 600; }}
+
     /* File uploader's own "Browse files" button uses Streamlit's
        stBaseButton-secondary component - scoped to stFileUploader so it
        doesn't collide with st.button (also "secondary" by default, see
        below). */
     [data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] {{
-        background: #33455A !important;
+        background: #2B3B4F !important;
         border: 1px solid rgba(255,255,255,0.25) !important;
+        border-radius: 7px !important;
     }}
     [data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] * {{
-        color: #F3F6FA !important;
+        color: {SB_TEXT} !important;
     }}
     /* st.button() defaults to type="secondary" unless type="primary" is
        passed, so both share the stBaseButton-secondary testid. Scope to
@@ -141,94 +236,146 @@ st.markdown(
        regardless of which `type` was used. */
     [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-secondary"],
     [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-primary"] {{
-        background: {PRIMARY} !important;
-        border: none !important;
+        background: linear-gradient(135deg, {PRIMARY} 0%, #16649C 100%) !important;
+        border: none !important; border-radius: 9px !important;
+        box-shadow: 0 4px 14px rgba(15,76,129,0.35);
+        transition: transform .12s ease, box-shadow .12s ease;
+        font-weight: 700 !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-secondary"]:hover,
+    [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-primary"]:hover {{
+        transform: translateY(-1px); box-shadow: 0 6px 18px rgba(15,76,129,0.45);
     }}
     [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-secondary"] *,
     [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-primary"] * {{
         color: #FFFFFF !important;
     }}
+    [data-testid="stSidebar"] [data-testid="stButton"] button:disabled {{
+        background: #29384A !important; box-shadow: none !important; opacity: .5 !important;
+    }}
 
+    /* ============================================================ */
+    /* HEADER BANNER                                                  */
+    /* ============================================================ */
     .bifm-header {{
-        display:flex; align-items:center; gap:14px;
-        padding: 18px 26px; margin-bottom: 8px;
-        background: linear-gradient(120deg, {PRIMARY} 0%, #133E66 100%);
-        border-radius: 14px; color: white;
-        box-shadow: 0 6px 18px rgba(15,76,129,0.25);
+        position: relative; overflow: hidden;
+        display:flex; align-items:center; gap:16px;
+        padding: 22px 28px; margin-bottom: 18px;
+        background: linear-gradient(120deg, {PRIMARY} 0%, #0B3057 100%);
+        border-radius: 16px; color: white;
+        box-shadow: 0 10px 26px rgba(15,76,129,0.28);
     }}
-    .bifm-header h1 {{ font-size: 1.45rem; margin:0; font-weight:700; letter-spacing:.2px; }}
-    .bifm-header p {{ margin:0; color:#D7E4F2; font-size:0.85rem; }}
+    .bifm-header::after {{
+        content: ""; position: absolute; inset: 0;
+        background: radial-gradient(420px 200px at 92% 0%, rgba(201,162,75,0.22) 0%, rgba(201,162,75,0) 70%);
+        pointer-events: none;
+    }}
+    .bifm-header .bifm-icon {{
+        display:flex; align-items:center; justify-content:center;
+        width: 46px; height: 46px; border-radius: 12px; font-size: 1.5rem; flex-shrink: 0;
+        background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22);
+    }}
+    .bifm-header h1 {{ font-size: 1.5rem; margin:0; font-weight:800; letter-spacing:.2px; }}
+    .bifm-header p {{ margin:3px 0 0 0; color:#CFE0F2; font-size:0.86rem; }}
     .bifm-badge {{
-        background: rgba(255,255,255,0.14); color:#fff; font-size:0.72rem;
-        padding: 3px 10px; border-radius:999px; border:1px solid rgba(255,255,255,0.25);
-        margin-left:auto; white-space:nowrap;
+        background: rgba(255,255,255,0.14); color:#fff; font-size:0.72rem; font-weight:700;
+        padding: 5px 12px; border-radius:999px; border:1px solid rgba(255,255,255,0.28);
+        margin-left:auto; white-space:nowrap; letter-spacing:.03em; z-index: 1;
     }}
 
+    /* ============================================================ */
+    /* METRIC CARDS                                                   */
+    /* ============================================================ */
     .metric-card {{
-        background:{BG_CARD}; border-radius:14px; padding:16px 18px;
-        border:1px solid #E3E8EE; box-shadow:0 2px 8px rgba(15,23,42,0.04);
+        position: relative; overflow: hidden;
+        background:{BG_CARD}; border-radius:14px; padding:16px 18px 16px 20px;
+        border:1px solid {BORDER}; box-shadow:0 2px 10px rgba(15,23,42,0.05);
+        transition: transform .12s ease, box-shadow .12s ease;
     }}
-    .metric-card .label {{ color:{MUTED}; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }}
-    .metric-card .value {{ color:{INK}; font-size:1.9rem; font-weight:700; line-height:1.2; }}
+    .metric-card:hover {{ transform: translateY(-2px); box-shadow: 0 8px 20px rgba(15,23,42,0.09); }}
+    .metric-card::before {{
+        content:""; position:absolute; left:0; top:0; bottom:0; width:4px;
+        background: currentColor; opacity:.6;
+    }}
+    .metric-card .label {{ color:{MUTED}; font-size:0.76rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }}
+    .metric-card .value {{ color:{INK}; font-size:1.9rem; font-weight:800; line-height:1.25; margin-top:2px; }}
 
+    /* ============================================================ */
+    /* STATUS CHIPS                                                   */
+    /* ============================================================ */
     .status-chip {{
-        display:inline-block; padding:3px 11px; border-radius:999px;
-        font-size:0.74rem; font-weight:700; letter-spacing:.02em;
+        display:inline-flex; align-items:center; gap:6px;
+        padding:4px 12px; border-radius:999px;
+        font-size:0.72rem; font-weight:800; letter-spacing:.03em;
     }}
+    .status-chip::before {{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }}
     .chip-pass    {{ background:#E4F6EC; color:{PASS_C}; }}
     .chip-warning {{ background:#FCF1DD; color:{WARN_C}; }}
     .chip-fail    {{ background:#FBE6E4; color:{FAIL_C}; }}
     .chip-error   {{ background:#FBE6E4; color:{FAIL_C}; }}
 
-    .section-title {{ font-size:1.02rem; font-weight:700; color:{INK}; margin: 6px 0 10px 0; }}
-    div[data-testid="stExpander"] {{ background:{BG_CARD}; border-radius:12px; border:1px solid #E3E8EE; }}
+    /* ============================================================ */
+    /* SECTION TITLES & CONTENT CARDS                                 */
+    /* ============================================================ */
+    .section-title {{
+        font-size:1.02rem; font-weight:800; color:{INK}; margin: 22px 0 12px 0;
+        padding-left: 12px; border-left: 4px solid {PRIMARY};
+        display:flex; align-items:center; gap:8px;
+    }}
+    div[data-testid="stExpander"] {{
+        background:{BG_CARD}; border-radius:12px; border:1px solid {BORDER};
+        box-shadow: 0 1px 6px rgba(15,23,42,0.04); overflow: hidden;
+    }}
+    div[data-testid="stExpander"] summary {{ padding: 4px 2px; transition: background .15s ease; }}
+    div[data-testid="stExpander"] summary:hover {{ background: #F7F9FC; }}
 
-    /* Sidebar expanders: dark background, light text */
-    [data-testid="stSidebar"] div[data-testid="stExpander"] {{
-        background: #263342 !important;
-        border-color: rgba(255,255,255,0.12) !important;
-    }}
-    [data-testid="stSidebar"] div[data-testid="stExpander"] * {{
-        color: #E7ECF2 !important;
-    }}
-    [data-testid="stSidebar"] details summary p {{
-        color: #E7ECF2 !important;
-        font-weight: 600;
-    }}
     .stButton>button,
     [data-testid="stButton"] [data-testid="stBaseButton-primary"],
     [data-testid="stButton"] [data-testid="stBaseButton-secondary"] {{
-        background:{PRIMARY} !important; color:white !important; border:none !important; border-radius:8px;
-        font-weight:600; padding:0.55rem 1.1rem;
+        background: linear-gradient(135deg, {PRIMARY} 0%, #16649C 100%) !important;
+        color:white !important; border:none !important; border-radius:9px;
+        font-weight:700; padding:0.6rem 1.2rem;
+        box-shadow: 0 4px 14px rgba(15,76,129,0.25);
+        transition: transform .12s ease, box-shadow .12s ease;
     }}
+    .stButton>button:hover {{ transform: translateY(-1px); box-shadow: 0 6px 18px rgba(15,76,129,0.35); }}
     .stButton>button *,
     [data-testid="stButton"] [data-testid="stBaseButton-primary"] *,
     [data-testid="stButton"] [data-testid="stBaseButton-secondary"] * {{ color: white !important; }}
-    .stButton>button:hover {{ background:#0C3D69; color:white; }}
     .stDownloadButton>button,
     [data-testid="stDownloadButton"] [data-testid="stBaseButton-primary"],
     [data-testid="stDownloadButton"] [data-testid="stBaseButton-secondary"] {{
-        background:{ACCENT} !important; color:#2B2305 !important; border:none; border-radius:8px; font-weight:700;
+        background: linear-gradient(135deg, {ACCENT} 0%, #B58B32 100%) !important;
+        color:#2B2305 !important; border:none; border-radius:9px; font-weight:800;
+        box-shadow: 0 4px 14px rgba(201,162,75,0.3);
+        transition: transform .12s ease, box-shadow .12s ease;
     }}
+    .stDownloadButton>button:hover {{ transform: translateY(-1px); box-shadow: 0 6px 18px rgba(201,162,75,0.4); }}
     [data-testid="stDownloadButton"] [data-testid="stBaseButton-primary"] *,
     [data-testid="stDownloadButton"] [data-testid="stBaseButton-secondary"] * {{ color:#2B2305 !important; }}
-    .log-line {{ font-family: 'SF Mono', Consolas, monospace; font-size:0.8rem; color:{MUTED}; padding:2px 0; }}
+
+    .log-console {{
+        background: #101823; border: 1px solid #1F2C3B; border-radius: 12px;
+        padding: 14px 16px; max-height: 320px; overflow-y: auto;
+    }}
+    .log-line {{ font-family: 'SF Mono', Consolas, monospace; font-size:0.8rem; color:#9FB0C3; padding:2px 0; }}
     .derived-tag {{
-        display:inline-block; background:#EEF2F7; color:{MUTED}; font-size:0.7rem;
-        padding:1px 7px; border-radius:999px; margin-left:4px;
+        display:inline-block; background:#EEF2F7; color:{MUTED}; font-size:0.7rem; font-weight:600;
+        padding:2px 9px; border-radius:999px; margin-left:6px; vertical-align: middle;
     }}
     .kv-item {{
-        background:#F7F9FC; border:1px solid #E3E8EE; border-radius:10px;
-        padding:8px 12px; margin-bottom:10px;
+        background:#F7F9FC; border:1px solid {BORDER}; border-radius:10px;
+        padding:10px 13px; margin-bottom:10px; transition: border-color .15s ease;
     }}
+    .kv-item:hover {{ border-color: #C7D3E0; }}
     .kv-label {{
-        color:{MUTED}; font-size:0.68rem; font-weight:700; text-transform:uppercase;
-        letter-spacing:.03em; margin-bottom:2px;
+        color:{MUTED}; font-size:0.67rem; font-weight:700; text-transform:uppercase;
+        letter-spacing:.04em; margin-bottom:3px;
     }}
-    .kv-value {{ color:{INK}; font-size:0.92rem; font-weight:600; word-break:break-word; }}
+    .kv-value {{ color:{INK}; font-size:0.93rem; font-weight:600; word-break:break-word; }}
     .profile-card {{
-        background:{BG_CARD}; border-radius:14px; padding:18px 20px 6px 20px;
-        border:1px solid #E3E8EE; box-shadow:0 2px 8px rgba(15,23,42,0.04); margin-bottom:14px;
+        background:{BG_CARD}; border-radius:14px; padding:20px 22px 8px 22px;
+        border:1px solid {BORDER}; box-shadow:0 2px 10px rgba(15,23,42,0.05); margin-bottom:16px;
     }}
 
     /* Our cards/expanders always sit on a light background (BG_CARD or
@@ -250,11 +397,37 @@ st.markdown(
     .metric-card p, .profile-card p, .profile-card li {{
         color: {INK} !important;
     }}
+
+    /* st.success / st.info / st.warning / st.error in the main (light)
+       content area - a consistent card treatment with a colored left
+       accent instead of Streamlit's flat default look. */
+    .stApp [data-testid="stAlertContainer"] {{
+        border-radius: 10px !important; border: 1px solid {BORDER} !important;
+    }}
+    .stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) {{
+        background:#EFFBF4 !important; border-left: 3px solid {PASS_C} !important;
+    }}
+    .stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) {{
+        background:#EEF5FF !important; border-left: 3px solid #2563EB !important;
+    }}
+    .stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) {{
+        background:#FFF8EC !important; border-left: 3px solid {WARN_C} !important;
+    }}
+    .stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) {{
+        background:#FDEEEC !important; border-left: 3px solid {FAIL_C} !important;
+    }}
+
     /* st.code / st.json blocks: force a readable light-on-dark pairing
        explicitly rather than relying on the ambient theme. */
     .stApp [data-testid="stCodeBlock"] pre,
     .stApp [data-testid="stCodeBlock"] code {{
-        background: #1B2733 !important; color: #E7ECF2 !important;
+        background: #101823 !important; color: #E7ECF2 !important; border-radius: 10px !important;
+    }}
+
+    /* Dataframes get the same card treatment as everything else. */
+    .stApp [data-testid="stDataFrame"] {{
+        border: 1px solid {BORDER}; border-radius: 12px; overflow: hidden;
+        box-shadow: 0 1px 6px rgba(15,23,42,0.04);
     }}
     </style>
     """,
@@ -422,7 +595,7 @@ if _logo_path.exists():
 st.markdown(
     """
     <div class="bifm-header">
-        <div style="font-size:1.8rem;">📄</div>
+        <div class="bifm-icon">📄</div>
         <div>
             <h1>BIFM Unit Trusts — Document Processing</h1>
             <p>Classification · Field Extraction · Validation · Filing · Excel Report — POC</p>
@@ -477,8 +650,9 @@ if run_clicked:
                 except _queue.Empty:
                     break
             if log_lines:
+                lines_html = "\n".join(f'<div class="log-line">▸ {l}</div>' for l in log_lines[-200:])
                 log_box.markdown(
-                    "\n".join(f'<div class="log-line">▸ {l}</div>' for l in log_lines[-200:]),
+                    f'<div class="log-console">{lines_html}</div>',
                     unsafe_allow_html=True,
                 )
 
