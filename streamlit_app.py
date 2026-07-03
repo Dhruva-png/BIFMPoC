@@ -60,8 +60,26 @@ st.markdown(
     <style>
     .stApp {{ background: linear-gradient(180deg, #F4F7FB 0%, #EEF2F7 100%); }}
     [data-testid="stSidebar"] {{ background: {INK}; }}
-    [data-testid="stSidebar"] * {{ color: #E7ECF2 !important; }}
+    [data-testid="stSidebar"] * {{ color: #F3F6FA !important; opacity: 1 !important; }}
     [data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,0.15); }}
+    /* Streamlit renders st.caption text at reduced opacity by default, which
+       combined with the dark sidebar background made it very low-contrast.
+       Force full opacity and a legible light gray. */
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] * {{
+        color: #C9D4E0 !important; opacity: 1 !important;
+    }}
+    /* st.info / st.warning / st.error boxes inside the sidebar */
+    [data-testid="stSidebar"] [data-testid="stAlertContentInfo"],
+    [data-testid="stSidebar"] [data-testid="stAlertContentInfo"] * {{
+        color: #E7ECF2 !important; opacity: 1 !important;
+    }}
+    /* File uploader helper text ("Drag and drop..." / "200MB per file...") */
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"],
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] * {{
+        color: #E7ECF2 !important; opacity: 1 !important;
+    }}
+    [data-testid="stSidebar"] small {{ color: #C9D4E0 !important; opacity: 1 !important; }}
 
     .bifm-header {{
         display:flex; align-items:center; gap:14px;
