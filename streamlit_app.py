@@ -90,11 +90,63 @@ st.markdown(
     [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] *,
     [data-testid="stSidebar"] [data-testid="stHeadingWithActionElements"],
     [data-testid="stSidebar"] [role="radiogroup"],
-    [data-testid="stSidebar"] [role="radiogroup"] *,
-    [data-testid="stSidebar"] label {{
+    [data-testid="stSidebar"] [role="radiogroup"] * {{
         background: transparent !important;
         background-color: transparent !important;
         box-shadow: none !important;
+    }}
+    /* Radio option labels specifically (not every <label> in the sidebar -
+       that was too broad and clobbered other widgets like the select
+       dropdown's option list). */
+    [data-testid="stSidebar"] [role="radiogroup"] label {{
+        background: transparent !important;
+    }}
+
+    /* Selectbox: closed control sits on the dark sidebar, so its text needs
+       to be light. The open dropdown menu is rendered by Streamlit in a
+       white popover, so its option text needs to stay dark - regardless of
+       our sidebar-wide light-text rule (the popover isn't a descendant of
+       stSidebar in the DOM, but we pin it explicitly to be safe). */
+    [data-testid="stSidebar"] [data-baseweb="select"] * {{
+        color: #F3F6FA !important;
+    }}
+    [data-baseweb="popover"] [data-baseweb="menu"],
+    [data-baseweb="popover"] ul[role="listbox"] {{
+        background: #FFFFFF !important;
+    }}
+    [data-baseweb="popover"] [role="option"],
+    [data-baseweb="popover"] [role="option"] * {{
+        color: {INK} !important;
+        background: #FFFFFF !important;
+    }}
+    [data-baseweb="popover"] [role="option"]:hover,
+    [data-baseweb="popover"] [role="option"][aria-selected="true"] {{
+        background: #EEF2F7 !important;
+    }}
+
+    /* File uploader's own "Browse files" button uses Streamlit's
+       stBaseButton-secondary component - scoped to stFileUploader so it
+       doesn't collide with st.button (also "secondary" by default, see
+       below). */
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] {{
+        background: #33455A !important;
+        border: 1px solid rgba(255,255,255,0.25) !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] * {{
+        color: #F3F6FA !important;
+    }}
+    /* st.button() defaults to type="secondary" unless type="primary" is
+       passed, so both share the stBaseButton-secondary testid. Scope to
+       stButton so "Run Batch" gets the intended primary-blue treatment
+       regardless of which `type` was used. */
+    [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-secondary"],
+    [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-primary"] {{
+        background: {PRIMARY} !important;
+        border: none !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-secondary"] *,
+    [data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stBaseButton-primary"] * {{
+        color: #FFFFFF !important;
     }}
 
     .bifm-header {{
@@ -143,14 +195,23 @@ st.markdown(
         color: #E7ECF2 !important;
         font-weight: 600;
     }}
-    .stButton>button {{
-        background:{PRIMARY}; color:white; border:none; border-radius:8px;
+    .stButton>button,
+    [data-testid="stButton"] [data-testid="stBaseButton-primary"],
+    [data-testid="stButton"] [data-testid="stBaseButton-secondary"] {{
+        background:{PRIMARY} !important; color:white !important; border:none !important; border-radius:8px;
         font-weight:600; padding:0.55rem 1.1rem;
     }}
+    .stButton>button *,
+    [data-testid="stButton"] [data-testid="stBaseButton-primary"] *,
+    [data-testid="stButton"] [data-testid="stBaseButton-secondary"] * {{ color: white !important; }}
     .stButton>button:hover {{ background:#0C3D69; color:white; }}
-    .stDownloadButton>button {{
-        background:{ACCENT}; color:#2B2305; border:none; border-radius:8px; font-weight:700;
+    .stDownloadButton>button,
+    [data-testid="stDownloadButton"] [data-testid="stBaseButton-primary"],
+    [data-testid="stDownloadButton"] [data-testid="stBaseButton-secondary"] {{
+        background:{ACCENT} !important; color:#2B2305 !important; border:none; border-radius:8px; font-weight:700;
     }}
+    [data-testid="stDownloadButton"] [data-testid="stBaseButton-primary"] *,
+    [data-testid="stDownloadButton"] [data-testid="stBaseButton-secondary"] * {{ color:#2B2305 !important; }}
     .log-line {{ font-family: 'SF Mono', Consolas, monospace; font-size:0.8rem; color:{MUTED}; padding:2px 0; }}
     .derived-tag {{
         display:inline-block; background:#EEF2F7; color:{MUTED}; font-size:0.7rem;
