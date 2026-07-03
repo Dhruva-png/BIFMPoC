@@ -171,8 +171,19 @@ def _eval_numeric_length(extraction: ExtractionResult, field_id: str, rule: dict
     if not digits:
         return FieldValidationResult(field_id, value, ValidationStatus.FAIL, "Not numeric")
 
-    # Support either a single "expected_length" (legacy) or a list of
-    # "expected_lengths" (e.g. Botswana contact numbers valid at 8 or 9 digits).
+    # Support a single "expected_length" (legacy), a list of "expected_lengths"
+    # (e.g. Botswana contact numbers valid at 8 or 9 digits), or an
+    # "expected_range" [min, max] (e.g. fund numbers valid anywhere from 7
+    # to 13 digits).
+    expected_range = logic.get("expected_range")
+    if expected_range is not None:
+        lo, hi = expected_range
+        if lo <= len(digits) <= hi:
+            return FieldValidationResult(field_id, value, ValidationStatus.PASS)
+        status = ValidationStatus(logic["status_if_mismatch"])
+        msg = f"Expected {lo}-{hi} digits, got {len(digits)}"
+        return FieldValidationResult(field_id, value, status, msg)
+
     allowed_lengths = logic.get("expected_lengths")
     if allowed_lengths is None:
         allowed_lengths = [logic["expected_length"]]

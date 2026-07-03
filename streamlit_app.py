@@ -33,6 +33,7 @@ from app.services.consolidator import SHAREABLE_FIELDS, build_person_profile
 from app.services.report_generator import ExcelReportBuilder
 from app.utils.config_loader import get_fields_for_form, load_form_types
 from app.utils.confidence import needs_recheck
+from app.utils.field_export import fields_as_list_of_lists
 from config.settings import settings
 
 # --------------------------------------------------------------------------- #
@@ -647,3 +648,17 @@ else:
                     ]
                     st.caption("**All Validation Checks**")
                     st.dataframe(pd.DataFrame(all_checks), width="stretch", hide_index=True)
+
+            # ---- Plain [['field', value], ...] export, per the requested
+            # format. Built from EVERY field on this document's extraction
+            # (both directly-extracted and system-derived), and stashed in
+            # st.session_state so it's a real Python variable available for
+            # the rest of the session, not just printed once and discarded.
+            field_list = fields_as_list_of_lists(o.extraction) if o.extraction else []
+            st.session_state.setdefault("field_lists", {})[o.filename] = field_list
+            with st.expander("Show as [['field', value], ...] list", expanded=False):
+                st.code(repr(field_list), language="python")
+                st.caption(
+                    f"Also available in `st.session_state['field_lists'][{o.filename!r}]` "
+                    "for the rest of this session."
+                )

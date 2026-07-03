@@ -169,3 +169,19 @@ def test_mandatory_field_missing_fails():
     extraction = _make_extraction(email=None)
     report = validate(extraction)
     assert report.overall_status == ValidationStatus.FAIL
+
+
+def test_fund_number_accepts_7_to_13_digits():
+    for digits in ("1674982", "38344272", "9876543210", "1234567890123"):
+        extraction = _make_extraction(form_code="DIS", fund_number=digits)
+        report = validate(extraction)
+        result = next(r for r in report.results if r.field_id == "fund_number")
+        assert result.status == ValidationStatus.PASS, f"{digits} ({len(digits)} digits) should pass"
+
+
+def test_fund_number_outside_7_to_13_digits_warns():
+    for digits in ("123456", "12345678901234"):
+        extraction = _make_extraction(form_code="DIS", fund_number=digits)
+        report = validate(extraction)
+        result = next(r for r in report.results if r.field_id == "fund_number")
+        assert result.status == ValidationStatus.WARNING, f"{digits} ({len(digits)} digits) should warn"

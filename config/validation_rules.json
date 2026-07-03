@@ -108,7 +108,7 @@
       "id": "fund_number_format",
       "applies_to": "fund_number",
       "description": "BIFM fund/entity numbers can range from 7 to 13 digits, extracted from the handwritten row of the Core Fund Range table (see fund_category_present rule for the related fund_name check). Any length in that range is valid - no warning is raised. Only a non-numeric or clearly implausible value is flagged.",
-      "logic": {"type": "numeric_length", "expected_lengths": [7, 8, 9, 10, 11, 12, 13], "status_if_mismatch": "WARNING"}
+      "logic": {"type": "numeric_length", "expected_range": [7, 13], "status_if_mismatch": "WARNING"}
     },
     {
       "id": "fund_category_present",
