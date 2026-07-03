@@ -589,3 +589,92 @@
 2026-07-03 04:33:09 | INFO     | app.validation.engine | Validated test.pdf (DIS) → FAIL (8 checks)
 2026-07-03 04:33:09 | INFO     | app.validation.engine | Validated test.pdf (DIS) → FAIL (8 checks)
 2026-07-03 04:33:09 | INFO     | app.validation.engine | Validated test.pdf (DIS) → FAIL (8 checks)
+2026-07-03 12:13:00 | INFO     | app.core.pipeline | Rendering pages for KYC - Nnelo Taunyane.pdf...
+2026-07-03 12:13:00 | INFO     | app.core.pipeline | Rendering pages for GSGF - NNELO TAUNYANE.pdf...
+2026-07-03 12:13:00 | INFO     | app.ocr.pdf_utils | Rendering KYC - Nnelo Taunyane.pdf at 220 DPI via pypdfium2
+2026-07-03 12:13:00 | INFO     | app.ocr.pdf_utils | Rendering GSGF - NNELO TAUNYANE.pdf at 220 DPI via pypdfium2
+2026-07-03 12:13:01 | INFO     | app.ocr.pdf_utils | Rendered 2 page(s) from KYC - Nnelo Taunyane.pdf
+2026-07-03 12:13:01 | INFO     | app.core.pipeline | Classifying KYC - Nnelo Taunyane.pdf...
+2026-07-03 12:13:03 | INFO     | app.services.classifier | Classified KYC - Nnelo Taunyane as KYC (98% confidence)
+2026-07-03 12:13:03 | INFO     | app.core.pipeline | KYC - Nnelo Taunyane.pdf: classified as 'KYC (Know Your Customer)' (98% confidence)
+2026-07-03 12:13:03 | INFO     | app.core.pipeline | Extracting fields from KYC - Nnelo Taunyane.pdf (KYC)...
+2026-07-03 12:13:03 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from GSGF - NNELO TAUNYANE.pdf
+2026-07-03 12:13:03 | INFO     | app.core.pipeline | Classifying GSGF - NNELO TAUNYANE.pdf...
+2026-07-03 12:13:06 | INFO     | app.services.classifier | Classified GSGF - NNELO TAUNYANE as DIS_GSG (98% confidence)
+2026-07-03 12:13:06 | INFO     | app.core.pipeline | GSGF - NNELO TAUNYANE.pdf: classified as 'Disinvestment Form (GSG)' (98% confidence)
+2026-07-03 12:13:06 | INFO     | app.core.pipeline | Extracting fields from GSGF - NNELO TAUNYANE.pdf (DIS_GSG)...
+2026-07-03 12:13:07 | INFO     | app.services.extractor | Extracted 28 field(s) from KYC - Nnelo Taunyane (KYC)
+2026-07-03 12:13:07 | INFO     | app.core.pipeline | Rendering pages for DIS - NNELO.pdf...
+2026-07-03 12:13:07 | INFO     | app.ocr.pdf_utils | Rendering DIS - NNELO.pdf at 220 DPI via pypdfium2
+2026-07-03 12:13:10 | INFO     | app.ocr.pdf_utils | Rendered 6 page(s) from DIS - NNELO.pdf
+2026-07-03 12:13:10 | INFO     | app.core.pipeline | Classifying DIS - NNELO.pdf...
+2026-07-03 12:13:11 | INFO     | app.services.extractor | Extracted 18 field(s) from GSGF - NNELO TAUNYANE (DIS_GSG)
+2026-07-03 12:13:11 | INFO     | app.core.pipeline | Rendering pages for DEBIT - NNELO.pdf...
+2026-07-03 12:13:11 | INFO     | app.ocr.pdf_utils | Rendering DEBIT - NNELO.pdf at 220 DPI via pypdfium2
+2026-07-03 12:13:12 | INFO     | app.services.classifier | Classified DIS - NNELO as DIS (98% confidence)
+2026-07-03 12:13:12 | INFO     | app.core.pipeline | DIS - NNELO.pdf: classified as 'Disinvestment Form (Standard)' (98% confidence)
+2026-07-03 12:13:12 | INFO     | app.core.pipeline | Extracting fields from DIS - NNELO.pdf (DIS)...
+2026-07-03 12:13:13 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/5). Backing off 7.0s. If this happens often, slow down BIFM_MAX_WORKERS or lower GROQ_TPM_LIMIT.
+2026-07-03 12:13:15 | INFO     | app.ocr.pdf_utils | Rendered 8 page(s) from DEBIT - NNELO.pdf
+2026-07-03 12:13:15 | INFO     | app.core.pipeline | Classifying DEBIT - NNELO.pdf...
+2026-07-03 12:13:16 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/5). Backing off 3.0s. If this happens often, slow down BIFM_MAX_WORKERS or lower GROQ_TPM_LIMIT.
+2026-07-03 12:14:03 | INFO     | app.services.classifier | Classified DEBIT - NNELO as DEBIT (98% confidence)
+2026-07-03 12:14:03 | INFO     | app.core.pipeline | DEBIT - NNELO.pdf: classified as 'Debit Order Form' (98% confidence)
+2026-07-03 12:14:03 | INFO     | app.core.pipeline | Extracting fields from DEBIT - NNELO.pdf (DEBIT)...
+2026-07-03 12:14:13 | INFO     | app.services.extractor | Extracted 16 field(s) from DEBIT - NNELO (DEBIT)
+2026-07-03 12:14:13 | INFO     | app.core.pipeline | Rendering pages for ADD - NNELO.pdf...
+2026-07-03 12:14:13 | INFO     | app.ocr.pdf_utils | Rendering ADD - NNELO.pdf at 220 DPI via pypdfium2
+2026-07-03 12:14:13 | INFO     | app.services.extractor | Extracted 20 field(s) from DIS - NNELO (DIS)
+2026-07-03 12:14:19 | INFO     | app.ocr.pdf_utils | Rendered 10 page(s) from ADD - NNELO.pdf
+2026-07-03 12:14:19 | INFO     | app.core.pipeline | Classifying ADD - NNELO.pdf...
+2026-07-03 12:14:21 | INFO     | app.services.classifier | Classified ADD - NNELO as ADD (98% confidence)
+2026-07-03 12:14:21 | INFO     | app.core.pipeline | ADD - NNELO.pdf: classified as 'Additional Investment Form' (98% confidence)
+2026-07-03 12:14:21 | INFO     | app.core.pipeline | Extracting fields from ADD - NNELO.pdf (ADD)...
+2026-07-03 12:14:23 | WARNING  | app.llm.groq_client | Groq rate-limited (attempt 1/5). Backing off 7.0s. If this happens often, slow down BIFM_MAX_WORKERS or lower GROQ_TPM_LIMIT.
+2026-07-03 12:15:08 | INFO     | app.services.extractor | Extracted 14 field(s) from ADD - NNELO (ADD)
+2026-07-03 12:15:08 | WARNING  | app.services.consolidator | Field 'entity_number' disagreed across batch - majority value '381234567' from KYC - Nnelo Taunyane used; outlier(s) on: GSGF - NNELO TAUNYANE
+2026-07-03 12:15:08 | WARNING  | app.services.consolidator | Field 'id_number' has NO majority across batch (2-way tie, 4 docs total) - showing best guess '11102222' from KYC - Nnelo Taunyane but NOT backfilling it elsewhere
+2026-07-03 12:15:08 | WARNING  | app.services.consolidator | Field 'email' disagreed across batch - majority value 'nnelo@bifm.co.bw' from KYC - Nnelo Taunyane used; outlier(s) on: ADD - NNELO, DEBIT - NNELO
+2026-07-03 12:15:08 | WARNING  | app.services.consolidator | Field 'account_number' has NO majority across batch (3-way tie, 3 docs total) - showing best guess '9060001231234' from KYC - Nnelo Taunyane but NOT backfilling it elsewhere
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Consolidating 5 document(s) in this batch — 17 person-level field(s) available to backfill.
+2026-07-03 12:15:08 | INFO     | app.services.consolidator | Backfilled 1 field(s) on GSGF - NNELO TAUNYANE (DIS_GSG) from other documents in this batch: bank_account_name
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | GSGF - NNELO TAUNYANE: backfilled bank_account_name from other documents in this batch
+2026-07-03 12:15:08 | INFO     | app.services.consolidator | Backfilled 5 field(s) on DEBIT - NNELO (DEBIT) from other documents in this batch: bank_account_name, bank_name, branch_name, branch_code, account_type_banking
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | DEBIT - NNELO: backfilled bank_account_name, bank_name, branch_name, branch_code, account_type_banking from other documents in this batch
+2026-07-03 12:15:08 | INFO     | app.services.consolidator | Backfilled 5 field(s) on ADD - NNELO (ADD) from other documents in this batch: bank_account_name, bank_name, branch_name, branch_code, account_type_banking
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | ADD - NNELO: backfilled bank_account_name, bank_name, branch_name, branch_code, account_type_banking from other documents in this batch
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Validating KYC - Nnelo Taunyane.pdf...
+2026-07-03 12:15:08 | INFO     | app.validation.engine | Validated KYC - Nnelo Taunyane (KYC) → WARNING (7 checks)
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Filing KYC - Nnelo Taunyane.pdf...
+2026-07-03 12:15:08 | INFO     | app.services.filer | Filed KYC - Nnelo Taunyane.pdf -> 2026\07-July\03\NonMoneyMarket\Captured\KYC_381234567_TAUNYANE_20260703_1.pdf
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | KYC - Nnelo Taunyane.pdf: complete → WARNING
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Validating GSGF - NNELO TAUNYANE.pdf...
+2026-07-03 12:15:08 | INFO     | app.validation.engine | Validated GSGF - NNELO TAUNYANE (DIS_GSG) → PASS (5 checks)
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Filing GSGF - NNELO TAUNYANE.pdf...
+2026-07-03 12:15:08 | INFO     | app.services.filer | Filed GSGF - NNELO TAUNYANE.pdf -> 2026\07-July\03\NonMoneyMarket\Captured\DIS_GSG_381234321_TAUNYANE_20260703_1.pdf
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | GSGF - NNELO TAUNYANE.pdf: complete → PASS
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Validating DIS - NNELO.pdf...
+2026-07-03 12:15:08 | INFO     | app.validation.engine | Validated DIS - NNELO (DIS) → PASS (6 checks)
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Filing DIS - NNELO.pdf...
+2026-07-03 12:15:08 | INFO     | app.services.filer | Filed DIS - NNELO.pdf -> 2026\07-July\03\MoneyMarket\Captured\DIS_381234567_TAUNYANE_20260703_1.pdf
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | DIS - NNELO.pdf: complete → PASS
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Validating DEBIT - NNELO.pdf...
+2026-07-03 12:15:08 | INFO     | app.validation.engine | Validated DEBIT - NNELO (DEBIT) → PASS (5 checks)
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Filing DEBIT - NNELO.pdf...
+2026-07-03 12:15:08 | INFO     | app.services.filer | Filed DEBIT - NNELO.pdf -> 2026\07-July\03\MoneyMarket\Captured\DEBIT_381234567_TAUNYANE_20260703_1.pdf
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | DEBIT - NNELO.pdf: complete → PASS
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Validating ADD - NNELO.pdf...
+2026-07-03 12:15:08 | INFO     | app.validation.engine | Validated ADD - NNELO (ADD) → PASS (5 checks)
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Filing ADD - NNELO.pdf...
+2026-07-03 12:15:08 | INFO     | app.services.filer | Filed ADD - NNELO.pdf -> 2026\07-July\03\MoneyMarket\Captured\ADD_381234567_TAUNYANE_20260703_1.pdf
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | ADD - NNELO.pdf: complete → PASS
+2026-07-03 12:15:08 | INFO     | app.core.pipeline | Consolidated profile for 'Nnelo Taunyane' added (5 document(s)).
+2026-07-03 12:15:08 | INFO     | app.services.report_generator | Saved consolidated Excel report to C:\Users\dhruv\OneDrive\Documents\GitHub\BIFMPoC\output\BIFM_UT_Processing_Report.xlsx
+2026-07-03 12:15:12 | WARNING  | app.services.consolidator | Field 'entity_number' disagreed across batch - majority value '381234567' from KYC - Nnelo Taunyane used; outlier(s) on: GSGF - NNELO TAUNYANE
+2026-07-03 12:15:12 | WARNING  | app.services.consolidator | Field 'id_number' has NO majority across batch (2-way tie, 4 docs total) - showing best guess '11102222' from KYC - Nnelo Taunyane but NOT backfilling it elsewhere
+2026-07-03 12:15:12 | WARNING  | app.services.consolidator | Field 'email' disagreed across batch - majority value 'nnelo@bifm.co.bw' from KYC - Nnelo Taunyane used; outlier(s) on: ADD - NNELO, DEBIT - NNELO
+2026-07-03 12:15:12 | WARNING  | app.services.consolidator | Field 'account_number' has NO majority across batch (3-way tie, 3 docs total) - showing best guess '9060001231234' from KYC - Nnelo Taunyane but NOT backfilling it elsewhere
+2026-07-03 12:15:55 | WARNING  | app.services.consolidator | Field 'entity_number' disagreed across batch - majority value '381234567' from KYC - Nnelo Taunyane used; outlier(s) on: GSGF - NNELO TAUNYANE
+2026-07-03 12:15:55 | WARNING  | app.services.consolidator | Field 'id_number' has NO majority across batch (2-way tie, 4 docs total) - showing best guess '11102222' from KYC - Nnelo Taunyane but NOT backfilling it elsewhere
+2026-07-03 12:15:55 | WARNING  | app.services.consolidator | Field 'email' disagreed across batch - majority value 'nnelo@bifm.co.bw' from KYC - Nnelo Taunyane used; outlier(s) on: ADD - NNELO, DEBIT - NNELO
+2026-07-03 12:15:55 | WARNING  | app.services.consolidator | Field 'account_number' has NO majority across batch (3-way tie, 3 docs total) - showing best guess '9060001231234' from KYC - Nnelo Taunyane but NOT backfilling it elsewhere

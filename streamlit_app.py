@@ -190,7 +190,13 @@ st.markdown(
        our sidebar-wide light-text rule (the popover isn't a descendant of
        stSidebar in the DOM, but we pin it explicitly to be safe). */
     [data-testid="stSidebar"] [data-baseweb="select"] * {{
-        color: {SB_TEXT} !important;
+        color: #FFFFFF !important;
+    }}
+    [data-testid="stSidebar"] [role="radiogroup"] label p,
+    [data-testid="stSidebar"] [role="radiogroup"] label span,
+    [data-testid="stSidebar"] [data-testid="stTextInput"] input,
+    [data-testid="stSidebar"] [data-testid="stTextInput"] label p {{
+        color: #FFFFFF !important;
     }}
     [data-baseweb="popover"] [data-baseweb="menu"],
     [data-baseweb="popover"] ul[role="listbox"] {{
@@ -521,9 +527,9 @@ with st.sidebar:
         st.caption(f"Vision/text model: **{settings.gemini.vision_model}** (free tier)")
     else:
         if ollama_ok:
-            st.success("Groq API key valid", icon="✅")
+            st.success("Marvel AI running", icon="✅")
         else:
-            st.error("Groq unreachable — missing or invalid GROQ_API_KEY", icon="⚠️")
+            st.error("Marvel AI unreachable — missing or invalid GROQ_API_KEY", icon="⚠️")
             st.caption("Get a free key (no card) at https://console.groq.com/keys and set it as an environment variable.")
         st.caption(f"Vision model: **{settings.groq.vision_model}**  ·  Text model: **{settings.groq.text_model}** (free tier)")
     if not ollama_ok:
@@ -561,7 +567,7 @@ with st.sidebar:
         elif settings.llm_provider == "gemini":
             st.caption("Fix the Gemini API key/quota issue above to enable processing.")
         else:
-            st.caption("Fix the Groq API key issue above to enable processing.")
+            st.caption("Fix the Marvel AI connection issue above to enable processing.")
 
     with st.expander("Form types in scope"):
         for ft in load_form_types()["form_types"]:
