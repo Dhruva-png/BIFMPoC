@@ -29,6 +29,7 @@ import streamlit as st
 from app.core.pipeline import DocumentOutcome, process_batch, process_single_document
 from app.llm.router import check_connection, active_provider
 from app.models.schemas import ValidationStatus
+from app.services import intake
 from app.services.report_generator import ExcelReportBuilder
 from app.utils.config_loader import load_form_types
 from config.settings import settings
@@ -121,6 +122,44 @@ st.markdown(
         color: #E7ECF2 !important;
         font-weight: 600;
     }}
+
+    /* Sidebar form widgets (selectbox, radio, text input, file uploader) —
+       these are BaseWeb components with their own light backgrounds, so the
+       global white text rule above made them unreadable (white-on-white).
+       Give them a dark surface to match the sidebar. */
+    [data-testid="stSidebar"] [data-baseweb="select"] > div,
+    [data-testid="stSidebar"] input[type="text"],
+    [data-testid="stSidebar"] textarea,
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"],
+    [data-testid="stSidebar"] [data-testid="stTextInput"] div {{
+        background: #263342 !important;
+        color: #E7ECF2 !important;
+        border-color: rgba(255,255,255,0.18) !important;
+    }}
+    [data-testid="stSidebar"] [data-baseweb="select"] svg {{
+        fill: #E7ECF2 !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] * {{
+        color: #E7ECF2 !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {{
+        background: {PRIMARY} !important;
+        color: #fff !important;
+        border: none !important;
+    }}
+    /* Dropdown menu that pops out of the selectbox renders in a portal
+       outside the sidebar container, so it isn't dark by default. */
+    div[data-baseweb="popover"] li {{
+        background: #263342 !important;
+        color: #E7ECF2 !important;
+    }}
+    div[data-baseweb="popover"] li:hover {{
+        background: #34465A !important;
+    }}
+    /* Radio button labels in the sidebar */
+    [data-testid="stSidebar"] [data-testid="stRadio"] label {{
+        color: #E7ECF2 !important;
+    }}
     .stButton>button {{
         background:{PRIMARY}; color:white; border:none; border-radius:8px;
         font-weight:600; padding:0.55rem 1.1rem;
@@ -208,21 +247,45 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 📂 Intake")
-    mode = st.radio("Source", ["Upload files", "Use intake folder"], label_visibility="collapsed")
-    channel = st.selectbox(
-        "Submission channel", ["Email", "Walk-in", "Unknown"],
-        help="Tagged at upload per the requirements doc's metadata field. Applied to every "
-             "document in this batch.",
-    )
+    sharepoint_ok = intake.sharepoint_available()
+    gmail_ok = intake.gmail_available()
+    source_options = ["Upload files", "Use intake folder"]
+    source_options.append("SharePoint folder" + ("" if sharepoint_ok else " (not configured)"))
+    source_options.append("Gmail inbox" + ("" if gmail_ok else " (not configured)"))
+    mode = st.radio("Source", source_options, label_visibility="collapsed")
+    if mode.startswith("Gmail"):
+        channel = "Email"
+        st.caption("Submission channel: **Email** (forced for the Gmail source).")
+    else:
+        channel = st.selectbox(
+            "Submission channel", ["Email", "Walk-in", "Unknown"],
+            help="Tagged at upload per the requirements doc's metadata field. Applied to every "
+                 "document in this batch.",
+        )
 
     uploaded_files = None
     intake_dir = settings.paths.intake_dir
     if mode == "Upload files":
         uploaded_files = st.file_uploader("Drop PDF forms here", type=["pdf"], accept_multiple_files=True)
-    else:
+    elif mode == "Use intake folder":
         intake_dir = Path(st.text_input("Intake folder path", value=str(settings.paths.intake_dir)))
         existing = sorted(intake_dir.glob("*.pdf")) if intake_dir.exists() else []
         st.caption(f"{len(existing)} PDF(s) found in folder.")
+    elif mode.startswith("SharePoint"):
+        if sharepoint_ok:
+            st.caption(f"Watching `{settings.sharepoint.submission_folder}` on the configured SharePoint site.")
+            if settings.sharepoint.write_back_enabled:
+                st.caption("Write-back is ON — filed documents are also pushed to SharePoint.")
+        else:
+            st.caption(
+                "Set SHAREPOINT_TENANT_ID / SHAREPOINT_CLIENT_ID / SHAREPOINT_CLIENT_SECRET / "
+                "SHAREPOINT_SITE_ID as environment variables to enable this source."
+            )
+    elif mode.startswith("Gmail"):
+        if gmail_ok:
+            st.caption(f"Query: `{settings.gmail.query}`")
+        else:
+            st.caption("Set GMAIL_CREDENTIALS_FILE (OAuth client secret JSON path) to enable this source.")
 
     st.markdown("---")
     run_clicked = st.button("▶  Run Batch", width="stretch", disabled=not ollama_ok)
@@ -274,6 +337,10 @@ def _resolve_pdf_paths() -> list[Path]:
             dest.write_bytes(f.getbuffer())
             saved.append(dest)
         return saved
+    if mode.startswith("SharePoint"):
+        return intake.pull_from_sharepoint(progress_cb=st.write)
+    if mode.startswith("Gmail"):
+        return intake.pull_from_gmail(progress_cb=st.write)
     return sorted(intake_dir.glob("*.pdf")) if intake_dir.exists() else []
 
 

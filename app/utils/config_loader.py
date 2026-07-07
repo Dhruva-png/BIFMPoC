@@ -79,7 +79,7 @@ def get_fund_info(fund_name: str) -> dict | None:
 def derive_fund_category(fund_name: str) -> tuple[str, str]:
     """
     Derive fund_category and processing_cutoff from the fund name.
-    Returns (fund_category, processing_cutoff) e.g. ("Money Market", "12:00 PM")
+    Returns (fund_category, processing_cutoff) e.g. ("Money Market", "1:00 PM")
     or ("Non-Money Market (GSGF)", "Quarterly - 7th of last month of quarter").
     """
     if not fund_name:
@@ -93,7 +93,7 @@ def derive_fund_category(fund_name: str) -> tuple[str, str]:
 
     # Money Market: only the Pula Money Market Fund
     if "money market" in fund_lower or "pula" in fund_lower:
-        return ("Money Market", "12:00 PM")
+        return ("Money Market", "1:00 PM")
 
     # All other BIFM funds are Non-Money Market with 3PM cut-off
     if fund_lower and fund_lower != "unknown":

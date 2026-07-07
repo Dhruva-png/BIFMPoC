@@ -75,7 +75,7 @@ def _extract_surname(full_name: str | None) -> str:
 
 
 def _fund_bucket(fund_category: str | None) -> str:
-    """Money Market (cut-off 12PM) vs Non-Money Market (3PM) segregation."""
+    """Money Market (cut-off 1PM) vs Non-Money Market (3PM) segregation."""
     cat = (fund_category or "").lower()
     if "money market" in cat and "non" not in cat:
         return "Money Market"
@@ -235,6 +235,11 @@ def file_document(
     destination_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_pdf, destination)
     logger.info("Filed %s -> %s", source_pdf.name, destination.relative_to(settings.paths.filed_dir))
+
+    if settings.sharepoint.write_back_enabled:
+        from app.connectors import sharepoint_client
+        remote_folder = str(destination.relative_to(settings.paths.filed_dir).parent).replace("\\", "/")
+        sharepoint_client.upload_file(destination, remote_folder)
 
     return ProcessingLogEntry.now(
         original_filename=source_pdf.name,

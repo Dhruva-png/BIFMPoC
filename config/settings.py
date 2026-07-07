@@ -88,6 +88,38 @@ class OllamaSettings:
 
 
 @dataclass
+class SharePointSettings:
+    """
+    Microsoft Graph app-only (client credentials) connection details for the
+    SharePoint document library the UT team currently uses for the manual
+    Submission -> Captured -> Approved/Rejected folder workflow (Section 3).
+    All optional — leave unset to keep using local-disk intake/filing only.
+    """
+    tenant_id: str = os.environ.get("SHAREPOINT_TENANT_ID", "")
+    client_id: str = os.environ.get("SHAREPOINT_CLIENT_ID", "")
+    client_secret: str = os.environ.get("SHAREPOINT_CLIENT_SECRET", "")
+    site_id: str = os.environ.get("SHAREPOINT_SITE_ID", "")
+    drive_id: str = os.environ.get("SHAREPOINT_DRIVE_ID", "")
+    submission_folder: str = os.environ.get("SHAREPOINT_SUBMISSION_FOLDER", "UT Instructions/Submissions")
+    # When true, filed documents are also pushed to the matching folder on
+    # real SharePoint (in addition to the local filing simulation).
+    write_back_enabled: bool = os.environ.get("SHAREPOINT_WRITE_BACK", "false").lower() == "true"
+
+
+@dataclass
+class GmailSettings:
+    """
+    Gmail API connection details for pulling emailed instruction forms
+    (Section 3, Step 1). All optional — leave GMAIL_CREDENTIALS_FILE unset
+    to keep the Gmail intake option disabled.
+    """
+    credentials_file: str = os.environ.get("GMAIL_CREDENTIALS_FILE", "")
+    token_file: str = os.environ.get("GMAIL_TOKEN_FILE", str(BASE_DIR / "config" / "gmail_token.json"))
+    query: str = os.environ.get("GMAIL_QUERY", "has:attachment filename:pdf is:unread")
+    label_processed: str = os.environ.get("GMAIL_LABEL_PROCESSED", "BIFM-Processed")
+
+
+@dataclass
 class PathSettings:
     intake_dir: Path = BASE_DIR / "intake"
     output_dir: Path = BASE_DIR / "output"
@@ -112,6 +144,8 @@ class AppSettings:
     gemini: GeminiSettings = field(default_factory=GeminiSettings)
     groq: GroqSettings = field(default_factory=GroqSettings)
     ollama: OllamaSettings = field(default_factory=OllamaSettings)
+    sharepoint: SharePointSettings = field(default_factory=SharePointSettings)
+    gmail: GmailSettings = field(default_factory=GmailSettings)
     paths: PathSettings = field(default_factory=PathSettings)
     # 220 DPI is a fast default: llava's vision encoder resizes everything to
     # a fixed ~336x336 internally regardless of what you send it, so pushing

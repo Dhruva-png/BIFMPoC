@@ -45,13 +45,40 @@ GUARDIAN_PAGE_NUMBER = 10
 # Prompt builder
 # ---------------------------------------------------------------------------
 
+_FUND_AMOUNT_FIELD_IDS = {
+    "lump_sum_deposit_amount", "lump_sum_debit_amount", "new_debit_amount",
+    "change_amount", "disinvestment_amount",
+}
+
+
 def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
     lines = []
+    field_ids = {f["id"] for f in field_subset}
     for f in field_subset:
         opts = f" Allowed values: {f['options']}." if "options" in f else ""
         cond = f" (Only if: {f['condition']})" if f.get("condition") else ""
         lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}{cond}")
     field_block = "\n".join(lines)
+
+    fund_table_note = ""
+    if "fund_name" in field_ids or field_ids & _FUND_AMOUNT_FIELD_IDS:
+        fund_table_note = (
+            "\n\nFUND TABLE LAYOUT — read this carefully:\n"
+            "These forms list funds in a table with one row per fund. In each row, the "
+            "FUND NAME is in the cell immediately to the LEFT of the amount cell for that "
+            "row — the amount column never has its own header naming the fund. To find the "
+            "correct fund_name:\n"
+            "1. Find the row where an amount has been written in, or a box/tick has been "
+            "marked (this is the fund the investor selected).\n"
+            "2. Read the fund name from the cell directly to the left of that amount/tick in "
+            "the SAME row — do not use a fund name from a different row, and do not use a "
+            "column header or the table title.\n"
+            "3. If more than one row has an amount filled in, extract the fund_name/amount "
+            "pair from the row with the largest or most clearly completed entry, and lower "
+            "the confidence score to flag the ambiguity.\n"
+            "4. If no row has an amount or tick, leave fund_name null rather than guessing "
+            "from an empty row.\n"
+        )
 
     return (
         f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
@@ -61,7 +88,8 @@ def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
         "- Use surrounding context (field label, expected format) to disambiguate.\n"
         "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading INSIDE the box.\n"
         "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
-        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n\n"
+        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read."
+        f"{fund_table_note}\n"
         f"FIELDS TO EXTRACT:\n{field_block}\n\n"
         "Also extract any beneficiary table rows (name, relationship, split_percent).\n\n"
         "Respond ONLY with this exact JSON shape:\n"

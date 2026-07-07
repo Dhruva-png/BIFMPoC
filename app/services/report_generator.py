@@ -58,7 +58,7 @@ _INVESTOR_MASTER_PRIORITY_COLS = [
     "fund_name",
     "fund_number",
     "fund_category",       # derived: Money Market / Non-Money Market / GSGF
-    "processing_cutoff",   # derived: 12:00 PM / 3:00 PM / Quarterly
+    "processing_cutoff",   # derived: 1:00 PM / 3:00 PM / Quarterly
     "overall_validation_status",
     "instruction_status",  # Submitted / Captured / Approved / Rejected
     "rejection_reason",
