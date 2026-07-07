@@ -60,6 +60,21 @@ st.markdown(
     [data-testid="stSidebar"] * {{ color: #E7ECF2 !important; }}
     [data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,0.15); }}
 
+    /* Streamlit's own alert boxes (st.success/error/warning/info) keep their
+       light pastel backgrounds even inside the dark sidebar — force dark
+       text back on just those so it doesn't inherit the light sidebar text
+       color and disappear against them. */
+    [data-testid="stSidebar"] [data-testid="stAlert"],
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"],
+    [data-testid="stSidebar"] .stAlert {{
+        color: {INK} !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stAlert"] *,
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"] *,
+    [data-testid="stSidebar"] .stAlert * {{
+        color: {INK} !important;
+    }}
+
     .bifm-header {{
         display:flex; align-items:center; gap:14px;
         padding: 18px 26px; margin-bottom: 8px;
