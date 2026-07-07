@@ -1,0 +1,163 @@
+{
+  "_comment": "Section 8 of BIFM_UT_POC_Understanding_Document_v1.0 — pre-validation flags generated at ingestion, surfacing likely AWD rejection causes BEFORE the instruction reaches the authoriser. These are distinct from app/validation/engine.py: that module checks field-level data quality (format/completeness of a single field); this module checks document-level completeness signals that BIFM's authorisers actually reject instructions for.",
+  "flags": [
+    {
+      "id": "page_initials_missing",
+      "label": "Page initials missing",
+      "trigger_condition": "Bottom-left 'Initial' field appears blank on any page of the form",
+      "rejection_risk": "High",
+      "applies_to": "all",
+      "logic": {"type": "field_blank", "field": "page_initials_complete", "invert": true}
+    },
+    {
+      "id": "investor_signature_absent",
+      "label": "Investor signature absent",
+      "trigger_condition": "Declaration page signature field appears blank",
+      "rejection_risk": "High",
+      "applies_to": "all",
+      "logic": {"type": "field_blank", "field": "authorized_signatory_name"}
+    },
+    {
+      "id": "banking_details_incomplete",
+      "label": "Banking details incomplete",
+      "trigger_condition": "One or more mandatory banking fields blank when the transaction requires banking info",
+      "rejection_risk": "High",
+      "applies_to": ["ADD", "DIS", "DIS_GSG", "DEBIT", "STATIC"],
+      "logic": {
+        "type": "conditional_group_blank",
+        "condition_any_present": ["bank_account_name", "bank_name", "account_number", "branch_code"],
+        "required_fields": ["bank_account_name", "bank_name", "account_number", "branch_code"]
+      }
+    },
+    {
+      "id": "fund_selection_missing",
+      "label": "Fund selection missing",
+      "trigger_condition": "No fund selected and no amount populated",
+      "rejection_risk": "High",
+      "applies_to": ["ADD", "DIS", "DIS_GSG", "DEBIT"],
+      "logic": {
+        "type": "all_blank",
+        "fields": ["fund_name", "fund_number", "disinvestment_amount", "disinvestment_percentage",
+                   "lump_sum_deposit_amount", "lump_sum_debit_amount", "new_debit_amount"]
+      }
+    },
+    {
+      "id": "kyc_document_absent",
+      "label": "KYC document absent",
+      "trigger_condition": "Required KYC checkboxes unticked and no KYC supporting document detected in this batch",
+      "rejection_risk": "High",
+      "applies_to": ["APPFORM"],
+      "logic": {
+        "type": "checkbox_and_companion_doc",
+        "checkbox_fields": ["kyc_certified_id", "kyc_proof_address", "kyc_proof_banking", "kyc_proof_source"],
+        "companion_form_code": "KYC"
+      }
+    },
+    {
+      "id": "id_document_not_detected",
+      "label": "ID document not detected",
+      "trigger_condition": "No identity document found as an attachment to the submission",
+      "rejection_risk": "High",
+      "applies_to": "all",
+      "logic": {"type": "field_blank", "field": "id_number"}
+    },
+    {
+      "id": "beneficiary_section_blank",
+      "label": "Beneficiary section blank",
+      "trigger_condition": "New Business only — beneficiary completion is compulsory",
+      "rejection_risk": "Medium-High",
+      "applies_to": ["APPFORM"],
+      "logic": {"type": "beneficiaries_empty"}
+    },
+    {
+      "id": "beneficiary_percent_not_100",
+      "label": "Beneficiary % \u2260 100%",
+      "trigger_condition": "Beneficiary portions filled but do not sum to 100%",
+      "rejection_risk": "Medium",
+      "applies_to": ["APPFORM"],
+      "logic": {"type": "beneficiary_sum_not_100"}
+    },
+    {
+      "id": "debit_fields_incomplete",
+      "label": "Debit fields incomplete",
+      "trigger_condition": "Debit option selected but commencement date / escalation rate not populated",
+      "rejection_risk": "Medium",
+      "applies_to": ["DEBIT"],
+      "logic": {
+        "type": "conditional_group_blank",
+        "condition_field": "instruction_type",
+        "condition_equals": ["New debit order", "Change existing debit order"],
+        "required_fields": ["commencement_date", "escalation_rate"]
+      }
+    },
+    {
+      "id": "debit_seven_day_notice",
+      "label": "7-day debit notice",
+      "trigger_condition": "Debit change/cancellation date within 7 days of the regular collection date — effective next month instead",
+      "rejection_risk": "Process impact",
+      "applies_to": ["DEBIT"],
+      "logic": {
+        "type": "date_within_days",
+        "condition_field": "instruction_type",
+        "condition_in": ["Cancel existing debit order", "Change existing debit order"],
+        "date_field": "cancellation_date",
+        "days": 7
+      }
+    },
+    {
+      "id": "gsgf_quarterly_cutoff",
+      "label": "GSGF quarterly cut-off",
+      "trigger_condition": "GSGF form received — quarterly deadline applies, not the daily cut-off",
+      "rejection_risk": "Process reminder",
+      "applies_to": ["DIS_GSG"],
+      "logic": {"type": "form_reminder"}
+    },
+    {
+      "id": "third_party_bank_form_b_absent",
+      "label": "Third-party bank \u2014 Form B absent",
+      "trigger_condition": "Third-party payment selected but Form B (banking annex) not present in the submission",
+      "rejection_risk": "High",
+      "applies_to": ["ADD", "STATIC"],
+      "logic": {
+        "type": "conditional_companion_form",
+        "condition_field": "payment_method",
+        "condition_equals": ["Third-Party"],
+        "alt_condition_field": "change_type",
+        "alt_condition_equals": ["Update Bank Details"],
+        "companion_marker_fields": ["bank_account_name", "bank_name", "account_number"]
+      }
+    },
+    {
+      "id": "acting_on_behalf_form_c_absent",
+      "label": "Acting on Behalf \u2014 Form C absent",
+      "trigger_condition": "Account type 'Acting on Behalf' or 'Joint' but Form C (minor/joint annex) not present",
+      "rejection_risk": "High",
+      "applies_to": ["APPFORM"],
+      "logic": {
+        "type": "conditional_companion_form",
+        "condition_field": "account_type",
+        "condition_equals": ["Acting on Behalf of", "Joint"],
+        "companion_marker_fields": ["minor_full_name", "guardian_name", "guardian_id_number"]
+      }
+    },
+    {
+      "id": "add_funds_receipt_flag",
+      "label": "Funds receipt flag (ADD only)",
+      "trigger_condition": "Additional Investment received — e-stamp / proof of funds receipt required before processing can proceed",
+      "rejection_risk": "Process reminder",
+      "applies_to": ["ADD"],
+      "logic": {"type": "form_reminder"}
+    },
+    {
+      "id": "tax_section_unanswered",
+      "label": "Tax section unanswered",
+      "trigger_condition": "New Business only — all three FATCA/CRS Yes/No questions left blank",
+      "rejection_risk": "Medium",
+      "applies_to": ["APPFORM"],
+      "logic": {
+        "type": "all_blank",
+        "fields": ["tax_residency_botswana", "fatca_crs_flag", "us_citizen"]
+      }
+    }
+  ]
+}

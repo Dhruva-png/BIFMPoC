@@ -49,6 +49,7 @@ from app.services.report_generator import ExcelReportBuilder
 from app.utils.config_loader import load_validation_rules
 from app.utils.logger import get_logger
 from app.validation.engine import validate
+from app.validation.prevalidation import evaluate_prevalidation_flags
 from config.settings import settings
 
 logger = get_logger(__name__)
@@ -106,14 +107,10 @@ def _extract_only(
         _emit(progress_cb, f"Classifying {pdf_path.name}...")
         classification = classifier.classify_form(page_images[0])
 
-        # Disambiguate GSG vs Standard disinvestment when confidence is borderline.
-        # The fund table this needs to look at is on page 2 (page 1 is the
-        # cover/instructions page on the DIS template) - same cover-page
-        # layout issue as field extraction, see extractor._extract_standard_form.
+        # Disambiguate GSG vs Standard disinvestment when confidence is borderline
         if classification.form_code in ("DIS", "DIS_GSG") and classification.confidence < HIGH_CONFIDENCE_MIN:
             _emit(progress_cb, f"Disambiguating DIS vs DIS_GSG for {pdf_path.name}...")
-            fund_table_page = page_images[1] if len(page_images) > 1 else page_images[0]
-            classification = classifier.disambiguate_gsg_vs_standard(fund_table_page)
+            classification = classifier.disambiguate_gsg_vs_standard(page_images[0])
 
         form_code = classification.form_code
         _emit(progress_cb, f"{pdf_path.name}: classified as '{classification.form_name}' ({classification.confidence:.0f}% confidence)")
@@ -136,11 +133,17 @@ def _validate_and_file(
     report: ExcelReportBuilder,
     progress_cb: ProgressCallback = None,
     channel: str = "Unknown",
+    batch_form_codes: list[str] | None = None,
 ) -> DocumentOutcome:
     """
     Stages 4-5: validate the (possibly backfilled) extraction, file the
     document, and add its row to the Excel report. Never raises — a
     failure comes back as an "ERROR" DocumentOutcome.
+
+    batch_form_codes: form codes of every OTHER document in this person's
+    batch, used by the pre-validation flags engine (Section 8) to detect
+    companion documents (e.g. a KYC form dropped in alongside a New
+    Business form).
     """
     try:
         upload_date = datetime.fromtimestamp(pdf_path.stat().st_mtime).isoformat(timespec="seconds")
@@ -148,6 +151,18 @@ def _validate_and_file(
 
         _emit(progress_cb, f"Validating {pdf_path.name}...")
         validation_report = validate(extraction)
+
+        _emit(progress_cb, f"Checking pre-validation flags for {pdf_path.name}...")
+        prevalidation_flags = evaluate_prevalidation_flags(
+            extraction, form_code, batch_form_codes=batch_form_codes,
+        )
+        triggered_flags = [f for f in prevalidation_flags if f.triggered]
+        if triggered_flags:
+            _emit(
+                progress_cb,
+                f"{pdf_path.name}: {len(triggered_flags)} pre-validation flag(s) raised "
+                f"({', '.join(f.label for f in triggered_flags)})",
+            )
 
         _emit(progress_cb, f"Filing {pdf_path.name}...")
         # Resolve entity_number: use extracted value or fall back to id_number / source file name
@@ -186,7 +201,7 @@ def _validate_and_file(
             upload_date=upload_date,
         )
 
-        report.add_form(extraction, validation_report, log_entry)
+        report.add_form(extraction, validation_report, log_entry, prevalidation_flags=prevalidation_flags)
         _emit(progress_cb, f"{pdf_path.name}: complete → {validation_report.overall_status.value}")
 
         return DocumentOutcome(
@@ -237,7 +252,7 @@ def process_single_document(
             validation_status="FAIL",
             error=error or "Extraction failed",
         )
-    return _validate_and_file(pdf_path, classification, extraction, report, progress_cb, channel)
+    return _validate_and_file(pdf_path, classification, extraction, report, progress_cb, channel, batch_form_codes=[])
 
 
 def process_batch(
@@ -307,8 +322,13 @@ def process_batch(
                     "from other documents in this batch",
                 )
 
+    # Every other successfully-classified document's form_code, for
+    # companion-document detection in the pre-validation flags engine
+    # (e.g. a KYC form present alongside a New Business form in this batch).
+    all_form_codes = [c.form_code for (_, c, e, err) in ordered if c is not None and e is not None and err is None]
+
     outcomes: list[DocumentOutcome] = []
-    for pdf_path, classification, extraction, error in ordered:
+    for idx, (pdf_path, classification, extraction, error) in enumerate(ordered):
         if error or classification is None or extraction is None:
             outcomes.append(DocumentOutcome(
                 filename=pdf_path.name,
@@ -318,7 +338,13 @@ def process_batch(
                 error=error or "Extraction failed",
             ))
             continue
-        outcomes.append(_validate_and_file(pdf_path, classification, extraction, report, progress_cb, channel))
+        this_form_code = classification.form_code
+        companion_codes = list(all_form_codes)
+        companion_codes.remove(this_form_code)  # exclude this document's own code from the "companion" set
+        outcomes.append(_validate_and_file(
+            pdf_path, classification, extraction, report, progress_cb, channel,
+            batch_form_codes=companion_codes,
+        ))
 
     if profile:
         person_key = _person_key_for_batch(pdf_paths)

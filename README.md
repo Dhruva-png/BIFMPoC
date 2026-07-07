@@ -82,8 +82,45 @@ Processes scanned PDF instruction forms through 5 stages:
 | 1 | Classifier | Identifies the form type from page 1 image |
 | 2 | Extractor | Reads form fields using a vision LLM (qwen3-vl / llava) |
 | 3 | Validator | Checks mandatory fields, ID formats, dates, branch codes |
-| 4 | Report | Builds Excel workbook (4 sheets) |
-| 5 | Filer | Copies PDF with standardized filename to `output/filed_documents/` |
+| 3b | Pre-Validation Flags | Rejection-risk checklist per Section 8 of the understanding doc (see below) |
+| 4 | Report | Builds Excel workbook (7 sheets) |
+| 5 | Filer | Copies PDF into the per-form-type SharePoint folder structure (Section 6), under a standardized filename |
+
+## Pre-Validation Flags (Section 8)
+
+Separate from field-level validation, `app/validation/prevalidation.py` runs a
+config-driven checklist (`config/prevalidation_flags.json`) of the exact
+rejection-risk signals BIFM's authorisers flagged in the requirement
+sessions — page initials, signature, banking completeness, fund selection,
+KYC/companion-document presence, beneficiary completeness/split, debit
+timing, GSGF quarterly cut-off reminders, and more. Each flag carries the
+rejection risk BIFM assigned it (High / Medium / Process reminder / Process
+impact) and is written to its own **Pre-Validation Flags** sheet — every
+applicable flag per document, triggered or not, colour-coded so Ops can
+triage High-risk items first. Companion-document presence (e.g. a KYC form
+dropped in alongside a New Business form) is detected from the other
+documents in the same batch, since KYC/POP are filed as companion documents
+rather than standalone instructions (Section 9.1).
+
+A couple of flags (e.g. per-page "initials present") reference signals the
+vision-LLM extractor doesn't yet produce; these are reported as "not
+verified" rather than a false trigger — see the module docstring.
+
+## SharePoint Folder Structure (Section 6)
+
+`app/services/filer.py` routes each filed document through the **exact**
+per-form-type structure confirmed in the understanding document — the six
+instruction types do not share one generic folder tree:
+
+| Form | Structure |
+|------|-----------|
+| New Business | `Submissions` → `Received` → `Approved/<Year>/<Month>/<Day>` \| `Rejected` (flat) |
+| Additional Investment | `<Year>/<Month>` (dump, awaiting e-stamp) → `<Day>/MoneyMarket\|NonMoneyMarket/Captured[/Approved\|Rejected]` |
+| Disinvestment (Standard) | `<Year>/<Month>/<Day>/Money Market\|Non-Money Market/Captured\|Approved\|Rejected` |
+| Disinvestment (GSGF) | `<Year>/Q<n>-<Year>/<quarter-end date>/Captured\|Approved\|Rejected` (quarterly, not daily) |
+| Debit Order | `<Year>/<Month>` (dump) → `Send to AWD/<Day>` |
+| Static (Change of Details) | `<Year>/<Month>` (dump) → `Send to AWD/<Day>` |
+| KYC | flat holding area (companion document, not a standalone instruction) |
 
 ## Supported Form Types
 
@@ -108,7 +145,7 @@ The system generates these fields automatically (per requirements doc) — they 
 | `form_type` | Derived from classification |
 | `fund_category` | Money Market / Non-Money Market / Non-Money Market (GSGF) |
 | `processing_cutoff` | 12:00 PM (MM) / 3:00 PM (NMM) / Quarterly (GSGF) |
-| `instruction_mode` | Full Closure / Percentage / Partial Withdrawal / Unknown (DIS, DIS_GSG) — priority: closure tick > percentage column > deposit/withdrawal amount column |
+| `instruction_mode` | Partial Amount / Percentage / Full Closure (DIS only) |
 | `sub_instruction_type` | Cancel / Change / New (DEBIT only) |
 | `static_sub_type` | Change of Personal Details / Update Banking Details (STATIC only) |
 | `kyc_completeness_flag` | Complete / Incomplete (N/4 documents provided) (KYC only) |
@@ -167,7 +204,8 @@ bifm_ocr_app/
 │   ├── settings.py               # All tunables (env-overridable)
 │   ├── form_types.json           # Form codes, classification hints, fund info
 │   ├── field_definitions.json    # Field lists for ALL 6 form types
-│   └── validation_rules.json     # Validation rule definitions
+│   ├── validation_rules.json     # Field-level validation rule definitions
+│   └── prevalidation_flags.json  # Section 8: rejection-risk flag definitions
 ├── app/
 │   ├── core/pipeline.py          # Main orchestration (Module 1-5)
 │   ├── llm/ollama_client.py      # LLM calls (ask_text, ask_vision)
@@ -177,7 +215,9 @@ bifm_ocr_app/
 │   │   ├── extractor.py          # Module 2: field extraction (all 6 forms)
 │   │   ├── report_generator.py   # Module 4: Excel report (4 sheets)
 │   │   └── filer.py              # Module 5: document filing + naming
-│   ├── validation/engine.py      # Module 3: deterministic rule validation
+│   ├── validation/
+│   │   ├── engine.py             # Module 3: deterministic field-level validation
+│   │   └── prevalidation.py      # Section 8: rejection-risk flags engine
 │   ├── models/schemas.py         # Shared dataclasses
 │   └── utils/
 │       ├── config_loader.py      # JSON config loaders + fund category lookup
@@ -194,9 +234,12 @@ bifm_ocr_app/
 
 | Sheet | Contents |
 |-------|----------|
+| **Consolidated Investor Profile** | One row per batch/person — merged identity/contact/banking fields backfilled across every document that person submitted together |
 | **Investor Master** | One row per document — all extracted fields plus derived metadata (form_type, fund_category, processing_cutoff). Priority columns shown first. Rows colour-coded by validation status. |
 | **Beneficiary Details** | Beneficiary name, relationship, split % (APPFORM only) |
-| **Validation Flags** | Every validation check that didn't PASS — field, value, status, message |
+| **Validation Flags** | Every field-level validation check that didn't PASS — field, value, status, message |
+| **Pre-Validation Flags** | Section 8 rejection-risk checklist — every applicable flag per document, triggered or not, with rejection risk and reason |
+| **Confidence Scores** | Per-field extraction confidence (Section 7), colour-coded by the same thresholds used for auto-accept/flag/escalate |
 | **Processing Log** | Timestamp, original filename, standardized new filename, form type, confidence, status |
 
 ## Document Naming Convention

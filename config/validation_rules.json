@@ -2,9 +2,8 @@
   "rules": [
     {
       "id": "id_number_format",
-      "enabled": false,
       "applies_to": "id_number",
-      "description": "DISABLED FOR NOW (per request) - re-enable by removing \"enabled\": false. Omang / Birth Certificate must be exactly 9 numeric digits. Passport format varies by country - no digit validation.",
+      "description": "Omang / Birth Certificate must be exactly 9 numeric digits. Passport format varies by country - no digit validation.",
       "logic": {
         "type": "conditional_on_id_type",
         "Omang": {"type": "exact_digits", "length": 9},
@@ -27,7 +26,7 @@
     {
       "id": "id_expiry_future",
       "applies_to": "id_expiry_date",
-      "description": "ID Expiry Date must be in the future relative to processing date. Skip entirely if ID Type = Birth Certificate. id_expiry_date is a KYC-only field - scoped to KYC in engine.py's _RULE_FORM_SCOPE so it is never checked (or reported as \"not captured\") on ADD/DIS/DIS_GSG/DEBIT/STATIC/APPFORM, even after a KYC sibling's value has been backfilled onto those documents for display purposes.",
+      "description": "ID Expiry Date must be in the future relative to processing date. Skip entirely if ID Type = Birth Certificate.",
       "logic": {
         "type": "future_date",
         "skip_if": {"field": "id_type", "equals": "Birth Certificate"}
@@ -48,8 +47,8 @@
     {
       "id": "contact_number_numeric",
       "applies_to": "contact_number",
-      "description": "Numeric. Botswana numbers are commonly 8 digits (local) or 9 digits (with a leading trunk/prefix digit such as 0). Both 8 and 9 digit numbers are valid and must NOT raise a warning. Any other length is flagged.",
-      "logic": {"type": "numeric_length", "expected_lengths": [8, 9], "status_if_mismatch": "WARNING"}
+      "description": "Numeric, Botswana numbers typically 8 digits.",
+      "logic": {"type": "numeric_length", "expected_length": 8, "status_if_mismatch": "WARNING"}
     },
     {
       "id": "branch_code_format",
@@ -105,22 +104,10 @@
       "logic": {"type": "kyc_completeness_check"}
     },
     {
-      "id": "fund_number_format",
-      "applies_to": "fund_number",
-      "description": "BIFM fund/entity numbers can range from 7 to 13 digits, extracted from the handwritten row of the Core Fund Range table (see fund_category_present rule for the related fund_name check). Any length in that range is valid - no warning is raised. Only a non-numeric or clearly implausible value is flagged.",
-      "logic": {"type": "numeric_length", "expected_range": [7, 13], "status_if_mismatch": "WARNING"}
-    },
-    {
       "id": "fund_category_present",
       "applies_to": "fund_category",
       "description": "Fund category (MM/NMM/GSGF) and processing cut-off must be determinable from the extracted fund name. ADD, DEBIT, DIS, DIS_GSG only.",
       "logic": {"type": "fund_category_present"}
-    },
-    {
-      "id": "instruction_mode_present",
-      "applies_to": "instruction_mode",
-      "description": "Instruction mode must resolve to Full Closure, Percentage, or Partial Withdrawal. Full Closure is set by the close-account tick at the foot of the form; Percentage by a value in the disinvestment percentage column; Partial Withdrawal by an amount in the deposit/withdrawal amount column. If none of the three signals is found the form needs manual review. DIS, DIS_GSG only.",
-      "logic": {"type": "instruction_mode_present"}
     }
   ],
   "confidence_thresholds": {

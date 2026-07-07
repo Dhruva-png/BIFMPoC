@@ -170,30 +170,8 @@ def _eval_numeric_length(extraction: ExtractionResult, field_id: str, rule: dict
     digits = re.sub(r"\D", "", str(value or ""))
     if not digits:
         return FieldValidationResult(field_id, value, ValidationStatus.FAIL, "Not numeric")
-
-    # Support a single "expected_length" (legacy), a list of "expected_lengths"
-    # (e.g. Botswana contact numbers valid at 8 or 9 digits), or an
-    # "expected_range" [min, max] (e.g. fund numbers valid anywhere from 7
-    # to 13 digits).
-    expected_range = logic.get("expected_range")
-    if expected_range is not None:
-        lo, hi = expected_range
-        if lo <= len(digits) <= hi:
-            return FieldValidationResult(field_id, value, ValidationStatus.PASS)
-        status = ValidationStatus(logic["status_if_mismatch"])
-        msg = f"Expected {lo}-{hi} digits, got {len(digits)}"
-        return FieldValidationResult(field_id, value, status, msg)
-
-    allowed_lengths = logic.get("expected_lengths")
-    if allowed_lengths is None:
-        allowed_lengths = [logic["expected_length"]]
-
-    if len(digits) in allowed_lengths:
-        return FieldValidationResult(field_id, value, ValidationStatus.PASS)
-
-    status = ValidationStatus(logic["status_if_mismatch"])
-    expected_desc = " or ".join(str(n) for n in allowed_lengths)
-    msg = f"Expected {expected_desc} digits, got {len(digits)}"
+    status = ValidationStatus.PASS if len(digits) == logic["expected_length"] else ValidationStatus(logic["status_if_mismatch"])
+    msg = "" if status == ValidationStatus.PASS else f"Expected {logic['expected_length']} digits, got {len(digits)}"
     return FieldValidationResult(field_id, value, status, msg)
 
 
@@ -263,25 +241,6 @@ def _eval_fund_category_present(extraction: ExtractionResult, rule: dict) -> Fie
     return FieldValidationResult("fund_category", value, ValidationStatus.PASS)
 
 
-def _eval_instruction_mode_present(extraction: ExtractionResult, rule: dict) -> FieldValidationResult:
-    """
-    DIS / DIS_GSG: exactly one of the three signals (closure tick, a
-    percentage in its own column, or an amount in the deposit/withdrawal
-    column) must have been found, so instruction_mode resolved to something
-    other than "Unknown". If none was found, the form was likely misread
-    or genuinely left blank by the investor - either way it needs a human
-    to look at it before the instruction is actioned.
-    """
-    value = extraction.field_value("instruction_mode")
-    if _is_blank(value) or str(value) == "Unknown":
-        return FieldValidationResult(
-            "instruction_mode", value, ValidationStatus.WARNING,
-            "Could not determine instruction mode - no closure tick, percentage, "
-            "or withdrawal/deposit amount was found",
-        )
-    return FieldValidationResult("instruction_mode", value, ValidationStatus.PASS)
-
-
 # ---------------------------------------------------------------------------
 # Rule dispatch table
 # ---------------------------------------------------------------------------
@@ -293,7 +252,6 @@ _RULE_DISPATCH = {
     "date_of_birth_past": lambda ex, rule: [_eval_date_of_birth_past(ex, rule)],
     "email_format": lambda ex, rule: [_eval_regex(ex, "email", rule)],
     "contact_number_numeric": lambda ex, rule: [_eval_numeric_length(ex, "contact_number", rule)],
-    "fund_number_format": lambda ex, rule: [_eval_numeric_length(ex, "fund_number", rule)],
     "minor_fields_required_if_acting_on_behalf": lambda ex, rule: _eval_conditional_required(ex, rule),
     "guardian_id_format": lambda ex, rule: [
         r for r in [_eval_exact_digits(ex.field_value("guardian_id_number"), rule["logic"]["length"],
@@ -307,7 +265,6 @@ _RULE_DISPATCH = {
     "branch_code_format": lambda ex, rule: [_eval_branch_code_format(ex, rule)],
     "kyc_completeness": lambda ex, rule: [_eval_kyc_completeness(ex, rule)],
     "fund_category_present": lambda ex, rule: [_eval_fund_category_present(ex, rule)],
-    "instruction_mode_present": lambda ex, rule: [_eval_instruction_mode_present(ex, rule)],
 }
 
 # Rules that only apply to certain form types (empty set = applies to all)
@@ -320,11 +277,8 @@ _RULE_FORM_SCOPE: dict[str, set[str]] = {
     "communication_channel_default": {"APPFORM"},
     "beneficiary_split_total": {"APPFORM"},
     "date_of_birth_past": {"APPFORM", "KYC"},
-    "id_expiry_future": {"KYC"},
     "kyc_completeness": {"KYC"},
     "fund_category_present": {"ADD", "DIS", "DIS_GSG", "DEBIT"},
-    "instruction_mode_present": {"DIS", "DIS_GSG"},
-    "fund_number_format": {"ADD", "DIS", "DEBIT"},
     "branch_code_format": {"ADD", "DEBIT", "DIS", "DIS_GSG", "STATIC", "KYC"},
 }
 
@@ -356,8 +310,6 @@ def validate(extraction: ExtractionResult) -> ValidationReport:
 
     # 2. Cross-cutting rule evaluation (only rules applicable to this form type)
     for rule in rules_config.get("rules", []):
-        if rule.get("enabled", True) is False:
-            continue
         rule_id = rule["id"]
         if not _rule_applies_to_form(rule_id, form_code):
             continue

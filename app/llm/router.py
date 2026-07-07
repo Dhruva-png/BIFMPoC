@@ -66,4 +66,4 @@ def active_provider() -> str:
         return "Ollama (local)"
     if settings.llm_provider == "gemini":
         return "Gemini (cloud, free tier)"
-    return "Marvel AI (cloud, free tier)"
+    return "Groq (cloud, free tier)"

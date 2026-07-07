@@ -60,11 +60,6 @@ class FieldValue:
     # batch - see app.services.consolidator. Purely informational/auditable;
     # never affects validation logic.
     source: str = "extracted"
-    # Optional human-readable note on how a *consolidated* (batch-level)
-    # value was chosen, e.g. "3/4 documents agree; majority vote over 1
-    # disagreeing document". Only set by app.services.consolidator on
-    # profile-level FieldValues; None for plain per-document extractions.
-    agreement: Optional[str] = None
 
 
 @dataclass
@@ -125,6 +120,23 @@ class ValidationReport:
         if ValidationStatus.WARNING in statuses:
             return ValidationStatus.WARNING
         return ValidationStatus.PASS
+
+
+@dataclass
+class PreValidationFlag:
+    """
+    One row of the output described in Section 8 of the understanding doc:
+    a document-level completeness/consistency signal that surfaces a likely
+    AWD rejection cause BEFORE the instruction reaches the human authoriser.
+    Distinct from FieldValidationResult (Module 3), which checks the data
+    quality of a single field. A PreValidationFlag can span multiple fields,
+    companion documents, or timing rules.
+    """
+    flag_id: str
+    label: str
+    triggered: bool
+    rejection_risk: str  # High / Medium-High / Medium / Process reminder / Process impact
+    reason: str = ""
 
 
 @dataclass

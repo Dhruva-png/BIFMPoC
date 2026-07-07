@@ -25,7 +25,6 @@ from pathlib import Path
 from app.llm.router import ask_vision, parse_json_response
 from app.models.schemas import ClassificationResult
 from app.utils.config_loader import load_form_types
-from app.utils.confidence import cap_confidence
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -57,7 +56,7 @@ def classify_form(first_page_image: Path) -> ClassificationResult:
     try:
         parsed = parse_json_response(response.text)
         code = parsed["form_code"]
-        confidence = cap_confidence(parsed.get("confidence", 0))
+        confidence = float(parsed.get("confidence", 0))
 
         # Guard against the model returning an invalid code
         if code not in valid_codes:
@@ -105,7 +104,7 @@ def disambiguate_gsg_vs_standard(fund_table_image: Path) -> ClassificationResult
     try:
         parsed = parse_json_response(response.text)
         code = parsed["form_code"]
-        confidence = cap_confidence(parsed.get("confidence", 0))
+        confidence = float(parsed.get("confidence", 0))
         if code not in ("DIS", "DIS_GSG"):
             code, confidence = "DIS", 50.0
     except Exception as exc:  # noqa: BLE001

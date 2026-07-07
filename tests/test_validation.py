@@ -11,7 +11,7 @@ from app.models.schemas import Beneficiary, ExtractionResult, FieldValue, Valida
 from app.validation.engine import validate
 
 
-def _make_extraction(form_code: str = "APPFORM", **overrides) -> ExtractionResult:
+def _make_extraction(**overrides) -> ExtractionResult:
     base = {
         "full_name": "Kabo Mantjue",
         "id_number": "123416789",
@@ -28,7 +28,7 @@ def _make_extraction(form_code: str = "APPFORM", **overrides) -> ExtractionResul
     }
     base.update(overrides)
     fields = {k: FieldValue(field_id=k, value=v, confidence=95.0) for k, v in base.items() if v is not None}
-    return ExtractionResult(source_file="test.pdf", form_code=form_code, fields=fields)
+    return ExtractionResult(source_file="test.pdf", form_code="APPFORM", fields=fields)
 
 
 def test_happy_path_passes():
@@ -46,16 +46,10 @@ def test_happy_path_with_no_beneficiaries_is_warning_not_fail():
     assert report.overall_status == ValidationStatus.WARNING
 
 
-def test_omang_digit_check_disabled_for_now():
-    # id_number_format is disabled in config/validation_rules.json ("enabled":
-    # false) at the client's request, so a malformed Omang no longer fails
-    # validation on its own right now. Flip "enabled" back to true (or delete
-    # it) to restore the exact-9-digit check, at which point this should go
-    # back to asserting ValidationStatus.FAIL like it used to.
+def test_omang_wrong_digit_count_fails():
     extraction = _make_extraction(id_number="12345")
     report = validate(extraction)
-    assert not any(r.field_id == "id_number" for r in report.results)
-    assert report.overall_status != ValidationStatus.FAIL
+    assert report.overall_status == ValidationStatus.FAIL
 
 
 def test_gender_derived_from_5th_digit_male():
@@ -74,17 +68,15 @@ def test_gender_derived_from_5th_digit_female():
     assert gender_result.value == "Female"
 
 
-def test_id_number_format_rule_currently_disabled():
-    # Same disabled-rule note as above - no id_number finding is produced
-    # at all right now, for any id_type, since the rule is switched off.
+def test_passport_skips_digit_validation_but_warns():
     extraction = _make_extraction(id_type="Passport", id_number="AB1234567XYZ")
     report = validate(extraction)
-    assert not any(r.field_id == "id_number" for r in report.results)
+    id_result = next(r for r in report.results if r.field_id == "id_number")
+    assert id_result.status == ValidationStatus.WARNING
 
 
 def test_birth_certificate_skips_expiry_validation():
-    # id_expiry_future is scoped to KYC only.
-    extraction = _make_extraction(form_code="KYC", id_type="Birth Certificate", id_number="987654321", id_expiry_date=None)
+    extraction = _make_extraction(id_type="Birth Certificate", id_number="987654321", id_expiry_date=None)
     report = validate(extraction)
     expiry_result = next(r for r in report.results if r.field_id == "id_expiry_date")
     assert expiry_result.status == ValidationStatus.PASS
@@ -92,18 +84,10 @@ def test_birth_certificate_skips_expiry_validation():
 
 
 def test_expired_id_fails():
-    extraction = _make_extraction(form_code="KYC", id_expiry_date="2020-01-01")
+    extraction = _make_extraction(id_expiry_date="2020-01-01")
     report = validate(extraction)
     expiry_result = next(r for r in report.results if r.field_id == "id_expiry_date")
     assert expiry_result.status == ValidationStatus.FAIL
-
-
-def test_id_expiry_not_checked_on_non_kyc_forms():
-    # The actual bug report: id_expiry_date must never be checked for
-    # (or warned about as "not captured") on any form other than KYC.
-    extraction = _make_extraction(form_code="APPFORM", id_expiry_date=None)
-    report = validate(extraction)
-    assert not any(r.field_id == "id_expiry_date" for r in report.results)
 
 
 def test_invalid_email_fails():
@@ -169,19 +153,3 @@ def test_mandatory_field_missing_fails():
     extraction = _make_extraction(email=None)
     report = validate(extraction)
     assert report.overall_status == ValidationStatus.FAIL
-
-
-def test_fund_number_accepts_7_to_13_digits():
-    for digits in ("1674982", "38344272", "9876543210", "1234567890123"):
-        extraction = _make_extraction(form_code="DIS", fund_number=digits)
-        report = validate(extraction)
-        result = next(r for r in report.results if r.field_id == "fund_number")
-        assert result.status == ValidationStatus.PASS, f"{digits} ({len(digits)} digits) should pass"
-
-
-def test_fund_number_outside_7_to_13_digits_warns():
-    for digits in ("123456", "12345678901234"):
-        extraction = _make_extraction(form_code="DIS", fund_number=digits)
-        report = validate(extraction)
-        result = next(r for r in report.results if r.field_id == "fund_number")
-        assert result.status == ValidationStatus.WARNING, f"{digits} ({len(digits)} digits) should warn"

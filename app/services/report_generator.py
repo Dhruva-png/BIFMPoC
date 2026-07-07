@@ -18,8 +18,14 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from app.models.schemas import ExtractionResult, FieldValue, ProcessingLogEntry, ValidationReport, ValidationStatus
-from app.utils.confidence import needs_recheck
+from app.models.schemas import (
+    ExtractionResult,
+    FieldValue,
+    PreValidationFlag,
+    ProcessingLogEntry,
+    ValidationReport,
+    ValidationStatus,
+)
 from app.utils.logger import get_logger
 from config.settings import settings
 
@@ -30,43 +36,6 @@ FILL_WARNING = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="
 FILL_FAIL    = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 HEADER_FONT  = Font(bold=True, color="FFFFFF")
 HEADER_FILL  = PatternFill(start_color="305496", end_color="305496", fill_type="solid")
-
-# Styling for the "detail" row inserted beneath every data row, showing
-# per-field confidence % and provenance (which document / page it was read
-# from, or how a consolidated value was chosen).
-DETAIL_FONT = Font(italic=True, size=9, color="6B6B6B")
-DETAIL_FILL = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
-
-
-def _format_detail(fv, own_source_file: str | None = None) -> str:
-    """
-    Formats one FieldValue's confidence + provenance for a detail cell.
-
-    `own_source_file` is the filename of the document the *row* itself
-    represents (e.g. "DIS - AMOLEMO.pdf") - used so a plain on-document
-    extraction still names the document it came from, not just "extracted",
-    since the detail row is read on its own when the sheet is filtered/
-    scrolled and shouldn't require cross-referencing the source_file column.
-    """
-    if fv is None:
-        return ""
-    bits = [f"{fv.confidence:.0f}% confidence"]
-    if getattr(fv, "agreement", None):
-        bits.append(f"{fv.agreement} — value taken from {fv.source}")
-    elif fv.source == "extracted":
-        doc = own_source_file or "this document"
-        if fv.source_page:
-            bits.append(f"extracted from {doc}, p.{fv.source_page}")
-        else:
-            bits.append(f"extracted from {doc}")
-    elif fv.source.startswith("backfilled:"):
-        bits.append(f"backfilled from {fv.source.split(':', 1)[1]}")
-    else:
-        bits.append(f"from {fv.source}")
-    detail = " — ".join(bits)
-    if needs_recheck(fv.confidence):
-        detail += " — ⚠ recommend recheck"
-    return detail
 
 _STATUS_FILL = {
     ValidationStatus.PASS:    FILL_PASS,
@@ -89,8 +58,7 @@ _INVESTOR_MASTER_PRIORITY_COLS = [
     "fund_name",
     "fund_number",
     "fund_category",       # derived: Money Market / Non-Money Market / GSGF
-    "processing_cutoff",   # derived: 1:00 PM / 3:00 PM / Quarterly
-    "fund_category_priority",  # derived: 1=MM (earliest cut-off, action first), 2=NMM, 3=GSGF
+    "processing_cutoff",   # derived: 12:00 PM / 3:00 PM / Quarterly
     "overall_validation_status",
     "instruction_status",  # Submitted / Captured / Approved / Rejected
     "rejection_reason",
@@ -102,12 +70,6 @@ _INVESTOR_MASTER_PRIORITY_COLS = [
     "email",
     "citizenship",
     "account_type",
-    "bank_account_name",
-    "bank_name",
-    "account_number",
-    "branch_name",
-    "branch_code",
-    "account_type_banking",
 ]
 
 
@@ -133,6 +95,8 @@ _CONSOLIDATED_PROFILE_PRIORITY_COLS = [
     "residential_address",
     "postal_address",
     "occupation",
+    "fund_name",
+    "fund_number",
     "bank_account_name",
     "bank_name",
     "account_number",
@@ -178,18 +142,19 @@ class ExcelReportBuilder:
 
     def __init__(self) -> None:
         self._investor_rows: list[dict] = []
-        self._investor_field_values: list[dict[str, FieldValue]] = []
         self._beneficiary_rows: list[dict] = []
         self._validation_rows: list[tuple[dict, ValidationStatus]] = []
         self._log_entries: list[ProcessingLogEntry] = []
         self._consolidated_rows: list[dict] = []
-        self._consolidated_field_values: list[dict[str, FieldValue]] = []
+        self._prevalidation_rows: list[tuple[dict, bool]] = []
+        self._confidence_rows: list[dict] = []
 
     def add_form(
         self,
         extraction: ExtractionResult,
         validation: ValidationReport,
         log_entry: ProcessingLogEntry,
+        prevalidation_flags: list[PreValidationFlag] | None = None,
     ) -> None:
         flat = extraction.to_flat_dict()
         flat["entity_number"] = validation.entity_number
@@ -205,9 +170,6 @@ class ExcelReportBuilder:
         flat["captured_by"] = log_entry.captured_by
         flat["authorized_by"] = log_entry.authorized_by
         self._investor_rows.append(flat)
-        # Keep the underlying FieldValues (confidence, source) alongside the
-        # flat row so the detail row can be rendered beneath it.
-        self._investor_field_values.append(dict(extraction.fields))
 
         for b in extraction.beneficiaries:
             self._beneficiary_rows.append({
@@ -234,6 +196,36 @@ class ExcelReportBuilder:
 
         self._log_entries.append(log_entry)
 
+        # Section 8: Pre-validation Flags (rejection-risk signals) — one
+        # row per applicable flag, triggered or not, so Ops sees a full
+        # checklist rather than only exceptions.
+        for pf in (prevalidation_flags or []):
+            self._prevalidation_rows.append((
+                {
+                    "entity_number":  validation.entity_number,
+                    "source_file":    extraction.source_file,
+                    "form_code":      extraction.form_code,
+                    "flag":           pf.label,
+                    "rejection_risk": pf.rejection_risk,
+                    "triggered":      "YES" if pf.triggered else "no",
+                    "reason":         pf.reason,
+                },
+                pf.triggered,
+            ))
+
+        # Section 7: Confidence Scores column group — per-field extraction
+        # confidence, most useful on handwritten/low-quality scans.
+        for fid, fv in extraction.fields.items():
+            self._confidence_rows.append({
+                "entity_number": validation.entity_number,
+                "source_file":   extraction.source_file,
+                "form_code":     extraction.form_code,
+                "field":         fid,
+                "value":         fv.value,
+                "confidence":    fv.confidence,
+                "source":        fv.source,
+            })
+
     def add_consolidated_profile(
         self,
         profile: dict[str, FieldValue],
@@ -252,7 +244,6 @@ class ExcelReportBuilder:
         flat["document_count"] = len(source_files)
         flat["source_documents"] = ", ".join(source_files)
         self._consolidated_rows.append(flat)
-        self._consolidated_field_values.append(dict(profile))
 
     def save(self, output_path: Path | None = None) -> Path:
         output_path = output_path or (settings.paths.output_dir / settings.excel_report_name)
@@ -263,6 +254,8 @@ class ExcelReportBuilder:
         self._write_investor_master(wb)
         self._write_beneficiary_details(wb)
         self._write_validation_flags(wb)
+        self._write_prevalidation_flags(wb)
+        self._write_confidence_scores(wb)
         self._write_processing_log(wb)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -287,14 +280,8 @@ class ExcelReportBuilder:
         rest = sorted(all_keys - set(priority))
         headers = priority + rest
         _write_header(ws, headers)
-        for row, field_values in zip(self._consolidated_rows, self._consolidated_field_values):
+        for row in self._consolidated_rows:
             ws.append([row.get(h, "") for h in headers])
-            ws.append([_format_detail(field_values.get(h)) for h in headers])
-            detail_row_idx = ws.max_row
-            for col_idx in range(1, len(headers) + 1):
-                cell = ws.cell(row=detail_row_idx, column=col_idx)
-                cell.font = DETAIL_FONT
-                cell.fill = DETAIL_FILL
         _autosize(ws, headers)
 
     def _write_investor_master(self, wb: Workbook) -> None:
@@ -303,37 +290,15 @@ class ExcelReportBuilder:
             _write_header(ws, ["No data"])
             return
         headers = _ordered_investor_columns(self._investor_rows)
-
-        # MM has the earliest same-day cut-off (1PM, vs NMM's 3PM and GSGF's
-        # quarterly-only schedule), so MM instructions must be actioned
-        # first. Sort rows by fund_category_priority ascending (1=MM) so
-        # the most time-sensitive instructions surface at the top of the
-        # sheet; forms with no fund at all (APPFORM/STATIC/KYC) have no
-        # priority value and sort after every fund-bearing row. Ties keep
-        # their original (stable) order.
-        def _priority_key(row: dict) -> int:
-            value = row.get("fund_category_priority")
-            try:
-                return int(value)
-            except (TypeError, ValueError):
-                return 99
-
-        # Keep each row's FieldValues attached through the sort so the detail
-        # row written underneath stays paired with the correct data row.
-        paired = sorted(
-            zip(self._investor_rows, self._investor_field_values),
-            key=lambda pair: _priority_key(pair[0]),
-        )
-
         _write_header(ws, headers)
-        status_col_idx = headers.index("overall_validation_status") + 1 if "overall_validation_status" in headers else None
-        for row, field_values in paired:
+        for row in self._investor_rows:
             ws.append([row.get(h, "") for h in headers])
-            data_row_idx = ws.max_row
 
-            # Color-code the data row by overall validation status.
+        # Color-code rows by overall validation status
+        status_col_idx = headers.index("overall_validation_status") + 1 if "overall_validation_status" in headers else None
+        for row_idx in range(2, ws.max_row + 1):
             if status_col_idx:
-                status_val = ws.cell(row=data_row_idx, column=status_col_idx).value
+                status_val = ws.cell(row=row_idx, column=status_col_idx).value
                 fill = None
                 if status_val == "PASS":
                     fill = FILL_PASS
@@ -343,19 +308,7 @@ class ExcelReportBuilder:
                     fill = FILL_FAIL
                 if fill:
                     for col_idx in range(1, len(headers) + 1):
-                        ws.cell(row=data_row_idx, column=col_idx).fill = fill
-
-            # Detail row: confidence % + provenance (source document/page)
-            # for each extracted field. Metadata columns (source_file,
-            # form_type, derived columns, workflow fields, ...) have no
-            # FieldValue, so they're left blank.
-            own_source_file = row.get("source_file")
-            ws.append([_format_detail(field_values.get(h), own_source_file) for h in headers])
-            detail_row_idx = ws.max_row
-            for col_idx in range(1, len(headers) + 1):
-                cell = ws.cell(row=detail_row_idx, column=col_idx)
-                cell.font = DETAIL_FONT
-                cell.fill = DETAIL_FILL
+                        ws.cell(row=row_idx, column=col_idx).fill = fill
 
         _autosize(ws, headers)
 
@@ -375,6 +328,43 @@ class ExcelReportBuilder:
             ws.append([row.get(h, "") for h in headers])
             fill = _STATUS_FILL.get(status)
             if fill:
+                for col_idx in range(1, len(headers) + 1):
+                    ws.cell(row=ws.max_row, column=col_idx).fill = fill
+        _autosize(ws, headers)
+
+    def _write_prevalidation_flags(self, wb: Workbook) -> None:
+        """Section 8: one row per applicable flag per document (full
+        checklist, not just exceptions). Triggered rows are colour-coded by
+        rejection risk so Ops can triage High first."""
+        ws = wb.create_sheet("Pre-Validation Flags")
+        headers = ["entity_number", "source_file", "form_code", "flag", "rejection_risk", "triggered", "reason"]
+        _write_header(ws, headers)
+        for row, triggered in self._prevalidation_rows:
+            ws.append([row.get(h, "") for h in headers])
+            if triggered:
+                risk = str(row.get("rejection_risk", "")).lower()
+                fill = FILL_FAIL if risk.startswith("high") else (
+                    FILL_WARNING if risk.startswith("medium") else PatternFill(
+                        start_color="D9E1F2", end_color="D9E1F2", fill_type="solid"
+                    )
+                )
+                for col_idx in range(1, len(headers) + 1):
+                    ws.cell(row=ws.max_row, column=col_idx).fill = fill
+        _autosize(ws, headers)
+
+    def _write_confidence_scores(self, wb: Workbook) -> None:
+        """Section 7: Confidence Scores column group — per-field extraction
+        confidence. Low-confidence fields (below the validation-rules
+        'medium' threshold) are highlighted amber/red for reviewer attention,
+        especially relevant for handwritten forms."""
+        ws = wb.create_sheet("Confidence Scores")
+        headers = ["entity_number", "source_file", "form_code", "field", "value", "confidence", "source"]
+        _write_header(ws, headers)
+        for row in self._confidence_rows:
+            ws.append([row.get(h, "") for h in headers])
+            confidence = row.get("confidence")
+            if isinstance(confidence, (int, float)):
+                fill = FILL_PASS if confidence >= 85 else (FILL_WARNING if confidence >= 65 else FILL_FAIL)
                 for col_idx in range(1, len(headers) + 1):
                     ws.cell(row=ws.max_row, column=col_idx).fill = fill
         _autosize(ws, headers)

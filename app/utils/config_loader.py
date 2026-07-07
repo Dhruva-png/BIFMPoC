@@ -61,30 +61,6 @@ def get_mandatory_fields_for_form(form_code: str) -> list[str]:
     return form_def.get("mandatory_fields", [])
 
 
-@lru_cache(maxsize=1)
-def _field_type_index() -> dict[str, str]:
-    """
-    Builds a field_id -> type lookup across every form's field list.
-    Field IDs that are shared across multiple forms (entity_number,
-    full_name, contact_number, ...) always carry the same type, so a
-    single global index is safe and lets callers (e.g. the batch
-    consolidator's majority-vote grouping) normalize a value correctly
-    without having to know which form it came from.
-    """
-    index: dict[str, str] = {}
-    for form_def in load_field_definitions().values():
-        for f in form_def.get("fields", []):
-            index.setdefault(f["id"], f.get("type", "text"))
-    return index
-
-
-def get_field_type(field_id: str) -> str:
-    """Returns the declared type for a field_id (e.g. 'phone', 'date',
-    'currency', 'id_number', 'email', 'text'), defaulting to 'text' for
-    unknown/system-derived field ids."""
-    return _field_type_index().get(field_id, "text")
-
-
 def get_fund_info(fund_name: str) -> dict | None:
     """
     Look up fund metadata by name (case-insensitive substring match).
@@ -103,21 +79,8 @@ def get_fund_info(fund_name: str) -> dict | None:
 def derive_fund_category(fund_name: str) -> tuple[str, str]:
     """
     Derive fund_category and processing_cutoff from the fund name.
-    Returns (fund_category, processing_cutoff) e.g. ("Money Market", "1:00 PM")
+    Returns (fund_category, processing_cutoff) e.g. ("Money Market", "12:00 PM")
     or ("Non-Money Market (GSGF)", "Quarterly - 7th of last month of quarter").
-
-    Cut-off rules (per BIFM UT processing requirements):
-      - Money Market (MM):      1:00 PM daily cut-off. Earliest cut-off of
-                                 the three categories, so MM instructions
-                                 take processing PRIORITY over NMM/GSGF ones
-                                 received the same day - they must be keyed
-                                 in before the 1PM window closes, whereas
-                                 NMM has until 3PM and GSGF isn't daily at all.
-      - Non-Money Market (NMM): 3:00 PM daily cut-off.
-      - GSGF:                   Quarterly cut-off - the 7th of the last
-                                 month of the quarter (a Non-Money Market
-                                 fund, but on its own quarterly schedule
-                                 rather than a daily time).
     """
     if not fund_name:
         return ("Unknown", "Unknown")
@@ -128,9 +91,9 @@ def derive_fund_category(fund_name: str) -> tuple[str, str]:
     if "global sustainable growth" in fund_lower or "gsgf" in fund_lower or "gsg" in fund_lower:
         return ("Non-Money Market (GSGF)", "Quarterly - 7th of last month of quarter")
 
-    # Money Market: only the Pula Money Market Fund - earliest cut-off, 1PM
+    # Money Market: only the Pula Money Market Fund
     if "money market" in fund_lower or "pula" in fund_lower:
-        return ("Money Market", "1:00 PM")
+        return ("Money Market", "12:00 PM")
 
     # All other BIFM funds are Non-Money Market with 3PM cut-off
     if fund_lower and fund_lower != "unknown":
@@ -139,28 +102,16 @@ def derive_fund_category(fund_name: str) -> tuple[str, str]:
     return ("Unknown", "Unknown")
 
 
-# Lower number = higher processing priority = earlier same-day cut-off.
-# MM (1PM) must be actioned before NMM (3PM); GSGF has no daily cut-off at
-# all (quarterly), so it's never same-day-urgent and sorts last.
-_FUND_CATEGORY_PRIORITY = {
-    "Money Market": 1,
-    "Non-Money Market": 2,
-    "Non-Money Market (GSGF)": 3,
-}
-
-
-def fund_category_priority(fund_category: str | None) -> int:
-    """
-    Numeric processing priority for a fund_category string (1 = most urgent /
-    earliest cut-off). Unknown/blank categories sort last, after GSGF, since
-    there's no confirmed cut-off to race against.
-    """
-    return _FUND_CATEGORY_PRIORITY.get(str(fund_category or ""), 99)
-
-
 @lru_cache(maxsize=1)
 def load_validation_rules() -> dict[str, Any]:
     return _load_json("validation_rules.json")
+
+
+@lru_cache(maxsize=1)
+def load_prevalidation_flags() -> dict[str, Any]:
+    """Section 8 pre-validation flags (rejection-risk signals), separate from
+    the field-level validation_rules.json."""
+    return _load_json("prevalidation_flags.json")
 
 
 def clear_config_cache() -> None:
@@ -168,4 +119,4 @@ def clear_config_cache() -> None:
     load_form_types.cache_clear()
     load_field_definitions.cache_clear()
     load_validation_rules.cache_clear()
-    _field_type_index.cache_clear()
+    load_prevalidation_flags.cache_clear()
