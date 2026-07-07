@@ -164,6 +164,9 @@ class AppSettings:
     max_workers: int = int(os.environ.get("BIFM_MAX_WORKERS", "2"))
     log_level: str = os.environ.get("LOG_LEVEL", "INFO")
     excel_report_name: str = "BIFM_UT_Processing_Report.xlsx"
+    # Section 4, Output 5 / Section 7: automated Query Register, matching
+    # the two-sheet structure (Query Log + Recon) of BIFM's own shared file.
+    query_register_report_name: str = "BIFM_UT_Query_Register.xlsx"
 
 
 settings = AppSettings()

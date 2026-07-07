@@ -37,12 +37,13 @@ def run_headless(intake: str | None, channel: str = "Unknown") -> int:
         return 1
 
     intake_dir = Path(intake) if intake else None
-    outcomes, report_path = run_batch(intake_dir, progress_cb=print, channel=channel)
+    outcomes, report_path, query_register_path = run_batch(intake_dir, progress_cb=print, channel=channel)
 
     print("\n--- Batch Summary ---")
     for o in outcomes:
         print(f"{o.filename:40s} form={o.form_code:10s} confidence={o.classification_confidence:5.1f}  status={o.validation_status}")
     print(f"\nReport: {report_path}")
+    print(f"Query Register: {query_register_path}")
     return 0
 
 

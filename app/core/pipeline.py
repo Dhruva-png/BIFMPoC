@@ -46,6 +46,7 @@ from app.services import classifier, filer
 from app.services.consolidator import backfill_from_profile, build_person_profile
 from app.services.extractor import extract_form
 from app.services.report_generator import ExcelReportBuilder
+from app.services.query_register import QueryRegisterBuilder
 from app.utils.config_loader import load_validation_rules
 from app.utils.logger import get_logger
 from app.validation.engine import validate
@@ -134,6 +135,7 @@ def _validate_and_file(
     progress_cb: ProgressCallback = None,
     channel: str = "Unknown",
     batch_form_codes: list[str] | None = None,
+    query_register: QueryRegisterBuilder | None = None,
 ) -> DocumentOutcome:
     """
     Stages 4-5: validate the (possibly backfilled) extraction, file the
@@ -202,6 +204,8 @@ def _validate_and_file(
         )
 
         report.add_form(extraction, validation_report, log_entry, prevalidation_flags=prevalidation_flags)
+        if query_register is not None:
+            query_register.add_form(extraction, validation_report, log_entry, prevalidation_flags=prevalidation_flags)
         _emit(progress_cb, f"{pdf_path.name}: complete → {validation_report.overall_status.value}")
 
         return DocumentOutcome(
@@ -230,6 +234,7 @@ def process_single_document(
     report: ExcelReportBuilder,
     progress_cb: ProgressCallback = None,
     channel: str = "Unknown",
+    query_register: QueryRegisterBuilder | None = None,
 ) -> DocumentOutcome:
     """
     Runs one document through the full 5-stage pipeline in isolation, with
@@ -252,7 +257,10 @@ def process_single_document(
             validation_status="FAIL",
             error=error or "Extraction failed",
         )
-    return _validate_and_file(pdf_path, classification, extraction, report, progress_cb, channel, batch_form_codes=[])
+    return _validate_and_file(
+        pdf_path, classification, extraction, report, progress_cb, channel,
+        batch_form_codes=[], query_register=query_register,
+    )
 
 
 def process_batch(
@@ -261,6 +269,7 @@ def process_batch(
     progress_cb: ProgressCallback = None,
     channel: str = "Unknown",
     max_workers: int | None = None,
+    query_register: QueryRegisterBuilder | None = None,
 ) -> list[DocumentOutcome]:
     """
     Runs a batch of documents belonging to ONE PERSON through the pipeline:
@@ -343,7 +352,7 @@ def process_batch(
         companion_codes.remove(this_form_code)  # exclude this document's own code from the "companion" set
         outcomes.append(_validate_and_file(
             pdf_path, classification, extraction, report, progress_cb, channel,
-            batch_form_codes=companion_codes,
+            batch_form_codes=companion_codes, query_register=query_register,
         ))
 
     if profile:
@@ -359,11 +368,14 @@ def run_batch(
     intake_dir: Path | None = None,
     progress_cb: ProgressCallback = None,
     channel: str = "Unknown",
-) -> tuple[list[DocumentOutcome], Path]:
+) -> tuple[list[DocumentOutcome], Path, Path]:
     """
     Processes every PDF in intake_dir (default: settings.paths.intake_dir)
     as one batch/one person via process_batch. Returns per-document
-    outcomes in stable file order and the path to the saved Excel report.
+    outcomes in stable file order, the path to the saved Excel report, and
+    the path to the saved Query Register workbook (Section 4, Output 5 /
+    Section 7 - Query Log + Recon sheets, automatically populated from
+    this run's rejections and triggered pre-validation flags).
 
     channel: "Email" or "Walk-in" — applied to every document in this batch
     (the UI offers this as a per-batch choice, since submission channel is
@@ -380,13 +392,20 @@ def run_batch(
 
     if not pdf_files:
         _emit(progress_cb, f"No PDF files found in {intake_dir}")
-        return [], settings.paths.output_dir / settings.excel_report_name
+        return (
+            [],
+            settings.paths.output_dir / settings.excel_report_name,
+            settings.paths.output_dir / settings.query_register_report_name,
+        )
 
     _emit(progress_cb, f"Found {len(pdf_files)} document(s) to process (up to {settings.max_workers} in parallel).")
     report = ExcelReportBuilder()
+    query_register = QueryRegisterBuilder()
 
-    outcomes = process_batch(pdf_files, report, progress_cb, channel)
+    outcomes = process_batch(pdf_files, report, progress_cb, channel, query_register=query_register)
 
     output_path = report.save()
+    query_register_path = query_register.save()
     _emit(progress_cb, f"Batch complete. Report saved to {output_path}")
-    return outcomes, output_path
+    _emit(progress_cb, f"Query Register saved to {query_register_path}")
+    return outcomes, output_path, query_register_path

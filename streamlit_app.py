@@ -31,6 +31,7 @@ from app.llm.router import check_connection, active_provider
 from app.models.schemas import ValidationStatus
 from app.services import intake
 from app.services.report_generator import ExcelReportBuilder
+from app.services.query_register import QueryRegisterBuilder
 from app.utils.config_loader import load_form_types
 from config.settings import settings
 
@@ -185,6 +186,8 @@ if "outcomes" not in st.session_state:
     st.session_state["outcomes"] = []
 if "report_path" not in st.session_state:
     st.session_state["report_path"] = None
+if "query_register_path" not in st.session_state:
+    st.session_state["query_register_path"] = None
 if "last_run_at" not in st.session_state:
     st.session_state["last_run_at"] = None
 
@@ -377,6 +380,7 @@ if run_clicked:
                 )
 
         report = ExcelReportBuilder()
+        query_register = QueryRegisterBuilder()
         log_lines: list[str] = []
         total = len(pdf_paths)
         progress_box.info(
@@ -394,7 +398,9 @@ if run_clicked:
         _batch_result: dict[str, list] = {}
 
         def _run_batch() -> None:
-            _batch_result["outcomes"] = process_batch(pdf_paths, report, progress_cb, channel)
+            _batch_result["outcomes"] = process_batch(
+                pdf_paths, report, progress_cb, channel, query_register=query_register,
+            )
 
         worker_thread = threading.Thread(target=_run_batch, daemon=True)
         worker_thread.start()
@@ -409,10 +415,12 @@ if run_clicked:
         progress_bar.progress(1.0)
         outcomes: list[DocumentOutcome] = _batch_result.get("outcomes", [])
         report_path = report.save()
+        query_register_path = query_register.save()
         progress_box.empty()
         progress_bar.empty()
         st.session_state["outcomes"] = outcomes
         st.session_state["report_path"] = report_path
+        st.session_state["query_register_path"] = query_register_path
         st.session_state["last_run_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         st.success(f"Batch complete — {total} document(s) processed.")
         st.rerun()
@@ -507,7 +515,22 @@ else:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     width="stretch",
                 )
-            st.caption("4 sheets: Investor Master · Beneficiary Details · Validation Flags · Processing Log")
+            st.caption(
+                "Sheets: Consolidated Investor Profile · Investor Master · Beneficiary Details · "
+                "Validation Flags · Pre-Validation Flags · Confidence Scores · Processing Log"
+            )
+
+        query_register_path = st.session_state.query_register_path
+        if query_register_path and Path(query_register_path).exists():
+            with open(query_register_path, "rb") as f:
+                st.download_button(
+                    "⬇  Download Query Register",
+                    data=f.read(),
+                    file_name=Path(query_register_path).name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    width="stretch",
+                )
+            st.caption("2 sheets: Query Log · Recon (matches BIFM's shared Query Register format)")
 
         filed_dir = settings.paths.filed_dir
         filed_count = len(list(filed_dir.glob("*"))) if filed_dir.exists() else 0
