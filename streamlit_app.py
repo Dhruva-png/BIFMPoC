@@ -251,14 +251,14 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📂 Intake")
     sharepoint_ok = intake.sharepoint_available()
-    gmail_ok = intake.gmail_available()
+    imap_ok = intake.imap_available()
     source_options = ["Upload files", "Use intake folder"]
     source_options.append("SharePoint folder" + ("" if sharepoint_ok else " (not configured)"))
-    source_options.append("Gmail inbox" + ("" if gmail_ok else " (not configured)"))
+    source_options.append("Email inbox (IMAP)" + ("" if imap_ok else " (not configured)"))
     mode = st.radio("Source", source_options, label_visibility="collapsed")
-    if mode.startswith("Gmail"):
+    if mode.startswith("Email"):
         channel = "Email"
-        st.caption("Submission channel: **Email** (forced for the Gmail source).")
+        st.caption("Submission channel: **Email** (forced for the email inbox source).")
     else:
         channel = st.selectbox(
             "Submission channel", ["Email", "Walk-in", "Unknown"],
@@ -284,11 +284,14 @@ with st.sidebar:
                 "Set SHAREPOINT_TENANT_ID / SHAREPOINT_CLIENT_ID / SHAREPOINT_CLIENT_SECRET / "
                 "SHAREPOINT_SITE_ID as environment variables to enable this source."
             )
-    elif mode.startswith("Gmail"):
-        if gmail_ok:
-            st.caption(f"Query: `{settings.gmail.query}`")
+    elif mode.startswith("Email"):
+        if imap_ok:
+            st.caption(f"Mailbox folder: `{settings.imap.folder}`  ·  Search: `{settings.imap.search_criteria}`")
         else:
-            st.caption("Set GMAIL_CREDENTIALS_FILE (OAuth client secret JSON path) to enable this source.")
+            st.caption(
+                "Set IMAP_HOST / IMAP_USERNAME / IMAP_PASSWORD as environment variables to enable "
+                "this source (use an app password if your provider requires one for IMAP)."
+            )
 
     st.markdown("---")
     run_clicked = st.button("▶  Run Batch", width="stretch", disabled=not ollama_ok)
@@ -342,8 +345,8 @@ def _resolve_pdf_paths() -> list[Path]:
         return saved
     if mode.startswith("SharePoint"):
         return intake.pull_from_sharepoint(progress_cb=st.write)
-    if mode.startswith("Gmail"):
-        return intake.pull_from_gmail(progress_cb=st.write)
+    if mode.startswith("Email"):
+        return intake.pull_from_imap(progress_cb=st.write)
     return sorted(intake_dir.glob("*.pdf")) if intake_dir.exists() else []
 
 

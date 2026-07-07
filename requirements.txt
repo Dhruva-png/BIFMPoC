@@ -8,7 +8,5 @@ streamlit>=1.38.0
 pandas>=2.0.0
 # SharePoint (Microsoft Graph) intake/filing connector
 # (auth only needs `requests`, already listed above)
-# Gmail intake connector
-google-api-python-client>=2.140.0
-google-auth-httplib2>=0.2.0
-google-auth-oauthlib>=1.2.0
+# Email intake connector uses Python's built-in imaplib/email modules —
+# no extra dependency needed.

@@ -11,8 +11,11 @@ extra intake channels on top of manual upload / a local folder:
                           document library folder (Microsoft Graph API),
                           and can push filed documents back into the
                           correct SharePoint subfolder.
-  gmail_client.py       - lists and downloads PDF attachments from a Gmail
-                          inbox/label matching a search query (Gmail API).
+  imap_client.py        - lists and downloads PDF attachments from any
+                          standard IMAP mailbox (Office 365, a hosted
+                          BIFM mailbox, Gmail-via-IMAP, etc.) matching a
+                          search filter, using only Python's built-in
+                          imaplib/email modules.
 
 Both are optional: if not configured (no credentials in the environment),
 `is_configured()` returns False and the corresponding sidebar option is

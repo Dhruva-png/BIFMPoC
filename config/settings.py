@@ -107,16 +107,35 @@ class SharePointSettings:
 
 
 @dataclass
-class GmailSettings:
+class ImapSettings:
     """
-    Gmail API connection details for pulling emailed instruction forms
-    (Section 3, Step 1). All optional — leave GMAIL_CREDENTIALS_FILE unset
-    to keep the Gmail intake option disabled.
+    IMAP connection details for pulling emailed instruction forms
+    (Section 3, Step 1: "A client submits a UT instruction form (PDF) via
+    email to the contact center"). All optional — leave IMAP_HOST unset to
+    keep the email intake option disabled.
+
+    Works with any IMAP mailbox (Office 365 / Outlook, a hosted BIFM
+    mailbox, Gmail-via-IMAP, etc.) — not tied to a specific provider.
+    For Gmail specifically, IMAP access needs an "App Password" (if
+    2-Step Verification is on) rather than the normal account password,
+    since Gmail disables plain password IMAP login by default.
+
+    IMAP_FOLDER is the mailbox/folder to search (default "INBOX").
+    IMAP_SEARCH_CRITERIA is a standard IMAP SEARCH string (default
+    "UNSEEN" - only unread messages), so already-processed emails aren't
+    re-pulled every run. IMAP_PROCESSED_FOLDER, if set and the server
+    supports it, moves each processed message there after its PDF
+    attachments are downloaded (in addition to marking it \\Seen) so the
+    contact center inbox stays clean without deleting anything.
     """
-    credentials_file: str = os.environ.get("GMAIL_CREDENTIALS_FILE", "")
-    token_file: str = os.environ.get("GMAIL_TOKEN_FILE", str(BASE_DIR / "config" / "gmail_token.json"))
-    query: str = os.environ.get("GMAIL_QUERY", "has:attachment filename:pdf is:unread")
-    label_processed: str = os.environ.get("GMAIL_LABEL_PROCESSED", "BIFM-Processed")
+    host: str = os.environ.get("IMAP_HOST", "")
+    port: int = int(os.environ.get("IMAP_PORT", "993"))
+    username: str = os.environ.get("IMAP_USERNAME", "")
+    password: str = os.environ.get("IMAP_PASSWORD", "")
+    use_ssl: bool = os.environ.get("IMAP_USE_SSL", "true").lower() == "true"
+    folder: str = os.environ.get("IMAP_FOLDER", "INBOX")
+    search_criteria: str = os.environ.get("IMAP_SEARCH_CRITERIA", "UNSEEN")
+    processed_folder: str = os.environ.get("IMAP_PROCESSED_FOLDER", "BIFM-Processed")
 
 
 @dataclass
@@ -145,7 +164,7 @@ class AppSettings:
     groq: GroqSettings = field(default_factory=GroqSettings)
     ollama: OllamaSettings = field(default_factory=OllamaSettings)
     sharepoint: SharePointSettings = field(default_factory=SharePointSettings)
-    gmail: GmailSettings = field(default_factory=GmailSettings)
+    imap: ImapSettings = field(default_factory=ImapSettings)
     paths: PathSettings = field(default_factory=PathSettings)
     # 220 DPI is a fast default: llava's vision encoder resizes everything to
     # a fixed ~336x336 internally regardless of what you send it, so pushing

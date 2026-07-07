@@ -1,6 +1,7 @@
 """
-Module 0: Intake — pulls instruction-form PDFs in from SharePoint or Gmail
-before handing them to the existing render/classify/extract pipeline.
+Module 0: Intake — pulls instruction-form PDFs in from SharePoint or an
+IMAP email inbox before handing them to the existing render/classify/
+extract pipeline.
 
 This is the automation described in Section 4 ("When a form lands on
 SharePoint, the system should automatically read it...") plus the email
@@ -14,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional
 
-from app.connectors import gmail_client, sharepoint_client
+from app.connectors import imap_client, sharepoint_client
 from app.utils.logger import get_logger
 from config.settings import settings
 
@@ -33,8 +34,8 @@ def sharepoint_available() -> bool:
     return sharepoint_client.is_configured()
 
 
-def gmail_available() -> bool:
-    return gmail_client.is_configured()
+def imap_available() -> bool:
+    return imap_client.is_configured()
 
 
 def pull_from_sharepoint(progress_cb: ProgressCallback = None) -> list[Path]:
@@ -63,26 +64,28 @@ def pull_from_sharepoint(progress_cb: ProgressCallback = None) -> list[Path]:
     return paths
 
 
-def pull_from_gmail(progress_cb: ProgressCallback = None) -> list[Path]:
+def pull_from_imap(progress_cb: ProgressCallback = None) -> list[Path]:
     """
     Downloads PDF attachments from unread/matching emails in the
-    configured Gmail inbox into a local staging directory, and labels
-    each processed message so it isn't re-pulled next run.
+    configured IMAP inbox into a local staging directory, and marks each
+    processed message \\Seen (moving it to a processed folder too, if
+    configured) so it isn't re-pulled next run.
     """
-    if not gmail_client.is_configured():
-        _emit(progress_cb, "Gmail is not configured — set GMAIL_CREDENTIALS_FILE to enable this source.")
+    if not imap_client.is_configured():
+        _emit(progress_cb, "Email intake is not configured — set IMAP_HOST / IMAP_USERNAME / "
+                            "IMAP_PASSWORD to enable this source.")
         return []
 
-    dest_dir = settings.paths.intake_dir / "_gmail"
-    _emit(progress_cb, f"Searching Gmail ('{settings.gmail.query}') for instruction forms...")
+    dest_dir = settings.paths.intake_dir / "_imap"
+    _emit(progress_cb, f"Searching '{settings.imap.folder}' ('{settings.imap.search_criteria}') for instruction forms...")
     try:
-        attachments = gmail_client.fetch_pdf_attachments(dest_dir)
+        attachments = imap_client.fetch_pdf_attachments(dest_dir)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("Gmail fetch failed")
-        _emit(progress_cb, f"ERROR fetching from Gmail: {exc}")
+        logger.exception("IMAP fetch failed")
+        _emit(progress_cb, f"ERROR fetching from email inbox: {exc}")
         return []
 
     for att in attachments:
         _emit(progress_cb, f"  {att['path'].name} (from {att['sender']}, subject: \"{att['subject']}\")")
-    _emit(progress_cb, f"Pulled {len(attachments)} document(s) from Gmail.")
+    _emit(progress_cb, f"Pulled {len(attachments)} document(s) from email inbox.")
     return [att["path"] for att in attachments]
