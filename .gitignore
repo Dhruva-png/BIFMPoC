@@ -1,0 +1,13 @@
+# Secrets — never commit real keys. Use .env.example as the template.
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# App runtime output/local state
+logs/*.log
+output/
+intake/*.pdf
+config/gmail_token.json

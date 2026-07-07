@@ -2,6 +2,11 @@
 Central configuration for the BIFM UT POC application.
 All paths and tunables live here (or are overridden via environment variables / config.ini),
 so nothing is hard-coded inside business logic modules.
+
+API keys and other secrets are loaded from a `.env` file in the project
+root (see `.env.example` for every key this app reads) so you only ever
+enter them once instead of re-exporting environment variables every
+session. `.env` is gitignored — don't commit real keys.
 """
 from __future__ import annotations
 
@@ -10,6 +15,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # project root
+
+try:
+    from dotenv import load_dotenv
+    # override=False: real shell/CI environment variables still win over
+    # .env, so .env is purely a convenience default, never a surprise
+    # override of something you deliberately set in your shell.
+    load_dotenv(BASE_DIR / ".env", override=False)
+except ImportError:
+    # python-dotenv isn't installed (e.g. minimal CI environment) — fall
+    # back to whatever's already in the real environment. `pip install
+    # -r requirements.txt` includes python-dotenv, so this only matters
+    # if someone's running with a stripped-down install.
+    pass
 
 
 @dataclass

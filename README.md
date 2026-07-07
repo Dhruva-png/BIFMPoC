@@ -11,6 +11,13 @@ Running an 8B vision model locally needs a real GPU (or a lot of patience on
 CPU). If your laptop can't handle that, use a free cloud API instead — same
 code, same output, just faster and with zero local model download.
 
+> **Tip — don't re-enter keys every session:** copy `.env.example` to
+> `.env` (already done for you if `.env` is already present in the project
+> root) and fill in your key(s) there instead of `export`ing them each
+> time. `.env` is loaded automatically on startup and is gitignored, so
+> real keys never get committed. Everything below still works via
+> environment variables too — `.env` is just a persistent alternative.
+
 ### Option A — Groq (default, recommended for laptops without billing set up)
 
 Groq's free tier requires no credit card and has been the most reliable
@@ -20,7 +27,8 @@ access to its Gemini free tier for many accounts/regions (you may see a
 
 1. Get a free API key: https://console.groq.com/keys (email or Google
    sign-in, no credit card, no charge on the free tier).
-2. Set it as an environment variable before launching:
+2. Set `GROQ_API_KEY` in `.env` (see tip above), or as an environment
+   variable before launching:
    ```bash
    # macOS/Linux
    export GROQ_API_KEY="your-key-here"
