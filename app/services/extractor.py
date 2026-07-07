@@ -347,3 +347,46 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
 def extract_investment_application_form(page_images: list[Path]) -> ExtractionResult:
     """Backward-compatible alias for APPFORM extraction."""
     return _extract_appform(page_images)
+
+
+# ---------------------------------------------------------------------------
+# MarvelAI integration helper
+# ---------------------------------------------------------------------------
+# Not used by the Streamlit front end. Converts an ExtractionResult's fields
+# (the parsed LLM JSON, held as FieldValue objects) into a plain
+# list-of-lists — e.g. [["full_name", "Dhruva"], ["id_number", "123456"]] —
+# for hand-off to the MarvelAI pipeline. `latest_extraction_as_list` is
+# refreshed every time `extraction_result_to_list` is called, so MarvelAI's
+# code can simply do:
+#
+#   from app.services.extractor import extraction_result_to_list, latest_extraction_as_list
+#   rows = extraction_result_to_list(result)
+#   # or, after that call: app.services.extractor.latest_extraction_as_list
+
+latest_extraction_as_list: list[list] = []
+
+
+def extraction_result_to_list(result: ExtractionResult, include_meta: bool = True) -> list[list]:
+    """
+    Flattens an ExtractionResult's fields into [[field_id, value], ...].
+
+    Args:
+        result: the ExtractionResult produced by extract_form().
+        include_meta: if True, also appends ["source_file", ...] and
+            ["form_code", ...] rows so the batch/document context travels
+            with the field data. Set False for field values only.
+
+    Returns:
+        A list of [field_id, value] pairs. Also cached on the module-level
+        `latest_extraction_as_list` variable for easy access elsewhere.
+    """
+    global latest_extraction_as_list
+
+    rows: list[list] = [[field_id, fv.value] for field_id, fv in result.fields.items()]
+
+    if include_meta:
+        rows.append(["source_file", result.source_file])
+        rows.append(["form_code", result.form_code])
+
+    latest_extraction_as_list = rows
+    return rows
