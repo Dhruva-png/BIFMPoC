@@ -63,18 +63,46 @@ st.markdown(
     [data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,0.15); }}
 
     /* Streamlit's own alert boxes (st.success/error/warning/info) keep their
-       light pastel backgrounds even inside the dark sidebar — force dark
-       text back on just those so it doesn't inherit the light sidebar text
-       color and disappear against them. */
+       light pastel backgrounds even inside the dark sidebar — force both a
+       known light background AND dark text back on just those, since
+       relying on Streamlit's default bg color was fragile and produced
+       dark-on-dark in some alert variants. */
     [data-testid="stSidebar"] [data-testid="stAlert"],
     [data-testid="stSidebar"] [data-testid="stAlertContainer"],
     [data-testid="stSidebar"] .stAlert {{
+        background: #EAF1F8 !important;
         color: {INK} !important;
     }}
     [data-testid="stSidebar"] [data-testid="stAlert"] *,
     [data-testid="stSidebar"] [data-testid="stAlertContainer"] *,
     [data-testid="stSidebar"] .stAlert * {{
         color: {INK} !important;
+    }}
+
+    /* Inline code spans (e.g. `LLM_PROVIDER`, `ollama serve`) keep
+       Streamlit's own light-grey chip background by default — the blanket
+       light-text rule above made them invisible on it (light-on-light).
+       Give them an explicit dark chip instead. */
+    [data-testid="stSidebar"] code {{
+        background: #34465A !important;
+        color: #E7ECF2 !important;
+    }}
+
+    /* Uploaded-file rows (the card that appears per file after choosing a
+       PDF) are a separate element from the dropzone below and render as a
+       white card by default — force a dark surface + light text so the
+       filename, size, and remove (x) icon stay legible. */
+    [data-testid="stSidebar"] [data-testid="stFileUploaderFile"],
+    [data-testid="stSidebar"] [data-testid="stFileUploaderFileName"] {{
+        background: #263342 !important;
+        color: #E7ECF2 !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] * {{
+        color: #E7ECF2 !important;
+        fill: #E7ECF2 !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] small {{
+        color: #A9B6C4 !important;
     }}
 
     .bifm-header {{
@@ -234,10 +262,10 @@ with st.sidebar:
         st.caption(f"Vision/text model: **{settings.gemini.vision_model}** (free tier)")
     else:
         if ollama_ok:
-            st.success("Groq API key valid", icon="✅")
+            st.success("Marvel AI API key valid", icon="✅")
         else:
-            st.error("Groq unreachable — missing or invalid GROQ_API_KEY", icon="⚠️")
-            st.caption("Get a free key (no card) at https://console.groq.com/keys and set it as an environment variable.")
+            st.error("Marvel AI unreachable — missing or invalid MARVEL_AI_API_KEY", icon="⚠️")
+            st.caption("Get a free key (no card) at https://console.marvelai.com/keys and set it as an environment variable.")
         st.caption(f"Vision model: **{settings.groq.vision_model}**  ·  Text model: **{settings.groq.text_model}** (free tier)")
     if not ollama_ok:
         pass  # error already shown above
@@ -301,7 +329,7 @@ with st.sidebar:
         elif settings.llm_provider == "gemini":
             st.caption("Fix the Gemini API key/quota issue above to enable processing.")
         else:
-            st.caption("Fix the Groq API key issue above to enable processing.")
+            st.caption("Fix the Marvel AI API key issue above to enable processing.")
 
     with st.expander("Form types in scope"):
         for ft in load_form_types()["form_types"]:
@@ -393,7 +421,7 @@ if run_clicked:
 
         # process_batch treats every PDF in this upload as ONE PERSON's set
         # of forms: it extracts all of them (concurrently, throttled to
-        # Groq's TPM budget internally), merges identity/contact/banking
+        # Marvel AI's TPM budget internally), merges identity/contact/banking
         # fields across all the documents, backfills blanks from that
         # merged profile, then validates/files/reports each one. Run it on
         # a background thread so the Streamlit main thread stays free to
