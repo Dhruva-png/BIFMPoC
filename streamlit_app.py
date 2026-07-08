@@ -239,6 +239,7 @@ STATUS_CHIP = {
     "WARNING": ("chip-warning", "WARNING"),
     "FAIL":    ("chip-fail",    "FAIL"),
     "ERROR":   ("chip-error",   "ERROR"),
+    "SKIPPED": ("chip-warning", "NOT A RECOGNIZED FORM"),
 }
 
 

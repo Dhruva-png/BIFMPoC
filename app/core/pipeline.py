@@ -188,6 +188,17 @@ def _extract_only(
         _emit(progress_cb, f"Classifying {pdf_path.name}...")
         classification = classifier.classify_form(page_images[0])
 
+        if classification.form_code == "UNRECOGNIZED":
+            # Not one of the 6 known BIFM UT form types - e.g. a proof-of-
+            # payment scan, an ID copy, or some other attachment that isn't
+            # itself an instruction form. Stop here rather than extracting
+            # fields for a form type that doesn't exist and filing it as if
+            # it were a real instruction - this is what previously let
+            # unrelated attachments (from an email inbox especially) get
+            # processed as fake "Investment Application Forms".
+            _emit(progress_cb, f"{pdf_path.name}: not a recognized BIFM UT instruction form - skipping")
+            return classification, None, "Not a recognized BIFM UT instruction form"
+
         # Disambiguate GSG vs Standard disinvestment when confidence is borderline
         if classification.form_code in ("DIS", "DIS_GSG") and classification.confidence < HIGH_CONFIDENCE_MIN:
             _emit(progress_cb, f"Disambiguating DIS vs DIS_GSG for {pdf_path.name}...")
@@ -348,6 +359,14 @@ def process_single_document(
     doc's "Channel (Email / Walk-in) - Tagged at upload" metadata field.
     """
     classification, extraction, error = _extract_only(pdf_path, progress_cb)
+    if classification is not None and classification.form_code == "UNRECOGNIZED":
+        return DocumentOutcome(
+            filename=pdf_path.name,
+            form_code="UNRECOGNIZED",
+            classification_confidence=0.0,
+            validation_status="SKIPPED",
+            error=error,
+        )
     if error or classification is None or extraction is None:
         return DocumentOutcome(
             filename=pdf_path.name,
@@ -437,6 +456,15 @@ def process_batch(
 
     outcomes: list[DocumentOutcome] = []
     for idx, (pdf_path, classification, extraction, error) in enumerate(ordered):
+        if classification is not None and classification.form_code == "UNRECOGNIZED":
+            outcomes.append(DocumentOutcome(
+                filename=pdf_path.name,
+                form_code="UNRECOGNIZED",
+                classification_confidence=0.0,
+                validation_status="SKIPPED",
+                error=error,
+            ))
+            continue
         if error or classification is None or extraction is None:
             outcomes.append(DocumentOutcome(
                 filename=pdf_path.name,

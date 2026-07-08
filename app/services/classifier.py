@@ -58,19 +58,31 @@ def classify_form(first_page_image: Path) -> ClassificationResult:
         code = parsed["form_code"]
         confidence = float(parsed.get("confidence", 0))
 
-        # Guard against the model returning an invalid code
+        # The model returned a code that isn't one of the 6 known form
+        # types - this document genuinely isn't a recognized BIFM UT
+        # instruction form (e.g. a proof-of-payment scan, an ID copy, a
+        # brochure that got attached to the same email as the real form).
+        # Previously this silently forced it through as a fake "APPFORM"
+        # at 0% confidence, which meant an unrelated attachment could end
+        # up extracted, validated, and filed as if it were a real New
+        # Business application. UNRECOGNIZED is not in valid_codes, so
+        # pipeline.py can detect it and skip processing entirely instead.
         if code not in valid_codes:
-            logger.warning("Classifier returned unknown code '%s' - falling back to APPFORM", code)
-            code, confidence = "APPFORM", 0.0
+            logger.warning("Classifier returned unrecognized code '%s' - not one of the 6 known form types", code)
+            code, confidence = "UNRECOGNIZED", 0.0
 
     except (KeyError, ValueError, Exception) as exc:  # noqa: BLE001
+        # Same reasoning: if we can't even parse what the model said, we
+        # genuinely don't know what this document is - treating that as
+        # "APPFORM at 0% confidence" is no more honest than treating an
+        # unrecognized code that way.
         logger.error(
             "Could not parse classifier output for %s: %s | raw=%s",
             first_page_image, exc, response.text,
         )
-        code, confidence = "APPFORM", 0.0
+        code, confidence = "UNRECOGNIZED", 0.0
 
-    name = form_types_lookup.get(code, "Unknown")
+    name = form_types_lookup.get(code, "Unrecognized document")
     result = ClassificationResult(
         form_code=code,
         form_name=name,
