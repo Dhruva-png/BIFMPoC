@@ -7,6 +7,7 @@ pytesseract>=0.3.10
 pytest>=8.0.0
 streamlit>=1.38.0
 pandas>=2.0.0
+watchdog
 # SharePoint (Microsoft Graph) intake/filing connector
 # (auth only needs `requests`, already listed above)
 # Email intake connector uses Python's built-in imaplib/email modules —
