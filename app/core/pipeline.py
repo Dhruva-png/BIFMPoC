@@ -281,6 +281,7 @@ def _validate_and_file(
             rejection_reason=rejection_reason,
             channel=channel,
             upload_date=upload_date,
+            date_signed=extraction.field_value("date_signed"),
         )
 
         report.add_form(extraction, validation_report, log_entry, prevalidation_flags=prevalidation_flags)

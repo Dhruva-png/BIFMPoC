@@ -2,7 +2,16 @@
 Module 5: Document Filer (Section 5.3 / 7.2).
 
 Renames and copies each source PDF using the naming convention:
-    [FormType]_[EntityNumber]_[InvestorSurname]_[YYYYMMDD].[ext]
+    [FormType]_[InvestorFullName]_[EntityNumber]_[FundCategory]_[InstructionDateSigned].[ext]
+
+FundCategory (MM / NMM / GSGF) is omitted when it can't be resolved yet.
+InstructionDateSigned is the date the client actually signed the form -
+the "Instruction Date (signed)" metadata field from Section 6 of the
+understanding document - not the date the system happened to process it;
+falls back to the processing date only when a signed date wasn't
+captured. This follows Section 6's own metadata model (Instruction Date
+and Upload Date are two distinct fields there) instead of collapsing
+everything to a single system timestamp.
 
 Also simulates the SharePoint folder structure confirmed in Section 6 of
 the understanding document ("Current State and Marvel.ai Output
@@ -51,44 +60,132 @@ MISSING_DOCS_DIRNAME = "Missing"
 
 
 def _clean_token(value: str) -> str:
-    value = (value or "UNKNOWN").strip().upper().replace(" ", "")
+    """
+    Filename-safe token: uppercased, invalid characters stripped. Spaces
+    become hyphens (not deleted) so a multi-word value like "wrong
+    banking details" or a full investor name reads as
+    "WRONG-BANKING-DETAILS" / "JOHN-VAN-DER-MERWE" instead of being
+    squashed into one illegible run of letters.
+    """
+    value = (value or "UNKNOWN").strip().upper().replace(" ", "-")
     return _INVALID_FILENAME_CHARS.sub("", value) or "UNKNOWN"
+
+
+# Same parseable formats validation/engine.py accepts for date fields -
+# duplicated here (rather than imported) to keep filer.py's only
+# dependency on extracted data being the plain strings passed into it.
+_DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %B %Y", "%d %b %Y")
+
+
+def _parse_signed_date(value) -> datetime | None:
+    """Parses the extracted 'date_signed' field into a datetime, trying
+    every format the extractor/validator can produce. Returns None (never
+    raises) if the value is blank or doesn't match any known format, so
+    the caller can fall back to the processing date."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _fund_category_token(fund_category: str | None) -> str:
+    """
+    Short filename token for fund category (MM / NMM / GSGF) - Section 3
+    Step 3's "Segregation" is one of the most operationally significant
+    facts about a document (it decides the 1PM vs 3PM cut-off and which
+    queue it's worked from), so surfacing it in the filename lets ops
+    identify a document's tier without opening it. Returns "" (omitted
+    from the filename entirely) when the category hasn't been resolved,
+    rather than showing a misleading "UNKNOWN" on every STATIC/KYC/DEBIT
+    document that doesn't carry a single fund selection.
+    """
+    cat = (fund_category or "").lower()
+    if not cat or "unknown" in cat:
+        return ""
+    if "gsgf" in cat or "global sustainable" in cat:
+        return "GSGF"
+    if "money market" in cat and "non" not in cat:
+        return "MM"
+    if "non-money market" in cat or "non money market" in cat:
+        return "NMM"
+    return ""
 
 
 def build_filename(
     form_code: str,
     entity_number: str,
-    surname: str,
+    investor_name: str,
     ext: str = "pdf",
     as_of: datetime | None = None,
     rejection_reason: str | None = None,
+    fund_category: str | None = None,
+    date_signed: str | None = None,
 ) -> str:
     """
-    Pure function: [FormType]_[EntityNumber]_[InvestorSurname]_[YYYYMMDD].[ext]
-    (Section 5.3). If rejection_reason is supplied, it's appended per the
-    client's own example: "...appended with wrong banking details".
+    Pure function:
+      [FormType]_[InvestorFullName]_[EntityNumber]_[FundCategory]_[Date].[ext]
+    (Section 5.3, Section 6 metadata fields.)
+
+    - investor_name: the investor's full name (Section 6's "Investor Full
+      Name" field), not just a surname - hyphenated by _clean_token so a
+      multi-word name stays readable rather than being squashed together.
+    - fund_category: MM / NMM / GSGF token, omitted entirely when not
+      resolved (see _fund_category_token) - not every form type carries one.
+    - date_signed: the extracted "Instruction Date (signed)" field, per
+      Section 6 - used in place of the processing date whenever it parses
+      successfully, so the filename reflects when the client actually
+      signed rather than an arbitrary system-processing timestamp. Falls
+      back to as_of/now if blank or unparseable.
+    - rejection_reason: appended per the client's own example -
+      "...appended with wrong banking details" - now hyphenated instead
+      of squashed, e.g. "...WRONG-BANKING-DETAILS".
     """
     as_of = as_of or datetime.now()
-    date_str = as_of.strftime("%Y%m%d")
-    base = f"{_clean_token(form_code)}_{_clean_token(entity_number)}_{_clean_token(surname)}_{date_str}"
+    effective_date = _parse_signed_date(date_signed) or as_of
+    date_str = effective_date.strftime("%Y%m%d")
+
+    tokens = [
+        _clean_token(form_code),
+        _clean_token(investor_name),
+        _clean_token(entity_number),
+    ]
+    fund_token = _fund_category_token(fund_category)
+    if fund_token:
+        tokens.append(fund_token)
+    tokens.append(date_str)
+
+    base = "_".join(tokens)
     if rejection_reason:
         base = f"{base}_{_clean_token(rejection_reason)}"
     return f"{base}.{ext.lstrip('.')}"
 
 
-def _extract_surname(full_name: str | None) -> str:
-    if not full_name:
-        return "UNKNOWN"
-    parts = full_name.strip().split()
-    return parts[-1] if parts else "UNKNOWN"
-
-
 def _fund_bucket(fund_category: str | None) -> str:
-    """Money Market (cut-off 1PM) vs Non-Money Market (3PM) segregation."""
+    """
+    Money Market (cut-off 1PM) vs Non-Money Market (3PM) segregation.
+
+    Returns a single, filesystem-safe, space/hyphen-free token
+    ("MoneyMarket" / "NonMoneyMarket") so every form type routes into the
+    SAME folder for the same bucket. Previously this returned "Money
+    Market" / "Non-Money Market" and only the ADD branch normalized it
+    afterwards (`.replace(" ", "").replace("-", "")`) — the DIS branch used
+    the raw value directly, so the same investor's Additional Investment
+    and Disinvestment documents landed in differently-named sibling
+    folders (e.g. "MoneyMarket" vs "Money Market") instead of the one
+    correct folder. Normalizing here, once, means every caller is
+    consistent by construction and there's nothing left to forget.
+    """
     cat = (fund_category or "").lower()
     if "money market" in cat and "non" not in cat:
-        return "Money Market"
-    return "Non-Money Market"
+        return "MoneyMarket"
+    return "NonMoneyMarket"
 
 
 def _quarter_label(as_of: datetime) -> str:
@@ -175,7 +272,7 @@ def resolve_destination_dir(
             status_leaf = "Captured/Rejected"
         elif approved:
             status_leaf = "Captured/Approved"
-        return month_dir / day / _fund_bucket(fund_category).replace(" ", "").replace("-", "") / status_leaf
+        return month_dir / day / _fund_bucket(fund_category) / status_leaf
 
     if form_code == "DIS":
         status_leaf = "Captured"
@@ -270,17 +367,23 @@ def file_document(
     rejection_reason: str = "",
     channel: str = "Unknown",
     upload_date: str | None = None,
+    date_signed: str | None = None,
 ) -> ProcessingLogEntry:
     """
     Copies source_pdf into the routed SharePoint-simulation folder under its
     standardized name and returns a ProcessingLogEntry ready to append to the
     Processing Log sheet.
+
+    date_signed: the extracted "Instruction Date (signed)" field (Section
+    6) - used in the filename in place of today's processing date when
+    it's present and parses cleanly (see build_filename).
     """
     as_of = datetime.now()
-    surname = _extract_surname(full_name)
     new_filename = build_filename(
-        form_code, entity_number, surname, ext=source_pdf.suffix.lstrip("."),
-        as_of=as_of, rejection_reason=rejection_reason or None,
+        form_code, entity_number, full_name or "UNKNOWN",
+        ext=source_pdf.suffix.lstrip("."), as_of=as_of,
+        rejection_reason=rejection_reason or None,
+        fund_category=fund_category, date_signed=date_signed,
     )
     destination_dir = resolve_destination_dir(form_code, fund_category, instruction_status, as_of)
     destination = destination_dir / new_filename
