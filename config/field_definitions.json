@@ -168,7 +168,7 @@
   },
   "KYC": {
     "label": "KYC (Know Your Customer)",
-    "mandatory_fields": ["full_name", "id_number", "contact_number", "email", "date_of_birth"],
+    "mandatory_fields": ["full_name", "id_number", "email", "date_of_birth"],
     "fields": [
       {"id": "entity_number", "section": "Entity Details", "label": "Entity Number(s)", "mandatory": false, "source": "form_field", "type": "text"},
       {"id": "entity_name", "section": "Entity Details", "label": "Entity Name(s)", "mandatory": false, "source": "form_field", "type": "text"},

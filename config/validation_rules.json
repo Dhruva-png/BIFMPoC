@@ -98,12 +98,6 @@
       "logic": {"type": "sum_equals", "field": "split_percent", "target": 100}
     },
     {
-      "id": "kyc_completeness",
-      "applies_to": "kyc_completeness_flag",
-      "description": "All 4 KYC document checkboxes (Certified ID, Proof of Address, Proof of Banking, Proof of Source) must be ticked. KYC only.",
-      "logic": {"type": "kyc_completeness_check"}
-    },
-    {
       "id": "fund_category_present",
       "applies_to": "fund_category",
       "description": "Fund category (MM/NMM/GSGF) and processing cut-off must be determinable from the extracted fund name. ADD, DEBIT, DIS, DIS_GSG only.",
