@@ -120,3 +120,25 @@ def clear_config_cache() -> None:
     load_field_definitions.cache_clear()
     load_validation_rules.cache_clear()
     load_prevalidation_flags.cache_clear()
+
+def fund_category_priority(fund_category: str | None) -> int:
+    """
+    Processing-order priority for a resolved fund_category, driven by how
+    tight each category's cut-off is — lower number = more time-sensitive:
+      1 = Money Market            (1:00 PM cut-off)
+      2 = Non-Money Market        (3:00 PM cut-off)
+      3 = Non-Money Market (GSGF) (quarterly cut-off)
+      99 = Unknown / not resolved (needs manual review, sorts last)
+    """
+    if not fund_category:
+        return 99
+    cat = str(fund_category).lower()
+    if "gsgf" in cat or "global sustainable" in cat:
+        return 3
+    if "unknown" in cat:
+        return 99
+    if "money market" in cat and "non" not in cat:
+        return 1
+    if "non-money market" in cat or "non money market" in cat:
+        return 2
+    return 99
