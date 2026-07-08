@@ -236,45 +236,6 @@ def status_chip(status: str) -> str:
 # Sidebar
 # --------------------------------------------------------------------------- #
 with st.sidebar:
-    st.markdown("### ⚙️ System Status")
-    st.caption(f"LLM provider: **{active_provider()}**  ·  set via `LLM_PROVIDER` env var")
-    ollama_ok = check_connection()
-    if settings.llm_provider == "ollama":
-        if ollama_ok:
-            st.success(f"Ollama connected · `{settings.ollama.host}`", icon="✅")
-        else:
-            st.error(f"Ollama unreachable at `{settings.ollama.host}`", icon="⚠️")
-            st.caption("Run `ollama serve`, then `ollama pull llama3.2 && ollama pull qwen3-vl:8b-instruct`.")
-        st.caption(
-            f"Vision model: **{settings.ollama.vision_model}**  ·  "
-            f"Text model: **{settings.ollama.text_model}**"
-        )
-        st.caption(
-            f"Timeout: **{settings.ollama.request_timeout_seconds}s** per call  ·  "
-            f"Keep-alive: **{settings.ollama.keep_alive}**"
-        )
-    elif settings.llm_provider == "gemini":
-        if ollama_ok:
-            st.success("Gemini API key valid", icon="✅")
-        else:
-            st.error("Gemini unreachable — missing/invalid key, or quota is 0", icon="⚠️")
-            st.caption("Get a free key at https://aistudio.google.com/apikey and set it as an environment variable.")
-        st.caption(f"Vision/text model: **{settings.gemini.vision_model}** (free tier)")
-    else:
-        if ollama_ok:
-            st.success("Marvel AI API key valid", icon="✅")
-        else:
-            st.error("Marvel AI unreachable — missing or invalid MARVEL_AI_API_KEY", icon="⚠️")
-            st.caption("Get a free key (no card) at https://console.marvelai.com/keys and set it as an environment variable.")
-        st.caption(f"Vision model: **{settings.groq.vision_model}**  ·  Text model: **{settings.groq.text_model}** (free tier)")
-    if not ollama_ok:
-        pass  # error already shown above
-    else:
-        st.info(
-            "⏱ First call per batch may take 1–3 min while the model loads. "
-            "Subsequent calls are faster once it's warm.",
-            icon=None,
-        )
 
     st.markdown("---")
     st.markdown("### 📂 Intake")
@@ -322,15 +283,7 @@ with st.sidebar:
             )
 
     st.markdown("---")
-    run_clicked = st.button("▶  Run Batch", width="stretch", disabled=not ollama_ok)
-    if not ollama_ok:
-        if settings.llm_provider == "ollama":
-            st.caption("Start Ollama to enable processing.")
-        elif settings.llm_provider == "gemini":
-            st.caption("Fix the Gemini API key/quota issue above to enable processing.")
-        else:
-            st.caption("Fix the Marvel AI API key issue above to enable processing.")
-
+    run_clicked = st.button("▶  Run Batch", width="stretch")
     with st.expander("Form types in scope"):
         for ft in load_form_types()["form_types"]:
             st.markdown(f"**{ft['code']}** — {ft['name']}")
