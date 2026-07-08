@@ -1,13 +1,18 @@
 """
 Module 4: Excel Report Generator — produces the consolidated workbook with the
-4 sheets specified by the client: Investor Master, Beneficiary Details,
-Validation Flags, Processing Log.
+sheets specified by the client: Consolidated Investor Profile, Investor Master,
+Beneficiary Details, Validation Flags, Pre-Validation Flags, Confidence Scores,
+Processing Log.
 
 Key metadata columns in Investor Master (from the requirements doc):
   Form Type, Fund Name, Fund Category, Investor Entity Number, Investor Full Name,
   Instruction Date (signed), Processing Cut-off, Instruction Status.
 
 FAIL rows are red, WARNING rows are amber, PASS rows are green.
+
+Investor Master now writes two physical rows per record: the data row,
+followed immediately by a shaded/italic confidence sub-row showing the
+extraction confidence for each field directly beneath its cell.
 """
 from __future__ import annotations
 
@@ -36,6 +41,10 @@ FILL_WARNING = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="
 FILL_FAIL    = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
 HEADER_FONT  = Font(bold=True, color="FFFFFF")
 HEADER_FILL  = PatternFill(start_color="305496", end_color="305496", fill_type="solid")
+
+# NEW: styling for the confidence sub-row under each Investor Master record
+CONFIDENCE_FONT = Font(italic=True, size=9, color="808080")
+CONFIDENCE_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
 _STATUS_FILL = {
     ValidationStatus.PASS:    FILL_PASS,
@@ -142,6 +151,7 @@ class ExcelReportBuilder:
 
     def __init__(self) -> None:
         self._investor_rows: list[dict] = []
+        self._investor_confidence: list[dict] = []  # parallel per-field confidence for each investor row
         self._beneficiary_rows: list[dict] = []
         self._validation_rows: list[tuple[dict, ValidationStatus]] = []
         self._log_entries: list[ProcessingLogEntry] = []
@@ -170,6 +180,12 @@ class ExcelReportBuilder:
         flat["captured_by"] = log_entry.captured_by
         flat["authorized_by"] = log_entry.authorized_by
         self._investor_rows.append(flat)
+
+        # Per-field confidence, keyed the same way as `flat`, so it can be
+        # looked up column-for-column when writing the confidence sub-row.
+        self._investor_confidence.append(
+            {fid: fv.confidence for fid, fv in extraction.fields.items()}
+        )
 
         for b in extraction.beneficiaries:
             self._beneficiary_rows.append({
@@ -285,20 +301,31 @@ class ExcelReportBuilder:
         _autosize(ws, headers)
 
     def _write_investor_master(self, wb: Workbook) -> None:
+        """
+        Each record occupies two physical rows: the data row, followed
+        immediately by a shaded/italic sub-row showing the extraction
+        confidence for each field in the cell directly below it. Columns
+        with no confidence value (derived/metadata columns like
+        'instruction_status', 'fund_category', etc.) are left blank in the
+        sub-row rather than showing a misleading 0 or N/A.
+        """
         ws = wb.create_sheet("Investor Master")
         if not self._investor_rows:
             _write_header(ws, ["No data"])
             return
+
         headers = _ordered_investor_columns(self._investor_rows)
         _write_header(ws, headers)
-        for row in self._investor_rows:
+
+        status_col_idx = headers.index("overall_validation_status") + 1 if "overall_validation_status" in headers else None
+
+        for row, conf in zip(self._investor_rows, self._investor_confidence):
+            data_row_idx = ws.max_row + 1
             ws.append([row.get(h, "") for h in headers])
 
-        # Color-code rows by overall validation status
-        status_col_idx = headers.index("overall_validation_status") + 1 if "overall_validation_status" in headers else None
-        for row_idx in range(2, ws.max_row + 1):
+            # Color-code the data row by overall validation status
             if status_col_idx:
-                status_val = ws.cell(row=row_idx, column=status_col_idx).value
+                status_val = ws.cell(row=data_row_idx, column=status_col_idx).value
                 fill = None
                 if status_val == "PASS":
                     fill = FILL_PASS
@@ -308,7 +335,24 @@ class ExcelReportBuilder:
                     fill = FILL_FAIL
                 if fill:
                     for col_idx in range(1, len(headers) + 1):
-                        ws.cell(row=row_idx, column=col_idx).fill = fill
+                        ws.cell(row=data_row_idx, column=col_idx).fill = fill
+
+            # Confidence sub-row directly beneath the data row
+            conf_values = []
+            for h in headers:
+                c = conf.get(h)
+                if isinstance(c, (int, float)):
+                    conf_values.append(f"{c:.0f}%")
+                else:
+                    conf_values.append("")
+            ws.append(conf_values)
+            conf_row_idx = ws.max_row
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=conf_row_idx, column=col_idx)
+                cell.font = CONFIDENCE_FONT
+                if conf_values[col_idx - 1]:
+                    cell.fill = CONFIDENCE_FILL
+            ws.row_dimensions[conf_row_idx].height = 12
 
         _autosize(ws, headers)
 
