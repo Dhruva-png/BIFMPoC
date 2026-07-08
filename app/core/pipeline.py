@@ -106,6 +106,41 @@ def _person_key_for_batch(pdf_paths: list[Path]) -> str:
     return first
 
 
+def _person_key_for_file(pdf_path: Path) -> str:
+    """
+    Same "<FormType> - <Surname>.pdf" convention as _person_key_for_batch,
+    applied to a SINGLE file rather than an already-known-single-person
+    batch — used to group a mixed intake folder into one sub-batch per
+    person before any consolidation happens. Falls back to the file's own
+    stem when the convention isn't followed, which means a form that
+    doesn't follow the naming convention is simply treated as its own
+    (unmatched) person rather than silently merged into someone else's.
+    """
+    stem = pdf_path.stem
+    if " - " in stem:
+        return stem.split(" - ")[-1].strip() or stem
+    return stem
+
+
+def _group_by_person(pdf_paths: list[Path]) -> list[list[Path]]:
+    """
+    Splits a mixed intake folder into one group per person, using the
+    surname token from BIFM's "<FormType> - <Surname>.pdf" naming
+    convention, so a folder containing several investors' forms in one
+    drop doesn't get treated as a single consolidated batch (which would
+    incorrectly backfill/merge fields across different people and produce
+    one shared "Consolidated Investor Profile" row / "Missing" flag for
+    the whole folder instead of one per person). Order is preserved:
+    groups appear in the order their first file was seen, and files within
+    a group keep their original relative order.
+    """
+    groups: dict[str, list[Path]] = {}
+    for pdf_path in pdf_paths:
+        key = _person_key_for_file(pdf_path)
+        groups.setdefault(key, []).append(pdf_path)
+    return list(groups.values())
+
+
 def _extract_only(
     pdf_path: Path,
     progress_cb: ProgressCallback = None,
@@ -406,22 +441,29 @@ def run_batch(
     channel: str = "Unknown",
 ) -> tuple[list[DocumentOutcome], Path, Path]:
     """
-    Processes every PDF in intake_dir (default: settings.paths.intake_dir)
-    as one batch/one person via process_batch. Returns per-document
-    outcomes in stable file order, the path to the saved Excel report, and
-    the path to the saved Query Register workbook (Section 4, Output 5 /
-    Section 7 - Query Log + Recon sheets, automatically populated from
-    this run's rejections and triggered pre-validation flags).
+    Processes every PDF in intake_dir (default: settings.paths.intake_dir).
+    The folder can contain MULTIPLE PEOPLE's forms in one drop — files are
+    first split into per-person groups (app.core.pipeline._group_by_person,
+    using BIFM's "<FormType> - <Surname>.pdf" naming convention), and
+    process_batch (BATCH = ONE PERSON) is run once per group. This is what
+    stops a mixed folder from being backfilled/consolidated as if every
+    document belonged to the same investor. Returns per-document outcomes
+    across ALL people in stable input-file order, the path to the saved
+    Excel report, and the path to the saved Query Register workbook
+    (Section 4, Output 5 / Section 7 - Query Log + Recon sheets,
+    automatically populated from this run's rejections and triggered
+    pre-validation flags) — both reports cover every person in this run,
+    one row/section per person, not one shared row for the whole folder.
 
-    channel: "Email" or "Walk-in" — applied to every document in this batch
+    channel: "Email" or "Walk-in" — applied to every document in this run
     (the UI offers this as a per-batch choice, since submission channel is
     typically consistent within one intake drop).
 
     Documents are extracted concurrently (settings.max_workers, default 2)
-    before consolidation. Each document spends most of its time waiting on
-    the LLM HTTP call, so overlapping that wait with another document's
-    page rendering (CPU-bound) cuts wall-clock time even without extra
-    GPU/API capacity.
+    within each person's group. Each document spends most of its time
+    waiting on the LLM HTTP call, so overlapping that wait with another
+    document's page rendering (CPU-bound) cuts wall-clock time even
+    without extra GPU/API capacity.
     """
     intake_dir = intake_dir or settings.paths.intake_dir
     pdf_files = sorted(intake_dir.glob("*.pdf"))
@@ -434,11 +476,20 @@ def run_batch(
             settings.paths.output_dir / settings.query_register_report_name,
         )
 
-    _emit(progress_cb, f"Found {len(pdf_files)} document(s) to process (up to {settings.max_workers} in parallel).")
+    person_groups = _group_by_person(pdf_files)
+    _emit(
+        progress_cb,
+        f"Found {len(pdf_files)} document(s) across {len(person_groups)} "
+        f"person(s) to process (up to {settings.max_workers} in parallel per person).",
+    )
     report = ExcelReportBuilder()
     query_register = QueryRegisterBuilder()
 
-    outcomes = process_batch(pdf_files, report, progress_cb, channel, query_register=query_register)
+    outcomes: list[DocumentOutcome] = []
+    for group in person_groups:
+        person_key = _person_key_for_batch(group)
+        _emit(progress_cb, f"--- Processing batch for '{person_key}' ({len(group)} document(s)) ---")
+        outcomes.extend(process_batch(group, report, progress_cb, channel, query_register=query_register))
 
     output_path = report.save()
     query_register_path = query_register.save()
