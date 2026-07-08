@@ -27,7 +27,6 @@ consolidated file only ever contains their own documents.
 from __future__ import annotations
 
 import io
-import tempfile
 import threading
 import time
 from datetime import datetime
@@ -41,9 +40,7 @@ from app.core.pipeline import (
     _group_by_person,
     _person_key_for_batch,
     process_batch,
-    process_single_document,
 )
-from app.llm.router import check_connection, active_provider
 from app.models.schemas import ValidationStatus
 from app.services import intake
 from app.services.report_generator import ExcelReportBuilder
