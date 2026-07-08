@@ -208,6 +208,11 @@ def fetch_pdf_attachments(dest_dir: Path, search_criteria: str | None = None) ->
             sender = _decode_header_value(msg.get("From", "unknown"))
             subject = _decode_header_value(msg.get("Subject", "(no subject)"))
             message_id = msg.get("Message-ID", num.decode())
+            
+
+            print("=="*30)
+            print(sender)
+            print("=="*30)
 
             if sender not in whitelist_mails:
                 logger.info(
