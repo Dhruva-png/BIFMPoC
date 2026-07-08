@@ -257,6 +257,24 @@ class ExcelReportBuilder:
         self._prevalidation_rows: list[tuple[dict, bool]] = []
         self._confidence_rows: list[dict] = []
 
+    def merge_from(self, other: "ExcelReportBuilder") -> None:
+        """
+        Copies every row `other` has accumulated into this builder - used
+        to build one combined ALL-PEOPLE workbook alongside each person's
+        own per-person workbook, from the same already-completed
+        extraction/validation results, without re-running the pipeline
+        (and therefore without a second, possibly-different set of LLM
+        calls) a second time just to populate a second report.
+        """
+        self._investor_rows.extend(other._investor_rows)
+        self._investor_confidence.extend(other._investor_confidence)
+        self._beneficiary_rows.extend(other._beneficiary_rows)
+        self._validation_rows.extend(other._validation_rows)
+        self._log_entries.extend(other._log_entries)
+        self._consolidated_rows.extend(other._consolidated_rows)
+        self._prevalidation_rows.extend(other._prevalidation_rows)
+        self._confidence_rows.extend(other._confidence_rows)
+
     def add_form(
         self,
         extraction: ExtractionResult,

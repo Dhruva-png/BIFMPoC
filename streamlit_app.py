@@ -227,6 +227,8 @@ if "outcomes" not in st.session_state:
     st.session_state["outcomes"] = []
 if "person_downloads" not in st.session_state:
     st.session_state["person_downloads"] = {}
+if "combined_download" not in st.session_state:
+    st.session_state["combined_download"] = None
 if "query_register_path" not in st.session_state:
     st.session_state["query_register_path"] = None
 if "last_run_at" not in st.session_state:
@@ -274,6 +276,12 @@ with st.sidebar:
         uploaded_files = st.file_uploader(
             "Drop PDF forms here — one person or several different people at once",
             type=["pdf"], accept_multiple_files=True,
+        )
+        st.caption(
+            "Multiple people's forms in one drop are detected automatically "
+            "(by the \"FormType - Surname.pdf\" naming convention) and "
+            "processed as separate batches — no need to upload one person "
+            "at a time."
         )
     elif mode == "Use intake folder":
         intake_dir = Path(st.text_input("Intake folder path", value=str(settings.paths.intake_dir)))
@@ -396,7 +404,7 @@ if run_clicked:
         # workbooks are saved to disk automatically inside process_batch
         # (app/core/pipeline.py), right next to each filed PDF — no action
         # needed here for those.
-        _batch_result: dict = {"outcomes": [], "person_reports": {}}
+        _batch_result: dict = {"outcomes": [], "person_reports": {}, "combined_report": None}
 
         def _run_batch() -> None:
             person_groups = _group_by_person(pdf_paths)
@@ -407,6 +415,7 @@ if run_clicked:
                 )
             all_outcomes: list = []
             person_reports: dict = {}  # person_key -> ExcelReportBuilder
+            combined_report = ExcelReportBuilder()  # every person, one workbook
             for group in person_groups:
                 person_key = _person_key_for_batch(group)
                 progress_cb(f"--- Processing batch for '{person_key}' ({len(group)} document(s)) ---")
@@ -416,8 +425,10 @@ if run_clicked:
                 )
                 all_outcomes.extend(group_outcomes)
                 person_reports[person_key] = person_report
+                combined_report.merge_from(person_report)
             _batch_result["outcomes"] = all_outcomes
             _batch_result["person_reports"] = person_reports
+            _batch_result["combined_report"] = combined_report
 
         worker_thread = threading.Thread(target=_run_batch, daemon=True)
         worker_thread.start()
@@ -444,10 +455,24 @@ if run_clicked:
             wb.save(buffer)
             person_downloads[person_key] = buffer.getvalue()
 
+        # Same idea, but ONE workbook covering every person in this run —
+        # every field, every document, every person's confidence sub-rows,
+        # all in the same "Investor Master" sheet rather than split per
+        # person. Built via merge_from during the batch run above, so this
+        # is just serializing already-computed rows - no re-processing.
+        combined_download: bytes | None = None
+        combined_report = _batch_result.get("combined_report")
+        if combined_report is not None:
+            buffer = io.BytesIO()
+            wb = combined_report._build_workbook()
+            wb.save(buffer)
+            combined_download = buffer.getvalue()
+
         progress_box.empty()
         progress_bar.empty()
         st.session_state["outcomes"] = outcomes
         st.session_state["person_downloads"] = person_downloads
+        st.session_state["combined_download"] = combined_download
         st.session_state["query_register_path"] = query_register_path
         st.session_state["last_run_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         st.success(
@@ -536,6 +561,25 @@ else:
     with right:
         st.markdown('<div class="section-title">Download</div>', unsafe_allow_html=True)
         st.caption(f"Last run: {st.session_state.last_run_at}")
+
+        combined_download = st.session_state.get("combined_download")
+        if combined_download:
+            st.caption(
+                "ALL people in this run, one workbook — same 7 sheets as the "
+                "per-person reports below, but every person's rows together "
+                "(Investor Master includes every field + a confidence "
+                "sub-row per record, for everyone)."
+            )
+            st.download_button(
+                "⬇  All People — Consolidated Report",
+                data=combined_download,
+                file_name="BIFM_UT_All_People_Consolidated_Report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+                key="download_combined",
+                type="primary",
+            )
+            st.write("")
 
         person_downloads = st.session_state.get("person_downloads", {})
         if person_downloads:

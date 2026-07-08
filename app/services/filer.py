@@ -14,8 +14,8 @@ types follows its OWN filing convention — they are not interchangeable:
     Additional Inv.:  <Y>/<M> (dump, awaiting e-stamp) -> <D>/MM|NMM/Captured[/Approved|Rejected]
     Disinvestment:    <Y>/<M>/<D>/MM|NMM/Captured|Approved|Rejected
     Disinvestment-GSGF: <Y>/Q<n>-<Y>/<quarter-end date>/Captured|Approved|Rejected
-    Debit Order:      <Y>/<M> (dump) -> Send to AWD/<D>
-    Static:           <Y>/<M> (dump) -> Send to AWD/<D>
+    Debit Order:      <Y>/<M> (dump) -> Send to AWD/<D> | Rejected
+    Static:           <Y>/<M> (dump) -> Send to AWD/<D> | Rejected
     KYC:              flat holding area (companion doc, Section 9.1)
 
 Rejected files get a reason appended to the filename, matching the
@@ -135,9 +135,9 @@ def resolve_destination_dir(
                                      / Q<n>-<Year> / <last-month-end date>
                                      / Captured|Approved|Rejected
       DEBIT (Debit Order):          Debit Orders / <Year>/<Month>
-                                     [ / Send to AWD / <Day> ]
+                                     [ / Send to AWD / <Day> | Rejected ]
       STATIC (Change of Details):   Static / <Year>/<Month>
-                                     [ / Send to AWD / <Day> ]
+                                     [ / Send to AWD / <Day> | Rejected ]
       KYC (supporting document):    filed alongside its parent instruction's
                                      stage folder — this POC doesn't model
                                      the parent link at file-routing time, so
@@ -201,6 +201,13 @@ def resolve_destination_dir(
         month_dir = base / top / year / month.split("-", 1)[1]
         if instruction_status == InstructionStatus.SUBMITTED.value:
             return month_dir
+        if rejected:
+            # A rejected instruction was never queued for AWD authorization -
+            # filing it under "Send to AWD" alongside genuinely-captured
+            # ones (as every rejected DEBIT/STATIC form previously was) is
+            # misleading and inconsistent with how APPFORM/ADD/DIS/DIS_GSG
+            # all separate their Rejected instructions out.
+            return month_dir / "Rejected"
         return month_dir / "Send to AWD" / day
 
     # KYC and any unrecognised form code: flat holding area pending linkage
