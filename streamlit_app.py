@@ -275,12 +275,6 @@ with st.sidebar:
             "Drop PDF forms here — one person or several different people at once",
             type=["pdf"], accept_multiple_files=True,
         )
-        st.caption(
-            "Multiple people's forms in one drop are detected automatically "
-            "(by the \"FormType - Surname.pdf\" naming convention) and "
-            "processed as separate batches — no need to upload one person "
-            "at a time."
-        )
     elif mode == "Use intake folder":
         intake_dir = Path(st.text_input("Intake folder path", value=str(settings.paths.intake_dir)))
         existing = sorted(intake_dir.glob("*.pdf")) if intake_dir.exists() else []
