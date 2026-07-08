@@ -15,9 +15,19 @@ Supports all 6 BIFM UT form types through the full pipeline:
   KYC      KYC (Know Your Customer)
 
 Every form is classified, field-extracted, validated, and filed.
+
+Individual, single-document Excel workbooks are saved automatically by the
+pipeline right next to each filed PDF (see app/core/pipeline.py +
+app/services/report_generator.py's build_single_document_workbook). This UI
+additionally offers ONE CONSOLIDATED, multi-sheet workbook PER PERSON as an
+in-memory download after each run — a batch containing several different
+people's forms is automatically split by person first, so each person's
+consolidated file only ever contains their own documents.
 """
 from __future__ import annotations
 
+import io
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -26,7 +36,13 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from app.core.pipeline import DocumentOutcome, process_batch, process_single_document
+from app.core.pipeline import (
+    DocumentOutcome,
+    _group_by_person,
+    _person_key_for_batch,
+    process_batch,
+    process_single_document,
+)
 from app.llm.router import check_connection, active_provider
 from app.models.schemas import ValidationStatus
 from app.services import intake
@@ -212,8 +228,8 @@ st.markdown(
 # --------------------------------------------------------------------------- #
 if "outcomes" not in st.session_state:
     st.session_state["outcomes"] = []
-if "report_path" not in st.session_state:
-    st.session_state["report_path"] = None
+if "person_downloads" not in st.session_state:
+    st.session_state["person_downloads"] = {}
 if "query_register_path" not in st.session_state:
     st.session_state["query_register_path"] = None
 if "last_run_at" not in st.session_state:
@@ -258,11 +274,20 @@ with st.sidebar:
     uploaded_files = None
     intake_dir = settings.paths.intake_dir
     if mode == "Upload files":
-        uploaded_files = st.file_uploader("Drop PDF forms here", type=["pdf"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader(
+            "Drop PDF forms here — one person or several different people at once",
+            type=["pdf"], accept_multiple_files=True,
+        )
+        st.caption(
+            "Multiple people's forms in one drop are detected automatically "
+            "(by the \"FormType - Surname.pdf\" naming convention) and "
+            "processed as separate batches — no need to upload one person "
+            "at a time."
+        )
     elif mode == "Use intake folder":
         intake_dir = Path(st.text_input("Intake folder path", value=str(settings.paths.intake_dir)))
         existing = sorted(intake_dir.glob("*.pdf")) if intake_dir.exists() else []
-        st.caption(f"{len(existing)} PDF(s) found in folder.")
+        st.caption(f"{len(existing)} PDF(s) found in folder. Can contain multiple people's forms.")
     elif mode.startswith("SharePoint"):
         if sharepoint_ok:
             st.caption(f"Watching `{settings.sharepoint.submission_folder}` on the configured SharePoint site.")
@@ -363,28 +388,45 @@ if run_clicked:
                     unsafe_allow_html=True,
                 )
 
-        report = ExcelReportBuilder()
         query_register = QueryRegisterBuilder()
         log_lines: list[str] = []
         total = len(pdf_paths)
-        progress_box.info(
-            f"Processing {total} document(s) for this batch (one investor) — "
-            f"up to {settings.max_workers} in parallel..."
-        )
+        progress_box.info(f"Processing {total} document(s)...")
 
-        # process_batch treats every PDF in this upload as ONE PERSON's set
-        # of forms: it extracts all of them (concurrently, throttled to
-        # Marvel AI's TPM budget internally), merges identity/contact/banking
-        # fields across all the documents, backfills blanks from that
-        # merged profile, then validates/files/reports each one. Run it on
-        # a background thread so the Streamlit main thread stays free to
-        # poll the progress log (worker threads must never touch st.*).
-        _batch_result: dict[str, list] = {}
+        # A single drop can contain MULTIPLE PEOPLE's forms (e.g. a shared
+        # intake folder, or several attachments from different clients).
+        # Split into one group per person (BIFM's "<FormType> - <Surname>.pdf"
+        # naming convention — same logic app.core.pipeline.run_batch already
+        # uses) BEFORE any consolidation/backfilling happens, so one
+        # person's fields never leak into another's profile. Each person
+        # gets their OWN ExcelReportBuilder -> their own standalone
+        # downloadable consolidated file, not one shared file across
+        # everyone processed in this run. Individual per-document
+        # workbooks are saved to disk automatically inside process_batch
+        # (app/core/pipeline.py), right next to each filed PDF — no action
+        # needed here for those.
+        _batch_result: dict = {"outcomes": [], "person_reports": {}}
 
         def _run_batch() -> None:
-            _batch_result["outcomes"] = process_batch(
-                pdf_paths, report, progress_cb, channel, query_register=query_register,
-            )
+            person_groups = _group_by_person(pdf_paths)
+            if len(person_groups) > 1:
+                progress_cb(
+                    f"Detected {len(person_groups)} different people across "
+                    f"{len(pdf_paths)} document(s) — processing each separately."
+                )
+            all_outcomes: list = []
+            person_reports: dict = {}  # person_key -> ExcelReportBuilder
+            for group in person_groups:
+                person_key = _person_key_for_batch(group)
+                progress_cb(f"--- Processing batch for '{person_key}' ({len(group)} document(s)) ---")
+                person_report = ExcelReportBuilder()
+                group_outcomes = process_batch(
+                    group, person_report, progress_cb, channel, query_register=query_register,
+                )
+                all_outcomes.extend(group_outcomes)
+                person_reports[person_key] = person_report
+            _batch_result["outcomes"] = all_outcomes
+            _batch_result["person_reports"] = person_reports
 
         worker_thread = threading.Thread(target=_run_batch, daemon=True)
         worker_thread.start()
@@ -398,15 +440,29 @@ if run_clicked:
         _drain_log(log_lines)  # final drain
         progress_bar.progress(1.0)
         outcomes: list[DocumentOutcome] = _batch_result.get("outcomes", [])
-        report_path = report.save()
         query_register_path = query_register.save()
+
+        # Build in-memory bytes for each person's consolidated workbook —
+        # ready for an instant download button. Nothing extra is written to
+        # disk here; the individual per-document files already exist on
+        # disk (saved automatically inside pipeline.py next to each filed PDF).
+        person_downloads: dict[str, bytes] = {}
+        for person_key, person_report in _batch_result.get("person_reports", {}).items():
+            buffer = io.BytesIO()
+            wb = person_report._build_workbook()
+            wb.save(buffer)
+            person_downloads[person_key] = buffer.getvalue()
+
         progress_box.empty()
         progress_bar.empty()
         st.session_state["outcomes"] = outcomes
-        st.session_state["report_path"] = report_path
+        st.session_state["person_downloads"] = person_downloads
         st.session_state["query_register_path"] = query_register_path
         st.session_state["last_run_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        st.success(f"Batch complete — {total} document(s) processed.")
+        st.success(
+            f"Batch complete — {total} document(s) processed across "
+            f"{len(person_downloads)} person(s)."
+        )
         st.rerun()
 
 # --------------------------------------------------------------------------- #
@@ -488,21 +544,30 @@ else:
 
     with right:
         st.markdown('<div class="section-title">Download</div>', unsafe_allow_html=True)
-        report_path = st.session_state.report_path
-        if report_path and Path(report_path).exists():
-            st.caption(f"Last run: {st.session_state.last_run_at}")
-            with open(report_path, "rb") as f:
+        st.caption(f"Last run: {st.session_state.last_run_at}")
+
+        person_downloads = st.session_state.get("person_downloads", {})
+        if person_downloads:
+            st.caption(
+                "One consolidated workbook per person — Consolidated Investor "
+                "Profile, Investor Master, Beneficiary Details, Validation "
+                "Flags, Pre-Validation Flags, Confidence Scores, Processing "
+                "Log — containing only that person's own documents."
+            )
+            for person_key, data in person_downloads.items():
                 st.download_button(
-                    "⬇  Download Excel Report",
-                    data=f.read(),
-                    file_name=Path(report_path).name,
+                    f"⬇  {person_key} — Consolidated Report",
+                    data=data,
+                    file_name=f"{person_key}_Consolidated_Report.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     width="stretch",
+                    key=f"download_{person_key}",
                 )
-            st.caption(
-                "Sheets: Consolidated Investor Profile · Investor Master · Beneficiary Details · "
-                "Validation Flags · Pre-Validation Flags · Confidence Scores · Processing Log"
-            )
+
+        st.caption(
+            "Individual per-document reports are saved automatically next to "
+            "each filed PDF in `output/filed_documents/...`"
+        )
 
         query_register_path = st.session_state.query_register_path
         if query_register_path and Path(query_register_path).exists():
@@ -538,6 +603,16 @@ else:
 
             if o.error:
                 st.error(o.error)
+
+            if o.individual_report_path and Path(o.individual_report_path).exists():
+                with open(o.individual_report_path, "rb") as f:
+                    st.download_button(
+                        "⬇  This document's individual report",
+                        data=f.read(),
+                        file_name=Path(o.individual_report_path).name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"download_individual_{o.filename}",
+                    )
 
             if o.extraction and o.extraction.fields:
                 # Separate derived/system fields from extracted fields for clarity

@@ -47,7 +47,7 @@ from app.services import classifier, filer
 from app.services.filer import flag_missing_documents
 from app.services.consolidator import backfill_from_profile, build_person_profile
 from app.services.extractor import extract_form
-from app.services.report_generator import ExcelReportBuilder
+from app.services.report_generator import ExcelReportBuilder, build_single_document_workbook
 from app.services.query_register import QueryRegisterBuilder
 from app.utils.config_loader import load_validation_rules
 from app.utils.logger import get_logger
@@ -84,6 +84,7 @@ class DocumentOutcome:
     extraction: ExtractionResult | None = None
     validation: ValidationReport | None = None
     prevalidation_flags: list[PreValidationFlag] | None = None
+    individual_report_path: str | None = None
 
 
 def _emit(progress_cb: ProgressCallback, message: str) -> None:
@@ -256,6 +257,22 @@ def _validate_and_file(
         report.add_form(extraction, validation_report, log_entry, prevalidation_flags=prevalidation_flags)
         if query_register is not None:
             query_register.add_form(extraction, validation_report, log_entry, prevalidation_flags=prevalidation_flags)
+
+        # Individual, single-document workbook — saved right next to the
+        # filed PDF (same folder, same base filename), so opening the
+        # output folder shows each document with its own small report,
+        # independent of the batch/consolidated workbook.
+        single_doc_path: Path | None = None
+        try:
+            single_doc_wb = build_single_document_workbook(
+                extraction, validation_report, log_entry, prevalidation_flags=prevalidation_flags,
+            )
+            single_doc_path = Path(log_entry.destination_path).with_suffix(".xlsx")
+            single_doc_wb.save(single_doc_path)
+            _emit(progress_cb, f"{pdf_path.name}: individual report saved -> {single_doc_path.name}")
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to save individual report for %s", pdf_path.name)
+
         _emit(progress_cb, f"{pdf_path.name}: complete → {validation_report.overall_status.value}")
 
         return DocumentOutcome(
@@ -266,6 +283,7 @@ def _validate_and_file(
             extraction=extraction,
             validation=validation_report,
             prevalidation_flags=prevalidation_flags,
+            individual_report_path=str(single_doc_path) if single_doc_path else None,
         )
 
     except Exception as exc:  # noqa: BLE001

@@ -143,6 +143,105 @@ def _ordered_investor_columns(all_rows: list[dict]) -> list[str]:
     return priority + rest
 
 
+def build_single_document_workbook(
+    extraction: ExtractionResult,
+    validation: ValidationReport,
+    log_entry: ProcessingLogEntry,
+    prevalidation_flags: list[PreValidationFlag] | None = None,
+) -> Workbook:
+    """
+    Builds a small, single-document workbook — NOT the multi-sheet batch
+    report. One workbook per PDF, meant to sit right next to that PDF in
+    its filed output folder (see app.core.pipeline._validate_and_file),
+    so opening the folder shows a document and its own report side by
+    side, with no cross-document/batch data mixed in.
+
+    Two sheets:
+      "Document"   — metadata (filename, form type, entity/name, status)
+                     plus every extracted field with its value and
+                     per-field confidence, colour-coded like the batch
+                     report's Investor Master rows.
+      "Validation" — this document's own validation + pre-validation
+                     flag results (skipped if there are none).
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Document"
+
+    meta_rows = [
+        ("Source file",          log_entry.original_filename),
+        ("Filed as",             log_entry.new_filename),
+        ("Form type",            log_entry.form_type_detected),
+        ("Entity number",        validation.entity_number),
+        ("Full name",            extraction.field_value("full_name") or ""),
+        ("Classification conf.", f"{log_entry.classification_confidence:.0f}%"),
+        ("Overall status",       validation.overall_status.value),
+        ("Instruction status",   log_entry.instruction_status),
+        ("Rejection reason",     log_entry.rejection_reason),
+        ("Channel",              log_entry.channel),
+        ("Processed at",         log_entry.timestamp),
+    ]
+    for label, value in meta_rows:
+        ws.append([label, value])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+
+    status_fill = _STATUS_FILL.get(validation.overall_status)
+    if status_fill:
+        for col_idx in (1, 2):
+            ws.cell(row=7, column=col_idx).fill = status_fill  # "Overall status" row
+
+    ws.append([])
+    field_header_row = ws.max_row + 1
+    _write_header(ws, ["Field", "Value", "Confidence", "Source"])
+    ws.freeze_panes = None  # freeze_panes from _write_header targets row 1; not meaningful mid-sheet
+    for fid, fv in extraction.fields.items():
+        ws.append([fid, str(fv.value), f"{fv.confidence:.0f}%", fv.source])
+        if fv.confidence >= 85:
+            fill = FILL_PASS
+        elif fv.confidence >= 65:
+            fill = FILL_WARNING
+        else:
+            fill = FILL_FAIL
+        for col_idx in range(1, 5):
+            ws.cell(row=ws.max_row, column=col_idx).fill = fill
+    _autosize(ws, ["Field", "Value", "Confidence", "Source"])
+    ws.column_dimensions["A"].width = max(ws.column_dimensions["A"].width or 0, 22)
+
+    if extraction.beneficiaries:
+        ws_b = wb.create_sheet("Beneficiaries")
+        _write_header(ws_b, ["Name", "Relationship", "Split %"])
+        for b in extraction.beneficiaries:
+            ws_b.append([b.name, b.relationship, b.split_percent])
+        _autosize(ws_b, ["Name", "Relationship", "Split %"])
+
+    if validation.results or prevalidation_flags:
+        ws_v = wb.create_sheet("Validation")
+        headers = ["Field", "Status", "Message", "Value"]
+        _write_header(ws_v, headers)
+        for r in validation.results:
+            ws_v.append([r.field_id, r.status.value, r.message, str(r.value or "")])
+            fill = _STATUS_FILL.get(r.status)
+            if fill:
+                for col_idx in range(1, 5):
+                    ws_v.cell(row=ws_v.max_row, column=col_idx).fill = fill
+        if prevalidation_flags:
+            ws_v.append([])
+            ws_v.append(["Pre-Validation Flag", "Risk", "Triggered", "Reason"])
+            for cell in ws_v[ws_v.max_row]:
+                cell.font = HEADER_FONT
+                cell.fill = HEADER_FILL
+            for pf in prevalidation_flags:
+                ws_v.append([pf.label, pf.rejection_risk, "YES" if pf.triggered else "no", pf.reason])
+                if pf.triggered:
+                    risk = str(pf.rejection_risk).lower()
+                    fill = FILL_FAIL if risk.startswith("high") else FILL_WARNING
+                    for col_idx in range(1, 5):
+                        ws_v.cell(row=ws_v.max_row, column=col_idx).fill = fill
+        _autosize(ws_v, headers)
+
+    return wb
+
+
 class ExcelReportBuilder:
     """
     Accumulates results across a batch run, then writes the consolidated workbook once.
@@ -261,8 +360,7 @@ class ExcelReportBuilder:
         flat["source_documents"] = ", ".join(source_files)
         self._consolidated_rows.append(flat)
 
-    def save(self, output_path: Path | None = None) -> Path:
-        output_path = output_path or (settings.paths.output_dir / settings.excel_report_name)
+    def _build_workbook(self) -> Workbook:
         wb = Workbook()
         wb.remove(wb.active)
 
@@ -273,7 +371,11 @@ class ExcelReportBuilder:
         self._write_prevalidation_flags(wb)
         self._write_confidence_scores(wb)
         self._write_processing_log(wb)
+        return wb
 
+    def save(self, output_path: Path | None = None) -> Path:
+        output_path = output_path or (settings.paths.output_dir / settings.excel_report_name)
+        wb = self._build_workbook()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output_path)
         logger.info("Saved consolidated Excel report to %s", output_path)
