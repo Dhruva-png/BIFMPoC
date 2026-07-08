@@ -236,7 +236,7 @@ def status_chip(status: str) -> str:
 # Sidebar
 # --------------------------------------------------------------------------- #
 with st.sidebar:
-
+    st.image("assets/marvel_logo.png", width="stretch")
     st.markdown("---")
     st.markdown("### 📂 Intake")
     sharepoint_ok = intake.sharepoint_available()
