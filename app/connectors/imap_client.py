@@ -119,7 +119,7 @@ def _iter_pdf_attachments(msg: Message):
 
 
 whitelist_mails = [
-    "shyam.sp@kgisl.com"
+    "Shyam S P <shyam.sp@kgisl.com>"
 ]
 
 def fetch_pdf_attachments(dest_dir: Path, search_criteria: str | None = None) -> list[dict[str, Any]]:
