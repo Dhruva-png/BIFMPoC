@@ -116,6 +116,10 @@ def _iter_pdf_attachments(msg: Message):
         yield filename, payload
 
 
+whitelist_mails = [
+    "shyam.sp@kgisl.com"
+]
+
 def fetch_pdf_attachments(dest_dir: Path, search_criteria: str | None = None) -> list[dict[str, Any]]:
     """
     Searches the configured IMAP mailbox/folder for messages matching
@@ -157,11 +161,18 @@ def fetch_pdf_attachments(dest_dir: Path, search_criteria: str | None = None) ->
             typ, msg_data = conn.fetch(num, "(RFC822)")
             if typ != "OK" or not msg_data or not msg_data[0]:
                 continue
+
+
             raw_email = msg_data[0][1]
             msg = email.message_from_bytes(raw_email)
             sender = _decode_header_value(msg.get("From", "unknown"))
             subject = _decode_header_value(msg.get("Subject", "(no subject)"))
             message_id = msg.get("Message-ID", num.decode())
+
+            if sender not in whitelist_mails:
+                logger.info("Skipping IMAP message %s from %s (not in whitelist)", message_id, sender)
+                continue
+
 
             downloaded_any = False
             for filename, pdf_bytes in _iter_pdf_attachments(msg):
