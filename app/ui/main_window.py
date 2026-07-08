@@ -126,8 +126,12 @@ class BifmApp(tk.Tk):
                 self.after(0, lambda: self.open_report_button.config(state="normal"))
         except Exception as exc:  # noqa: BLE001
             logger.exception("Batch run failed")
-            self.after(0, lambda: self.status_var.set(f"Batch failed: {exc}"))
-            self.after(0, lambda: messagebox.showerror("Batch failed", str(exc)))
+            # Python unbinds `exc` as soon as this except block exits, but
+            # self.after() runs its lambdas later on Tkinter's event loop -
+            # by then `exc` no longer exists, so capture the message now.
+            error_msg = str(exc)
+            self.after(0, lambda: self.status_var.set(f"Batch failed: {error_msg}"))
+            self.after(0, lambda: messagebox.showerror("Batch failed", error_msg))
         finally:
             self.after(0, lambda: self.run_button.config(state="normal"))
 

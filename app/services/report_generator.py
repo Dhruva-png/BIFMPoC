@@ -191,7 +191,6 @@ def build_single_document_workbook(
             ws.cell(row=7, column=col_idx).fill = status_fill  # "Overall status" row
 
     ws.append([])
-    field_header_row = ws.max_row + 1
     _write_header(ws, ["Field", "Value", "Confidence", "Source"])
     ws.freeze_panes = None  # freeze_panes from _write_header targets row 1; not meaningful mid-sheet
     for fid, fv in extraction.fields.items():

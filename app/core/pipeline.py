@@ -28,6 +28,7 @@ sibling Static form in the same batch.
 """
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,7 +40,6 @@ from app.models.schemas import (
     ExtractionResult,
     InstructionStatus,
     PreValidationFlag,
-    ProcessingLogEntry,
     ValidationReport,
 )
 from app.ocr.pdf_utils import render_pdf_to_images
@@ -93,6 +93,30 @@ def _emit(progress_cb: ProgressCallback, message: str) -> None:
         progress_cb(message)
 
 
+# Windows/OneDrive tack a suffix onto the filename (not the surname) when a
+# file gets duplicated - "ADD - GAOLATHE - Copy.pdf", "ADD - GAOLATHE (1).pdf",
+# "ADD - GAOLATHE - Copy (2).pdf". Left alone, the surname parser below reads
+# the LAST " - " token as the surname and picks up "Copy" instead of
+# "GAOLATHE" - turning one real person's duplicated file into a second, fake
+# "person" (key "Copy") in the batch. Stripped here, before surname parsing,
+# so a duplicated file still groups with the rest of its actual owner's
+# documents. Looped since a file can pick up more than one such suffix
+# (e.g. re-duplicated: "... - Copy - Copy (2).pdf").
+_DUPLICATE_SUFFIX_RE = re.compile(
+    r"(?i)\s*(?:-\s*copy(?:\s*\(\d+\))?|\(\d+\))\s*$"
+)
+
+
+def _strip_duplicate_suffix(stem: str) -> str:
+    cleaned = stem
+    while True:
+        next_cleaned = _DUPLICATE_SUFFIX_RE.sub("", cleaned).strip()
+        if next_cleaned == cleaned or not next_cleaned:
+            break
+        cleaned = next_cleaned
+    return cleaned or stem
+
+
 def _person_key_for_batch(pdf_paths: list[Path]) -> str:
     """
     BIFM's own intake naming convention is "<FormType> - <Surname>.pdf"
@@ -101,7 +125,7 @@ def _person_key_for_batch(pdf_paths: list[Path]) -> str:
     label for the consolidated profile row. Falls back to the first file's
     stem if that convention isn't followed.
     """
-    first = pdf_paths[0].stem
+    first = _strip_duplicate_suffix(pdf_paths[0].stem)
     if " - " in first:
         return first.split(" - ")[-1].strip() or first
     return first
@@ -117,7 +141,7 @@ def _person_key_for_file(pdf_path: Path) -> str:
     doesn't follow the naming convention is simply treated as its own
     (unmatched) person rather than silently merged into someone else's.
     """
-    stem = pdf_path.stem
+    stem = _strip_duplicate_suffix(pdf_path.stem)
     if " - " in stem:
         return stem.split(" - ")[-1].strip() or stem
     return stem
@@ -137,7 +161,12 @@ def _group_by_person(pdf_paths: list[Path]) -> list[list[Path]]:
     """
     groups: dict[str, list[Path]] = {}
     for pdf_path in pdf_paths:
-        key = _person_key_for_file(pdf_path)
+        # Group on a case/whitespace-insensitive key so "STATIC - Amolemo.pdf"
+        # and "DIS - AMOLEMO.pdf" are recognised as the same person. The
+        # *display* key (used in report rows, log lines, filenames) still
+        # comes from _person_key_for_batch(group[0]) later, so original
+        # casing is preserved there - this only affects grouping.
+        key = _person_key_for_file(pdf_path).casefold()
         groups.setdefault(key, []).append(pdf_path)
     return list(groups.values())
 
