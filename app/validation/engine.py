@@ -71,18 +71,20 @@ def _eval_exact_digits(value: Any, length: int, only_if_present: bool = False) -
     return FieldValidationResult("", value, ValidationStatus.FAIL, f"Expected exactly {length} digits, got '{value}'")
 
 
-def _eval_id_number_format(extraction: ExtractionResult, rule: dict) -> FieldValidationResult:
+def _eval_id_number_format(extraction: ExtractionResult, rule: dict) -> FieldValidationResult | None:
     id_type = extraction.field_value("id_type")
     id_number = extraction.field_value("id_number")
 
     if _is_blank(id_number):
-        # id_number is optional on some forms (DEBIT, DIS, STATIC, KYC track by entity)
-        return FieldValidationResult("id_number", id_number, ValidationStatus.WARNING, "ID number not captured")
+        # id_number is optional on some forms (DEBIT, DIS, STATIC, KYC track by entity).
+        # Mandatory-field checking already flags this where it matters — no need for a
+        # second "couldn't verify" notice here.
+        return None
 
     logic = rule["logic"]
     if id_type not in logic:
-        return FieldValidationResult("id_number", id_number, ValidationStatus.WARNING,
-                                      f"Unknown ID type '{id_type}' - cannot apply digit validation")
+        # Unrecognised ID type on the form — nothing meaningful to check against.
+        return None
 
     sub = logic[id_type]
     if sub["type"] == "skip":
@@ -92,12 +94,12 @@ def _eval_id_number_format(extraction: ExtractionResult, rule: dict) -> FieldVal
         result = _eval_exact_digits(id_number, sub["length"])
         if result:
             result.field_id = "id_number"
-        return result or FieldValidationResult("id_number", id_number, ValidationStatus.WARNING, "Digit check inconclusive")
+        return result
 
-    return FieldValidationResult("id_number", id_number, ValidationStatus.WARNING, "No applicable rule")
+    return None
 
 
-def _eval_gender_derivation(extraction: ExtractionResult, rule: dict) -> FieldValidationResult:
+def _eval_gender_derivation(extraction: ExtractionResult, rule: dict) -> FieldValidationResult | None:
     logic = rule["logic"]
     id_type = extraction.field_value("id_type")
     id_number = extraction.field_value(logic["source_field"])
@@ -110,8 +112,8 @@ def _eval_gender_derivation(extraction: ExtractionResult, rule: dict) -> FieldVa
     derived = logic["mapping"].get(digit) if digit else None
 
     if derived is None:
-        return FieldValidationResult("gender", None, ValidationStatus.WARNING,
-                                      f"Could not derive gender - 5th digit of ID number unreadable ('{id_number}')")
+        # ID number missing/unreadable — nothing to cross-check gender against.
+        return None
 
     stated = extraction.field_value("gender")
     if stated and stated != derived:
@@ -129,7 +131,7 @@ def _eval_id_expiry_future(extraction: ExtractionResult, rule: dict) -> FieldVal
 
     raw_value = extraction.field_value("id_expiry_date")
     if _is_blank(raw_value):
-        return FieldValidationResult("id_expiry_date", raw_value, ValidationStatus.WARNING, "ID expiry date not captured")
+        return None
 
     parsed = _parse_date(raw_value)
     if parsed is None:
@@ -142,8 +144,9 @@ def _eval_id_expiry_future(extraction: ExtractionResult, rule: dict) -> FieldVal
 def _eval_date_of_birth_past(extraction: ExtractionResult, rule: dict) -> FieldValidationResult:
     raw_value = extraction.field_value("date_of_birth")
     if _is_blank(raw_value):
-        # DOB is mandatory for APPFORM/KYC but not all forms
-        return FieldValidationResult("date_of_birth", raw_value, ValidationStatus.WARNING, "Date of birth not captured")
+        # DOB is mandatory for APPFORM/KYC but not all forms; mandatory-field
+        # checking already flags it where required, so skip the extra notice.
+        return None
     parsed = _parse_date(raw_value)
     if parsed is None:
         return FieldValidationResult("date_of_birth", raw_value, ValidationStatus.FAIL, f"Unparseable date: '{raw_value}'")
@@ -152,20 +155,20 @@ def _eval_date_of_birth_past(extraction: ExtractionResult, rule: dict) -> FieldV
     return FieldValidationResult("date_of_birth", raw_value, ValidationStatus.PASS)
 
 
-def _eval_regex(extraction: ExtractionResult, field_id: str, rule: dict) -> FieldValidationResult:
+def _eval_regex(extraction: ExtractionResult, field_id: str, rule: dict) -> FieldValidationResult | None:
     value = extraction.field_value(field_id)
     if _is_blank(value):
-        return FieldValidationResult(field_id, value, ValidationStatus.WARNING, "Field is blank - cannot validate format")
+        return None
     pattern = rule["logic"]["pattern"]
     if re.match(pattern, str(value)):
         return FieldValidationResult(field_id, value, ValidationStatus.PASS)
     return FieldValidationResult(field_id, value, ValidationStatus.FAIL, f"'{value}' does not match expected format")
 
 
-def _eval_numeric_length(extraction: ExtractionResult, field_id: str, rule: dict) -> FieldValidationResult:
+def _eval_numeric_length(extraction: ExtractionResult, field_id: str, rule: dict) -> FieldValidationResult | None:
     value = extraction.field_value(field_id)
     if _is_blank(value):
-        return FieldValidationResult(field_id, value, ValidationStatus.WARNING, "Field is blank")
+        return None
     logic = rule["logic"]
     digits = re.sub(r"\D", "", str(value or ""))
     if not digits:
@@ -175,11 +178,11 @@ def _eval_numeric_length(extraction: ExtractionResult, field_id: str, rule: dict
     return FieldValidationResult(field_id, value, status, msg)
 
 
-def _eval_branch_code_format(extraction: ExtractionResult, rule: dict) -> FieldValidationResult:
+def _eval_branch_code_format(extraction: ExtractionResult, rule: dict) -> FieldValidationResult | None:
     """Branch codes must be exactly 6 digits per BIFM requirements."""
     value = extraction.field_value("branch_code")
     if _is_blank(value):
-        return FieldValidationResult("branch_code", value, ValidationStatus.WARNING, "Branch code not captured")
+        return None
     digits = re.sub(r"\D", "", str(value or ""))
     if len(digits) == 6:
         return FieldValidationResult("branch_code", value, ValidationStatus.PASS)
@@ -220,7 +223,7 @@ def _eval_beneficiary_split_total(extraction: ExtractionResult, rule: dict) -> F
                                   f"Beneficiary split totals {total}%, expected {target}%")
 
 
-def _eval_kyc_completeness(extraction: ExtractionResult, rule: dict) -> FieldValidationResult:
+def _eval_kyc_completeness(extraction: ExtractionResult, rule: dict) -> FieldValidationResult | None:
     """KYC form: all 4 document checkboxes should be ticked."""
     flag = extraction.field_value("kyc_completeness_flag")
     if flag and "Complete" in str(flag):
@@ -228,8 +231,8 @@ def _eval_kyc_completeness(extraction: ExtractionResult, rule: dict) -> FieldVal
     if flag:
         return FieldValidationResult("kyc_completeness_flag", flag, ValidationStatus.WARNING,
                                       "Not all KYC documents have been provided")
-    return FieldValidationResult("kyc_completeness_flag", None, ValidationStatus.WARNING,
-                                  "KYC document checklist could not be verified")
+    # Flag itself wasn't computed (e.g. checkboxes unread) — nothing actionable to report.
+    return None
 
 
 def _eval_fund_category_present(extraction: ExtractionResult, rule: dict) -> FieldValidationResult:

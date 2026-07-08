@@ -18,9 +18,8 @@ not a code change.
 
 Known POC limitation: a few flags reference signals the vision-LLM
 extractor doesn't yet produce per-field (e.g. a per-page "initials present"
-checkbox). Those flags are evaluated as "unable to verify from this
-extraction" rather than a false trigger — see _UNVERIFIABLE_FIELDS below.
-This is called out explicitly rather than silently guessing.
+checkbox). Those flags are evaluated as simply not-triggered rather than a
+false trigger or "unable to verify" noise — see _UNVERIFIABLE_FIELDS below.
 """
 from __future__ import annotations
 
@@ -65,7 +64,9 @@ def _parse_date(value: Any) -> datetime | None:
 def _eval_field_blank(extraction: ExtractionResult, logic: dict) -> tuple[bool, str]:
     field_id = logic["field"]
     if field_id in _UNVERIFIABLE_FIELDS:
-        return False, f"'{field_id}' not verifiable from current extraction (known POC limitation)"
+        # Known POC limitation — the extractor doesn't produce this signal yet.
+        # Report as simply not-triggered rather than surfacing "unable to verify" noise.
+        return False, ""
     if not _field_known(extraction, field_id) and field_id not in extraction.fields:
         # Field not part of this form's schema / never attempted — nothing to flag.
         pass

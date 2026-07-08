@@ -40,6 +40,15 @@ logger = get_logger(__name__)
 
 _INVALID_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9_\-]")
 
+# Top-level folder (sibling of "New Business", "Additional Investments", etc.
+# in the SharePoint-mirror structure) used to flag a batch that's missing an
+# important companion document (e.g. a New Business submission with no KYC
+# supporting document attached). This doesn't replace the normal per-document
+# filing above — every document is still filed to its own routed destination
+# — it's an extra marker folder so ops can see, at a glance in the folder
+# tree, which batches are incomplete and need chasing.
+MISSING_DOCS_DIRNAME = "Missing"
+
 
 def _clean_token(value: str) -> str:
     value = (value or "UNKNOWN").strip().upper().replace(" ", "")
@@ -197,6 +206,49 @@ def resolve_destination_dir(
     # KYC and any unrecognised form code: flat holding area pending linkage
     # to its parent instruction (out of scope for this POC per Section 9.1).
     return base / "KYC" / year / month.split("-", 1)[1]
+
+
+def flag_missing_documents(
+    person_key: str,
+    missing_labels: list[str],
+    source_files: list[str] | None = None,
+    as_of: datetime | None = None,
+) -> Path | None:
+    """
+    Creates/updates a marker file under the top-level "Missing" folder for a
+    batch that's missing one or more important documents (e.g. a New
+    Business form with no KYC companion document, or a third-party payment
+    with no Form B banking annex) — the pre-validation flags engine
+    (app.validation.prevalidation) is what determines which documents count
+    as "missing" for a given batch; this function just files the result.
+
+    No-op (returns None) if missing_labels is empty — nothing to flag.
+    """
+    if not missing_labels:
+        return None
+
+    as_of = as_of or datetime.now()
+    base = settings.paths.filed_dir
+    destination_dir = base / MISSING_DOCS_DIRNAME
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    date_str = as_of.strftime("%Y%m%d")
+    marker_name = f"{_clean_token(person_key)}_{date_str}.txt"
+    destination = destination_dir / marker_name
+
+    lines = [
+        f"Batch: {person_key}",
+        f"Flagged: {as_of.isoformat(timespec='seconds')}",
+        f"Source document(s): {', '.join(source_files) if source_files else 'N/A'}",
+        "Missing / incomplete:",
+        *[f"  - {label}" for label in missing_labels],
+    ]
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    logger.info(
+        "Flagged batch '%s' as missing %d document(s) -> %s",
+        person_key, len(missing_labels), destination,
+    )
+    return destination
 
 
 def file_document(

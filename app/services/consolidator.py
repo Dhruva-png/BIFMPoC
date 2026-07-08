@@ -57,29 +57,61 @@ def _is_blank(value) -> bool:
     return value is None or (isinstance(value, str) and value.strip() == "")
 
 
+def _normalize_for_vote(value) -> str:
+    """Normalizes a value for vote-counting purposes only (case/whitespace-insensitive)."""
+    return str(value).strip().lower()
+
+
 def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, FieldValue]:
     """
     Merges shareable fields across every document's extraction in the
-    batch into one profile. For each field, keeps the highest-confidence
-    non-blank value seen across all documents; ties go to whichever
-    document was merged first.
+    batch into one profile.
+
+    For each field, collects every non-blank value seen for it across all
+    documents in the batch and takes a majority vote: whichever value
+    (normalized for case/whitespace) appears most often wins. Ties - and
+    fields where every value is unique - fall back to the highest-confidence
+    value seen. Among equally-voted/equally-confident candidates, whichever
+    document was merged first wins.
     """
-    profile: dict[str, FieldValue] = {}
+    # field_id -> normalized_value -> list of (extraction, fv) that produced it
+    candidates: dict[str, dict[str, list[tuple[ExtractionResult, FieldValue]]]] = {}
+
     for extraction in extractions:
         for field_id in SHAREABLE_FIELDS:
             fv = extraction.fields.get(field_id)
             if fv is None or _is_blank(fv.value):
                 continue
-            existing = profile.get(field_id)
-            if existing is None or fv.confidence > existing.confidence:
-                profile[field_id] = FieldValue(
-                    field_id=field_id,
-                    value=fv.value,
-                    confidence=fv.confidence,
-                    source_page=fv.source_page,
-                    source=extraction.source_file,
-                )
+            key = _normalize_for_vote(fv.value)
+            candidates.setdefault(field_id, {}).setdefault(key, []).append((extraction, fv))
+
+    profile: dict[str, FieldValue] = {}
+    for field_id, votes in candidates.items():
+        # Best (highest-confidence) occurrence for each distinct value.
+        best_per_value = {
+            key: max(occurrences, key=lambda pair: pair[1].confidence)
+            for key, occurrences in votes.items()
+        }
+        # Majority vote: most occurrences wins; ties broken by highest confidence,
+        # then by earliest occurrence in the batch.
+        winning_key = max(
+            best_per_value,
+            key=lambda key: (
+                len(votes[key]),
+                best_per_value[key][1].confidence,
+                -extractions.index(best_per_value[key][0]),
+            ),
+        )
+        winning_extraction, winning_fv = best_per_value[winning_key]
+        profile[field_id] = FieldValue(
+            field_id=field_id,
+            value=winning_fv.value,
+            confidence=winning_fv.confidence,
+            source_page=winning_fv.source_page,
+            source=winning_extraction.source_file,
+        )
     return profile
+
 
 
 def backfill_from_profile(

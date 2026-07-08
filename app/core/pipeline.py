@@ -38,11 +38,13 @@ from app.models.schemas import (
     ClassificationResult,
     ExtractionResult,
     InstructionStatus,
+    PreValidationFlag,
     ProcessingLogEntry,
     ValidationReport,
 )
 from app.ocr.pdf_utils import render_pdf_to_images
 from app.services import classifier, filer
+from app.services.filer import flag_missing_documents
 from app.services.consolidator import backfill_from_profile, build_person_profile
 from app.services.extractor import extract_form
 from app.services.report_generator import ExcelReportBuilder
@@ -59,6 +61,18 @@ ProgressCallback = Optional[Callable[[str], None]]
 
 HIGH_CONFIDENCE_MIN = load_validation_rules()["confidence_thresholds"]["high"]["min"]
 
+# Pre-validation flags (config/prevalidation_flags.json) that specifically mean
+# "an important companion document appears to be missing from this batch" —
+# as opposed to a field on the document itself being incomplete. When any of
+# these trigger, the whole batch gets an extra marker in the "Missing" folder
+# (app.services.filer.flag_missing_documents) so ops can spot incomplete
+# batches straight from the folder tree, not just from the Excel report.
+MISSING_DOCUMENT_FLAG_IDS = {
+    "kyc_document_absent",
+    "third_party_bank_form_b_absent",
+    "acting_on_behalf_form_c_absent",
+}
+
 
 @dataclass
 class DocumentOutcome:
@@ -69,6 +83,7 @@ class DocumentOutcome:
     error: str | None = None
     extraction: ExtractionResult | None = None
     validation: ValidationReport | None = None
+    prevalidation_flags: list[PreValidationFlag] | None = None
 
 
 def _emit(progress_cb: ProgressCallback, message: str) -> None:
@@ -215,6 +230,7 @@ def _validate_and_file(
             validation_status=validation_report.overall_status.value,
             extraction=extraction,
             validation=validation_report,
+            prevalidation_flags=prevalidation_flags,
         )
 
     except Exception as exc:  # noqa: BLE001
@@ -360,6 +376,26 @@ def process_batch(
         source_files = [p.name for p in pdf_paths]
         report.add_consolidated_profile(profile, person_key=person_key, source_files=source_files)
         _emit(progress_cb, f"Consolidated profile for '{person_key}' added ({len(source_files)} document(s)).")
+    else:
+        person_key = _person_key_for_batch(pdf_paths)
+        source_files = [p.name for p in pdf_paths]
+
+    # If any document in this batch triggered a "companion document missing"
+    # pre-validation flag (e.g. New Business with no KYC attached), flag the
+    # whole batch in the top-level "Missing" folder so it's visible in the
+    # filed folder tree, not just buried in the Excel report.
+    missing_labels: list[str] = []
+    for outcome in outcomes:
+        for flag in outcome.prevalidation_flags or []:
+            if flag.triggered and flag.flag_id in MISSING_DOCUMENT_FLAG_IDS:
+                missing_labels.append(f"{outcome.filename}: {flag.label} — {flag.reason}")
+    if missing_labels:
+        flag_missing_documents(person_key, missing_labels, source_files=source_files)
+        _emit(
+            progress_cb,
+            f"Batch '{person_key}' flagged as missing {len(missing_labels)} important "
+            "document(s) — see the 'Missing' folder.",
+        )
 
     return outcomes
 

@@ -22,12 +22,15 @@ Design:
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from app.llm.router import ask_vision, parse_json_response
 from app.models.schemas import Beneficiary, ExtractionResult, FieldValue
+from app.utils.confidence import CONFIDENCE_CEILING, cap_confidence
 from app.utils.config_loader import (
     derive_fund_category,
+    fund_category_priority,
     get_fields_for_form,
     get_mandatory_fields_for_form,
     load_field_definitions,
@@ -45,40 +48,83 @@ GUARDIAN_PAGE_NUMBER = 10
 # Prompt builder
 # ---------------------------------------------------------------------------
 
-_FUND_AMOUNT_FIELD_IDS = {
-    "lump_sum_deposit_amount", "lump_sum_debit_amount", "new_debit_amount",
-    "change_amount", "disinvestment_amount",
-}
+# Fund fields that live inside a "Core fund range" / fund-list table rather
+# than a single dedicated form field — see _fund_table_guidance() below.
+_FUND_TABLE_HINT = "fund_table"
+
+_FUND_TABLE_GUIDANCE_COMMON = (
+    "\nSPECIAL INSTRUCTIONS FOR fund_name / fund_number (fund list table):\n"
+    "This form lists SEVERAL BIFM Unit Trust funds as fixed rows in a table (e.g. "
+    "'Bifm Pula Money Market Fund', '* Bifm Letlotlo Education Fund', 'Bifm Balanced "
+    "Prudential Fund', '* Bifm Ya Masa Junior Fund', 'Bifm Local Equity Fund', "
+    "'** Bifm Global Sustainable Growth Fund' — ignore the '*'/'**' lock-in markers "
+    "when extracting the name). The fund name itself is PRINTED, not handwritten. "
+    "The fund number is a handwritten digit string (anywhere from 7 to 13 digits — capture exactly "
+    "what is written, do not pad, truncate, or 'correct' the digit count) that sits in "
+    "the 'Fund number' column of whichever row the client selected.\n"
+    "To find the correct fund_name and fund_number:\n"
+    "1. Scan EVERY row of the table, not just the first row or a fixed position.\n"
+)
+
+_FUND_TABLE_GUIDANCE_SINGLE_TABLE = (
+    "2. Identify the SELECTED fund: the row that has a handwritten amount (or, on a "
+    "Disinvestment form, a handwritten percentage) filled in, and/or a tick in that "
+    "row's Income Distribution (Reinvest / Pay out) columns if present. 'N/A' printed "
+    "in a cell means that fund does not offer that option and is NOT itself a selection "
+    "signal.\n"
+    "3. fund_number is the handwritten digit string on that same row - do NOT confuse "
+    "it with the deposit/withdrawal amount or percentage itself.\n"
+    "4. fund_name is the PRINTED fund name text of that same row, not the risk-appetite "
+    "header text above it (e.g. 'You are very careful and want to protect your capital').\n"
+    "5. If more than one row appears to have amounts filled in, pick the row with the "
+    "most complete evidence (amount/percentage AND a nearby handwritten fund number) and "
+    "lower your confidence score accordingly.\n"
+    "6. If the fund number truly cannot be found anywhere on the page, still return the "
+    "fund_name from the selected row and set fund_number to null rather than inventing one.\n"
+)
+
+_FUND_TABLE_GUIDANCE_DEBIT = (
+    "2. This Debit Order form has up to THREE separate fund tables, only one of which is "
+    "in use - first check which instruction was ticked in section 3/4 "
+    "('Cancel my existing debit order(s)', 'Changes to my existing debit order(s)', or "
+    "section 4 'New debit order instructions'), then read ONLY the table under that ticked "
+    "instruction:\n"
+    "   - Cancel table columns: Bifm Unit Trust Fund(s) | Fund number | Cancellation date.\n"
+    "   - Change table columns: Bifm Unit Trust Fund(s) | Fund number | Increase to (BWP) | "
+    "Decrease to (BWP) | ** Existing amount.\n"
+    "   - New debit order table columns: Bifm Unit Trust Fund(s) | Fund number | New amount (BWP).\n"
+    "3. Within that one active table, the SELECTED fund is the row with a handwritten Fund "
+    "number and/or a handwritten value in ANY of that table's amount/date columns (Increase "
+    "to, Decrease to, Existing amount, New amount, or Cancellation date). A row with only a "
+    "Fund number and no amount can still be the selected row if amounts genuinely weren't "
+    "captured - use judgement and lower confidence when evidence is thin.\n"
+    "4. fund_number is the handwritten digit string in that row's 'Fund number' column - do "
+    "NOT confuse it with any of the amount columns.\n"
+    "5. fund_name is the PRINTED fund name text of that same row (e.g. 'Bifm Pula Money "
+    "Market Fund'), ignoring '*'/'**' markers.\n"
+    "6. If the fund number truly cannot be found, still return the fund_name from the "
+    "selected row and set fund_number to null rather than inventing one.\n"
+)
 
 
-def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
+def _fund_table_guidance(form_code: str) -> str:
+    if form_code == "DEBIT":
+        return _FUND_TABLE_GUIDANCE_COMMON + _FUND_TABLE_GUIDANCE_DEBIT
+    return _FUND_TABLE_GUIDANCE_COMMON + _FUND_TABLE_GUIDANCE_SINGLE_TABLE
+
+
+def _build_field_prompt(field_subset: list[dict], form_label: str, form_code: str = "") -> str:
     lines = []
-    field_ids = {f["id"] for f in field_subset}
+    needs_fund_table_guidance = False
     for f in field_subset:
         opts = f" Allowed values: {f['options']}." if "options" in f else ""
         cond = f" (Only if: {f['condition']})" if f.get("condition") else ""
         lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}{cond}")
+        if f.get("extraction_hint") == _FUND_TABLE_HINT:
+            needs_fund_table_guidance = True
     field_block = "\n".join(lines)
 
-    fund_table_note = ""
-    if "fund_name" in field_ids or field_ids & _FUND_AMOUNT_FIELD_IDS:
-        fund_table_note = (
-            "\n\nFUND TABLE LAYOUT — read this carefully:\n"
-            "These forms list funds in a table with one row per fund. In each row, the "
-            "FUND NAME is in the cell immediately to the LEFT of the amount cell for that "
-            "row — the amount column never has its own header naming the fund. To find the "
-            "correct fund_name:\n"
-            "1. Find the row where an amount has been written in, or a box/tick has been "
-            "marked (this is the fund the investor selected).\n"
-            "2. Read the fund name from the cell directly to the left of that amount/tick in "
-            "the SAME row — do not use a fund name from a different row, and do not use a "
-            "column header or the table title.\n"
-            "3. If more than one row has an amount filled in, extract the fund_name/amount "
-            "pair from the row with the largest or most clearly completed entry, and lower "
-            "the confidence score to flag the ambiguity.\n"
-            "4. If no row has an amount or tick, leave fund_name null rather than guessing "
-            "from an empty row.\n"
-        )
+    fund_guidance = _fund_table_guidance(form_code) if needs_fund_table_guidance else ""
 
     return (
         f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
@@ -88,8 +134,8 @@ def _build_field_prompt(field_subset: list[dict], form_label: str) -> str:
         "- Use surrounding context (field label, expected format) to disambiguate.\n"
         "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading INSIDE the box.\n"
         "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
-        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read."
-        f"{fund_table_note}\n"
+        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n"
+        f"{fund_guidance}\n"
         f"FIELDS TO EXTRACT:\n{field_block}\n\n"
         "Also extract any beneficiary table rows (name, relationship, split_percent).\n\n"
         "Respond ONLY with this exact JSON shape:\n"
@@ -108,8 +154,9 @@ def _extract_fields_from_page(
     image_path: Path,
     field_subset: list[dict],
     form_label: str,
+    form_code: str = "",
 ) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
-    prompt = _build_field_prompt(field_subset, form_label)
+    prompt = _build_field_prompt(field_subset, form_label, form_code)
     response = ask_vision(prompt, image_path, json_mode=True)
 
     try:
@@ -123,7 +170,7 @@ def _extract_fields_from_page(
         if payload is None:
             continue
         value = payload.get("value") if isinstance(payload, dict) else payload
-        confidence = float(payload.get("confidence", 0)) if isinstance(payload, dict) else 0.0
+        confidence = cap_confidence(payload.get("confidence", 0)) if isinstance(payload, dict) else 0.0
         if value is not None:
             fields[fid] = FieldValue(
                 field_id=fid,
@@ -152,6 +199,54 @@ def _page_number(image_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Shared truthiness helpers for checkbox / amount-sourced fields
+# ---------------------------------------------------------------------------
+
+_CHECKED_TOKENS = {"true", "yes", "y", "1", "checked", "ticked", "x", "✓", "on"}
+
+
+def _is_checked(value) -> bool:
+    """
+    Normalizes a checkbox-sourced field value to True/False. Vision-LLM
+    extraction can hand back a native JSON boolean, or any of several
+    string spellings for "ticked" (e.g. "Yes", "Checked", "X", "1") - this
+    is the single place that vocabulary is defined so every checkbox field
+    (account_closure, KYC document flags, etc.) is interpreted consistently
+    instead of each call site inventing its own partial token list.
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in _CHECKED_TOKENS
+
+
+def _has_amount(fv: FieldValue | None) -> bool:
+    """
+    True if a currency/percentage FieldValue actually carries a usable
+    amount. Deliberately distinct from a plain truthiness check on
+    fv.value: a legitimate extracted amount of 0 is falsy in Python
+    (`0 == False`), and blank/placeholder strings like "", "N/A", "-"
+    should NOT count as an amount having been written in that column.
+    """
+    if fv is None or fv.value is None:
+        return False
+    text = str(fv.value).strip()
+    if text == "" or text.lower() in ("n/a", "na", "-", "none"):
+        return False
+    stripped = re.sub(r"[^0-9.\-]", "", text)
+    if stripped in ("", "-", "."):
+        # Non-numeric but non-blank (extraction glitch/handwriting noise) -
+        # still treat as "something was written here" rather than
+        # silently dropping it from consideration.
+        return True
+    try:
+        return float(stripped) != 0
+    except ValueError:
+        return True
+
+
+# ---------------------------------------------------------------------------
 # Derived metadata fields
 # ---------------------------------------------------------------------------
 
@@ -162,7 +257,7 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
     """
     derived: dict[str, FieldValue] = {}
 
-    def _add(field_id: str, value, confidence: float = 100.0) -> None:
+    def _add(field_id: str, value, confidence: float = CONFIDENCE_CEILING) -> None:
         derived[field_id] = FieldValue(field_id=field_id, value=value, confidence=confidence)
 
     # Form type label
@@ -184,27 +279,45 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
         _add("fund_name", "BIFM Global Sustainable Growth Fund")
         _add("fund_category", "Non-Money Market (GSGF)")
         _add("processing_cutoff", "Quarterly - 7th of last month of quarter")
+        _add("fund_category_priority", fund_category_priority("Non-Money Market (GSGF)"))
     elif fund_name:
         fund_category, cutoff = derive_fund_category(fund_name)
         _add("fund_category", fund_category)
         _add("processing_cutoff", cutoff)
+        _add("fund_category_priority", fund_category_priority(fund_category))
     elif form_code in ("ADD", "DIS", "DEBIT"):
         _add("fund_category", "Unknown - Fund Name Not Extracted")
         _add("processing_cutoff", "Unknown")
+        _add("fund_category_priority", fund_category_priority(None))
 
-    # Instruction mode for DIS (partial / percentage / full closure)
+    # Instruction mode for DIS / DIS_GSG - one of three mutually exclusive
+    # modes, in priority order:
+    #   1. Full Closure     - the "close account" checkbox at the foot of
+    #                         the form is ticked. This overrides everything
+    #                         else: an investor closing the account may
+    #                         still have stray digits in the amount/percent
+    #                         boxes, but the tick is the authoritative signal.
+    #   2. Percentage       - the dedicated disinvestment_percentage column
+    #                         has a number written in it.
+    #   3. Partial Withdrawal - a currency amount is written in the
+    #                         deposit/withdrawal (disinvestment_amount)
+    #                         column, with no closure tick and no percentage.
+    #   Unknown             - none of the above could be determined -
+    #                         surfaced so it gets flagged for manual review
+    #                         rather than silently defaulting to a mode.
     if form_code in ("DIS", "DIS_GSG"):
         closure = fields.get("account_closure")
         dis_amount = fields.get("disinvestment_amount")
         dis_pct = fields.get("disinvestment_percentage")
-        if closure and str(closure.value).lower() in ("yes", "true", "1"):
+
+        if _is_checked(closure.value if closure else None):
             _add("instruction_mode", "Full Closure")
-        elif dis_pct and dis_pct.value:
+        elif _has_amount(dis_pct):
             _add("instruction_mode", "Percentage")
-        elif dis_amount and dis_amount.value:
-            _add("instruction_mode", "Partial Amount")
+        elif _has_amount(dis_amount):
+            _add("instruction_mode", "Partial Withdrawal")
         else:
-            _add("instruction_mode", "Unknown")
+            _add("instruction_mode", "Unknown", confidence=0.0)
 
     # Sub-instruction type for DEBIT
     if form_code == "DEBIT":
@@ -231,12 +344,41 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
         kyc_fields = ["kyc_certified_id", "kyc_proof_address", "kyc_proof_banking", "kyc_proof_source"]
         ticked = [
             fid for fid in kyc_fields
-            if fields.get(fid) and str(fields[fid].value).lower() in ("true", "yes", "1", "checked")
+            if fields.get(fid) and _is_checked(fields[fid].value)
         ]
         all_complete = len(ticked) == 4
         _add("kyc_completeness_flag", "Complete" if all_complete else f"Incomplete ({len(ticked)}/4 documents provided)")
 
     return derived
+
+
+# ---------------------------------------------------------------------------
+# Fund field cleanup
+# ---------------------------------------------------------------------------
+
+def _clean_fund_fields(fields: dict[str, FieldValue]) -> None:
+    """
+    Normalizes fund_name / fund_number in place after extraction from the
+    Core Fund Range table:
+      - Strips leading '*' / '**' risk-tier markers and stray whitespace from
+        fund_name (these are printed annotations on the form, not part of
+        the fund's actual name).
+      - Strips non-digit characters from fund_number while preserving the
+        digit string exactly as written (BIFM fund/entity numbers can range
+        from 7 to 13 digits - no padding or truncation).
+    """
+    import re as _re
+
+    fund_name_fv = fields.get("fund_name")
+    if fund_name_fv and fund_name_fv.value:
+        cleaned = _re.sub(r"^\**\s*", "", str(fund_name_fv.value)).strip()
+        fund_name_fv.value = cleaned
+
+    fund_number_fv = fields.get("fund_number")
+    if fund_number_fv and fund_number_fv.value:
+        digits = _re.sub(r"\D", "", str(fund_number_fv.value))
+        if digits:
+            fund_number_fv.value = digits
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +432,7 @@ def _extract_appform(page_images: list[Path]) -> ExtractionResult:
     if "id_type" not in all_fields and "id_number" in all_fields:
         logger.warning("id_type not extracted directly - downstream validation will treat it as unknown")
 
+    _clean_fund_fields(all_fields)
     all_fields.update(_derive_metadata("APPFORM", all_fields))
 
     result = ExtractionResult(
@@ -307,8 +450,10 @@ def _extract_appform(page_images: list[Path]) -> ExtractionResult:
 def _extract_standard_form(form_code: str, page_images: list[Path]) -> ExtractionResult:
     """
     General extractor for ADD, DEBIT, DIS, DIS_GSG, STATIC, KYC.
-    Sends ALL form fields in one vision call against page 1 (and page 2 if multi-page).
-    For longer forms (STATIC has Form A + Form B sections), we send all pages.
+    Sends the first two pages in one vision call each and merges the result
+    (page 1 is a cover/instructions page with no form data on the BIFM
+    template for every form here except KYC, where page 1 is the form
+    itself - see the pages_to_process comment below).
     """
     field_defs = get_fields_for_form(form_code)
     form_label = load_field_definitions().get(form_code, {}).get("label", form_code)
@@ -318,16 +463,30 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
 
     # For STATIC forms that may span two pages (Form A and Form B are separate sections),
     # run extraction on up to 2 pages and merge.
-    pages_to_process = page_images[:2] if form_code == "STATIC" else [page_images[0]]
+    # BIFM's own PDF templates put a cover/instructions page ("please read
+    # carefully", cut-off times) FIRST on every form except KYC - the actual
+    # Investor Details + fund table + banking section is page 2. Sending
+    # only page_images[0] for DIS/ADD/DEBIT/DIS_GSG means the model is shown
+    # a page with no investor data on it at all, and returns nothing for
+    # every field. KYC is the one form whose page 1 genuinely is the form.
+    if form_code == "KYC":
+        pages_to_process = page_images[:1]
+    else:
+        pages_to_process = page_images[:2]
 
     for page_img in pages_to_process:
-        fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label)
+        fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label, form_code)
         # Merge: don't overwrite a higher-confidence extraction from a prior page
         for fid, fv in fields.items():
             existing = all_fields.get(fid)
             if existing is None or fv.confidence > existing.confidence:
                 all_fields[fid] = fv
         all_beneficiaries.extend(beneficiaries)
+
+    # Normalize fund_name / fund_number pulled from the Core Fund Range table
+    # (strip '*'/'**' risk-tier markers, strip non-digits from fund_number)
+    # before deriving metadata that depends on fund_name (fund_category, cutoff).
+    _clean_fund_fields(all_fields)
 
     # Append system-derived metadata fields
     all_fields.update(_derive_metadata(form_code, all_fields))
@@ -348,41 +507,15 @@ def extract_investment_application_form(page_images: list[Path]) -> ExtractionRe
     """Backward-compatible alias for APPFORM extraction."""
     return _extract_appform(page_images)
 
-
-# ---------------------------------------------------------------------------
-# MarvelAI integration helper
-# ---------------------------------------------------------------------------
-# Not used by the Streamlit front end. Converts an ExtractionResult's fields
-# (the parsed LLM JSON, held as FieldValue objects) into a plain
-# list-of-lists — e.g. [["full_name", "Dhruva"], ["id_number", "123456"]] —
-# for hand-off to the MarvelAI pipeline. `latest_extraction_as_list` is
-# refreshed every time `extraction_result_to_list` is called, so MarvelAI's
-# code can simply do:
-#
-#   from app.services.extractor import extraction_result_to_list, latest_extraction_as_list
-#   rows = extraction_result_to_list(result)
-#   # or, after that call: app.services.extractor.latest_extraction_as_list
-
 latest_extraction_as_list: list[list] = []
 
-
 def extraction_result_to_list(result: ExtractionResult, include_meta: bool = True) -> list[list]:
-    """
-    Flattens an ExtractionResult's fields into [[field_id, value], ...].
-
-    Args:
-        result: the ExtractionResult produced by extract_form().
-        include_meta: if True, also appends ["source_file", ...] and
-            ["form_code", ...] rows so the batch/document context travels
-            with the field data. Set False for field values only.
-
-    Returns:
-        A list of [field_id, value] pairs. Also cached on the module-level
-        `latest_extraction_as_list` variable for easy access elsewhere.
-    """
     global latest_extraction_as_list
 
-    rows: list[list] = [[field_id, fv.value] for field_id, fv in result.fields.items()]
+    rows = [
+        [field_id, fv.value]
+        for field_id, fv in result.fields.items()
+    ]
 
     if include_meta:
         rows.append(["source_file", result.source_file])
