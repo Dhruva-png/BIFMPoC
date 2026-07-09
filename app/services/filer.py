@@ -1,10 +1,19 @@
 """
 Module 5: Document Filer (Section 5.3 / 7.2).
 
-Renames and copies each source PDF using the naming convention:
-    [FormType]_[InvestorFullName]_[EntityNumber]_[FundCategory]_[InstructionDateSigned].[ext]
+Renames and copies each source PDF using one of two naming conventions,
+depending on outcome:
 
-FundCategory (MM / NMM / GSGF) is omitted when it can't be resolved yet.
+  PASS / WARNING (no rejection):
+      [FormType].[InvestorFullName].[EntityNumber].[InstructionDateSigned].[ext]
+      e.g. "DIS.Amolemo.4471928.20260709.pdf"
+
+  Rejected:
+      [FormType]_[InvestorFullName]_[RejectionReason].[ext]
+      e.g. "DIS_Amolemo_wrong banking details.pdf"
+      No entity number / date on rejected files — short form so Sales can
+      read the rejection reason at a glance in the folder listing.
+
 InstructionDateSigned is the date the client actually signed the form -
 the "Instruction Date (signed)" metadata field from Section 6 of the
 understanding document - not the date the system happened to process it;
@@ -27,12 +36,10 @@ types follows its OWN filing convention — they are not interchangeable:
     Static:           <Y>/<M> (dump) -> Send to AWD/<D> | Rejected
     KYC:              flat holding area (companion doc, Section 9.1)
 
-Rejected files get a reason appended to the filename, matching the
-client's own example: "...wrong banking details". See
-resolve_destination_dir() for the exact per-form-type routing logic, kept
-as a pure, swappable function so plugging in a real SharePoint client
-later only means changing the destination-write step, not the routing
-logic itself.
+See resolve_destination_dir() for the exact per-form-type folder routing
+logic (independent of filename convention above), kept as a pure,
+swappable function so plugging in a real SharePoint client later only
+means changing the destination-write step, not the routing logic itself.
 """
 from __future__ import annotations
 
@@ -62,13 +69,36 @@ MISSING_DOCS_DIRNAME = "Missing"
 def _clean_token(value: str) -> str:
     """
     Filename-safe token: uppercased, invalid characters stripped. Spaces
-    become hyphens (not deleted) so a multi-word value like "wrong
-    banking details" or a full investor name reads as
-    "WRONG-BANKING-DETAILS" / "JOHN-VAN-DER-MERWE" instead of being
-    squashed into one illegible run of letters.
+    become hyphens (not deleted) so a multi-word value reads as
+    "WRONG-BANKING-DETAILS" instead of being squashed into one illegible
+    run of letters.
+
+    Used only by flag_missing_documents' marker filename — build_filename
+    uses _clean_token_preserve_case instead (see below) so PDF/Excel
+    filenames keep their natural casing.
     """
     value = (value or "UNKNOWN").strip().upper().replace(" ", "-")
     return _INVALID_FILENAME_CHARS.sub("", value) or "UNKNOWN"
+
+
+# Filesystem-forbidden characters only (Windows' reserved set covers
+# Linux/macOS too) — used by _clean_token_preserve_case so filenames keep
+# their original casing and spacing instead of being uppercased/hyphenated.
+_INVALID_FILENAME_CHARS_SAFE = re.compile(r'[\\/:*?"<>|]')
+
+
+def _clean_token_preserve_case(value: str) -> str:
+    """
+    Filename-safe token that preserves original casing/spacing - strips
+    only characters the filesystem itself won't allow, and collapses/
+    trims whitespace. Used by build_filename so "Amolemo" stays
+    "Amolemo" and "wrong banking details" stays lowercase with spaces,
+    matching the client's own naming examples.
+    """
+    value = (value or "UNKNOWN").strip()
+    value = _INVALID_FILENAME_CHARS_SAFE.sub("", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value or "UNKNOWN"
 
 
 # Same parseable formats validation/engine.py accepts for date fields -
@@ -95,29 +125,6 @@ def _parse_signed_date(value) -> datetime | None:
     return None
 
 
-def _fund_category_token(fund_category: str | None) -> str:
-    """
-    Short filename token for fund category (MM / NMM / GSGF) - Section 3
-    Step 3's "Segregation" is one of the most operationally significant
-    facts about a document (it decides the 1PM vs 3PM cut-off and which
-    queue it's worked from), so surfacing it in the filename lets ops
-    identify a document's tier without opening it. Returns "" (omitted
-    from the filename entirely) when the category hasn't been resolved,
-    rather than showing a misleading "UNKNOWN" on every STATIC/KYC/DEBIT
-    document that doesn't carry a single fund selection.
-    """
-    cat = (fund_category or "").lower()
-    if not cat or "unknown" in cat:
-        return ""
-    if "gsgf" in cat or "global sustainable" in cat:
-        return "GSGF"
-    if "money market" in cat and "non" not in cat:
-        return "MM"
-    if "non-money market" in cat or "non money market" in cat:
-        return "NMM"
-    return ""
-
-
 def build_filename(
     form_code: str,
     entity_number: str,
@@ -125,46 +132,44 @@ def build_filename(
     ext: str = "pdf",
     as_of: datetime | None = None,
     rejection_reason: str | None = None,
-    fund_category: str | None = None,
     date_signed: str | None = None,
 ) -> str:
     """
-    Pure function:
-      [FormType]_[InvestorFullName]_[EntityNumber]_[FundCategory]_[Date].[ext]
-    (Section 5.3, Section 6 metadata fields.)
+    Pure function. Two formats depending on outcome:
 
-    - investor_name: the investor's full name (Section 6's "Investor Full
-      Name" field), not just a surname - hyphenated by _clean_token so a
-      multi-word name stays readable rather than being squashed together.
-    - fund_category: MM / NMM / GSGF token, omitted entirely when not
-      resolved (see _fund_category_token) - not every form type carries one.
-    - date_signed: the extracted "Instruction Date (signed)" field, per
-      Section 6 - used in place of the processing date whenever it parses
-      successfully, so the filename reflects when the client actually
-      signed rather than an arbitrary system-processing timestamp. Falls
-      back to as_of/now if blank or unparseable.
-    - rejection_reason: appended per the client's own example -
-      "...appended with wrong banking details" - now hyphenated instead
-      of squashed, e.g. "...WRONG-BANKING-DETAILS".
+    PASS / WARNING (rejection_reason is empty/None):
+        [FormType].[InvestorFullName].[EntityNumber].[Date].[ext]
+        e.g. "DIS.Amolemo.4471928.20260709.pdf"
+
+        - date_signed: the extracted "Instruction Date (signed)" field,
+          per Section 6 - used in place of the processing date whenever
+          it parses successfully. Falls back to as_of/now if blank or
+          unparseable.
+
+    Rejected (rejection_reason is provided):
+        [FormType]_[InvestorFullName]_[RejectionReason].[ext]
+        e.g. "DIS_Amolemo_wrong banking details.pdf"
+
+        Deliberately omits entity number and date - matches the client's
+        own rejection-file example, kept short so the reason is visible
+        at a glance in the folder listing.
+
+    Both formats preserve the original casing/spacing of investor_name
+    and rejection_reason (only filesystem-forbidden characters are
+    stripped) - form_code is left as-is too (e.g. "DIS", not "dis").
     """
     as_of = as_of or datetime.now()
+    form_token = _clean_token_preserve_case(form_code)
+    name_token = _clean_token_preserve_case(investor_name)
+
+    if rejection_reason:
+        reason_token = _clean_token_preserve_case(rejection_reason)
+        return f"{form_token}_{name_token}_{reason_token}.{ext.lstrip('.')}"
+
     effective_date = _parse_signed_date(date_signed) or as_of
     date_str = effective_date.strftime("%Y%m%d")
-
-    tokens = [
-        _clean_token(form_code),
-        _clean_token(investor_name),
-        _clean_token(entity_number),
-    ]
-    fund_token = _fund_category_token(fund_category)
-    if fund_token:
-        tokens.append(fund_token)
-    tokens.append(date_str)
-
-    base = "_".join(tokens)
-    if rejection_reason:
-        base = f"{base}_{_clean_token(rejection_reason)}"
-    return f"{base}.{ext.lstrip('.')}"
+    entity_token = _clean_token_preserve_case(entity_number)
+    return f"{form_token}.{name_token}.{entity_token}.{date_str}.{ext.lstrip('.')}"
 
 
 def _fund_bucket(fund_category: str | None) -> str:
@@ -374,16 +379,21 @@ def file_document(
     standardized name and returns a ProcessingLogEntry ready to append to the
     Processing Log sheet.
 
+    fund_category is still used for folder ROUTING (Money Market vs
+    Non-Money Market queues, see resolve_destination_dir/_fund_bucket) even
+    though it's no longer part of the filename itself.
+
     date_signed: the extracted "Instruction Date (signed)" field (Section
     6) - used in the filename in place of today's processing date when
-    it's present and parses cleanly (see build_filename).
+    it's present and parses cleanly, and only for the PASS/WARNING naming
+    format (see build_filename).
     """
     as_of = datetime.now()
     new_filename = build_filename(
         form_code, entity_number, full_name or "UNKNOWN",
         ext=source_pdf.suffix.lstrip("."), as_of=as_of,
         rejection_reason=rejection_reason or None,
-        fund_category=fund_category, date_signed=date_signed,
+        date_signed=date_signed,
     )
     destination_dir = resolve_destination_dir(form_code, fund_category, instruction_status, as_of)
     destination = destination_dir / new_filename

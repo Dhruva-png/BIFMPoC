@@ -7,6 +7,16 @@ pdf2image + Poppler if pypdfium2 is unavailable.
 
 Also provides an optional Tesseract raw-text pass used only as a lightweight
 cross-check for classification keyword hints — not the primary extraction path.
+
+When ocr_enhance_images is on (the default), each page also gets a raw,
+un-enhanced sibling saved alongside the enhanced version
+("page_003.png" + "page_003_raw.png"). app.services.extractor uses this
+raw sibling as an independent second read for multi-pass self-consistency
+extraction - enhancement helps in most cases but occasionally over-
+sharpens noise into a false stroke, so a raw counterpart catches what
+enhancement introduces and vice versa. Skipped when enhancement is off,
+since enhanced == raw in that case and there'd be nothing to gain from a
+second identical read.
 """
 from __future__ import annotations
 
@@ -104,8 +114,12 @@ def _render_with_pypdfium2(pdf_path: Path, target_dir: Path) -> list[Path]:
     for i, pil_img in enumerate(raw_pages, start=1):
         img_path = target_dir / f"page_{i:03d}.png"
         if settings.ocr_enhance_images:
-            pil_img = _enhance_for_handwriting(pil_img)
-        pil_img.save(img_path, "PNG")
+            raw_path = target_dir / f"page_{i:03d}_raw.png"
+            pil_img.convert("RGB").save(raw_path, "PNG")
+            enhanced_img = _enhance_for_handwriting(pil_img)
+            enhanced_img.save(img_path, "PNG")
+        else:
+            pil_img.convert("RGB").save(img_path, "PNG")
         image_paths.append(img_path)
     return image_paths
 
@@ -117,8 +131,12 @@ def _render_with_pdf2image(pdf_path: Path, target_dir: Path) -> list[Path]:
     for i, pil_img in enumerate(pages, start=1):
         img_path = target_dir / f"page_{i:03d}.png"
         if settings.ocr_enhance_images:
-            pil_img = _enhance_for_handwriting(pil_img)
-        pil_img.save(img_path, "PNG")
+            raw_path = target_dir / f"page_{i:03d}_raw.png"
+            pil_img.convert("RGB").save(raw_path, "PNG")
+            enhanced_img = _enhance_for_handwriting(pil_img)
+            enhanced_img.save(img_path, "PNG")
+        else:
+            pil_img.convert("RGB").save(img_path, "PNG")
         image_paths.append(img_path)
     return image_paths
 
@@ -130,8 +148,11 @@ def _render_with_pdf2image(pdf_path: Path, target_dir: Path) -> list[Path]:
 def render_pdf_to_images(pdf_path: Path, output_subdir: str | None = None) -> list[Path]:
     """
     Renders every page of a PDF to a PNG under settings.paths.temp_dir,
-    applying handwriting-friendly enhancement unless ocr_enhance_images is off.
-    Returns image paths in page order.
+    applying handwriting-friendly enhancement unless ocr_enhance_images is
+    off. Returns the ENHANCED image paths in page order (unchanged public
+    contract - existing callers are unaffected). A raw sibling for each
+    page is saved alongside on disk when enhancement is on; see
+    raw_sibling_path() below for how callers can find it.
     """
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -156,6 +177,13 @@ def render_pdf_to_images(pdf_path: Path, output_subdir: str | None = None) -> li
 
     logger.info("Rendered %d page(s) from %s", len(image_paths), pdf_path.name)
     return image_paths
+
+
+def raw_sibling_path(enhanced_image_path: Path) -> Path | None:
+    """Returns the un-enhanced sibling of an enhanced page image, if one
+    was saved (i.e. ocr_enhance_images was on for that render), else None."""
+    candidate = enhanced_image_path.parent / f"{enhanced_image_path.stem}_raw{enhanced_image_path.suffix}"
+    return candidate if candidate.exists() else None
 
 
 def quick_text_scan(image_path: Path) -> str:

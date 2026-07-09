@@ -170,13 +170,9 @@ class PathSettings:
             p.mkdir(parents=True, exist_ok=True)
 
 
+
 @dataclass
 class AppSettings:
-    # "groq" (default - free, no card needed, fast; recommended when
-    # Gemini's free tier is unavailable), "gemini" (free tier, cloud, no
-    # local hardware, but Google has been restricting no-billing access),
-    # or "ollama" (fully local/offline, needs a GPU/enough RAM for an 8B
-    # vision model). Override with LLM_PROVIDER=<gemini|ollama|groq>.
     llm_provider: str = os.environ.get("LLM_PROVIDER", "groq").lower()
     gemini: GeminiSettings = field(default_factory=GeminiSettings)
     groq: GroqSettings = field(default_factory=GroqSettings)
@@ -184,25 +180,21 @@ class AppSettings:
     sharepoint: SharePointSettings = field(default_factory=SharePointSettings)
     imap: ImapSettings = field(default_factory=ImapSettings)
     paths: PathSettings = field(default_factory=PathSettings)
-    # 220 DPI is a fast default: llava's vision encoder resizes everything to
-    # a fixed ~336x336 internally regardless of what you send it, so pushing
-    # DPI/resolution higher just costs you base64-encode + transfer time for
-    # zero accuracy gain on that model. If you switch to a model that
-    # actually uses higher resolution (e.g. qwen2.5vl, llama3.2-vision),
-    # raise this via PDF_RENDER_DPI=300 (or higher) to get the benefit.
     pdf_render_dpi: int = int(os.environ.get("PDF_RENDER_DPI", "220"))
     ocr_enhance_images: bool = os.environ.get("OCR_ENHANCE_IMAGES", "true").lower() != "false"
     ocr_min_long_edge_px: int = int(os.environ.get("OCR_MIN_LONG_EDGE_PX", "1600"))
-    # How many documents to process concurrently in a batch. >1 overlaps one
-    # document's page rendering/enhancement (CPU) with another's network
-    # wait on the Ollama call, which helps even on a single GPU. Raise
-    # cautiously - if Ollama queues requests serially (default), pushing this
-    # too high just adds contention rather than real parallelism.
+    # Runs every page through 2 independent vision reads (enhanced + raw
+    # image) and cross-checks them, firing a focused 3rd tie-break pass
+    # only on fields where they disagree - see app.services.extractor's
+    # module docstring. Roughly doubles Groq API calls per document
+    # (triples only for disputed fields). Turn off with
+    # MULTI_PASS_EXTRACTION=false if you need to conserve TPM budget on
+    # a large batch, at the cost of the confidence-calibration accuracy
+    # improvement.
+    multi_pass_extraction: bool = os.environ.get("MULTI_PASS_EXTRACTION", "true").lower() != "false"
     max_workers: int = int(os.environ.get("BIFM_MAX_WORKERS", "2"))
     log_level: str = os.environ.get("LOG_LEVEL", "INFO")
     excel_report_name: str = "BIFM_UT_Processing_Report.xlsx"
-    # Section 4, Output 5 / Section 7: automated Query Register, matching
-    # the two-sheet structure (Query Log + Recon) of BIFM's own shared file.
     query_register_report_name: str = "BIFM_UT_Query_Register.xlsx"
 
 

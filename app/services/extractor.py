@@ -11,30 +11,74 @@ Form types in scope:
   KYC      KYC (Know Your Customer)
 
 Design:
-- One llava vision call per form covers the primary page(s); a second call
-  is only made for APPFORM when a guardian/minor section lives on page 10.
 - Each form type's field list comes from config/field_definitions.json so
   the prompt is always form-specific — not a single generic mega-prompt that
   confuses the model with fields that don't exist on the current form.
 - After extraction, derived metadata fields are computed deterministically:
     fund_category, processing_cutoff, form_type_label, instruction_mode,
     kyc_completeness_flag, sub_instruction_type.
+
+MULTI-PASS SELF-CONSISTENCY EXTRACTION (settings.multi_pass_extraction,
+default on):
+Every page is read TWICE, independently, and the two reads are compared
+field-by-field:
+  - Agree (after whitespace/case normalization)  -> confidence pushed up
+    toward the ceiling; this is real evidence the value is right, not
+    just the model's own stated confidence.
+  - Disagree                                     -> confidence capped low
+    and a third, focused tie-break pass is fired ONLY for the disputed
+    field(s), on a further-upscaled/sharpened image, with a prompt that
+    shows the model both candidate reads and asks it to look very
+    carefully at just that field.
+  - Only one pass saw the field at all            -> confidence discounted
+    slightly (one read isn't as solid as two agreeing reads).
+
+Pass 1 uses the enhanced page image; pass 2 uses the raw, un-enhanced
+sibling saved by app.ocr.pdf_utils (enhancement helps in most cases but
+occasionally over-sharpens noise into a false stroke — a genuinely
+different image is what makes this a real independent check rather than
+asking the same question twice). If no raw sibling exists (enhancement
+was off for this run), multi-pass falls back to a single read rather than
+asking the identical image the identical question twice at temperature 0,
+which would just return the same answer and add nothing.
+
+This roughly doubles vision-API calls per document (triples only for
+fields that end up disputed) — see config.settings.AppSettings.
+multi_pass_extraction to turn it off if you need to conserve Groq TPM
+budget on a large batch.
+
+On top of this, app.utils.field_validators runs a second, independent
+check: does the extracted value actually look like a well-formed email /
+phone / ID / percentage / currency, regardless of what confidence the
+model reported for it. This catches misreads a model can be "confident"
+about (e.g. a clean-looking but wrong digit).
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
+from PIL import Image, ImageEnhance
+
 from app.llm.router import ask_vision, parse_json_response
 from app.models.schemas import Beneficiary, ExtractionResult, FieldValue
-from app.utils.confidence import CONFIDENCE_CEILING, cap_confidence
+from app.ocr.pdf_utils import raw_sibling_path
+from app.utils.confidence import (
+    AGREEMENT_CONFIDENCE_BONUS,
+    CONFIDENCE_CEILING,
+    DISAGREEMENT_CONFIDENCE_CAP,
+    SINGLE_PASS_CONFIDENCE_FACTOR,
+    cap_confidence,
+)
 from app.utils.config_loader import (
     derive_fund_category,
     fund_category_priority,
     get_fields_for_form,
     load_field_definitions,
 )
+from app.utils.field_validators import apply_field_validation
 from app.utils.logger import get_logger
+from config.settings import settings
 
 logger = get_logger(__name__)
 
@@ -112,28 +156,57 @@ def _fund_table_guidance(form_code: str) -> str:
     return _FUND_TABLE_GUIDANCE_COMMON + _FUND_TABLE_GUIDANCE_SINGLE_TABLE
 
 
-def _build_field_prompt(field_subset: list[dict], form_label: str, form_code: str = "") -> str:
+def _build_field_prompt(
+    field_subset: list[dict],
+    form_label: str,
+    form_code: str = "",
+    tiebreak_candidates: dict[str, tuple] | None = None,
+) -> str:
     lines = []
     needs_fund_table_guidance = False
     for f in field_subset:
         opts = f" Allowed values: {f['options']}." if "options" in f else ""
         cond = f" (Only if: {f['condition']})" if f.get("condition") else ""
-        lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}{cond}")
+        tiebreak_note = ""
+        if tiebreak_candidates and f["id"] in tiebreak_candidates:
+            a, b = tiebreak_candidates[f["id"]]
+            tiebreak_note = (
+                f" TWO INDEPENDENT READS OF THIS FIELD DISAGREED: {a!r} vs {b!r}. "
+                "Slow down and look at individual letter/digit shapes for just this "
+                "field - it may be either candidate, or it's possible both prior reads "
+                "were wrong; if so, provide the value that's actually written."
+            )
+        lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}{cond}{tiebreak_note}")
         if f.get("extraction_hint") == _FUND_TABLE_HINT:
             needs_fund_table_guidance = True
     field_block = "\n".join(lines)
 
     fund_guidance = _fund_table_guidance(form_code) if needs_fund_table_guidance else ""
 
+    if tiebreak_candidates:
+        intro = (
+            f"You are re-examining SPECIFIC fields on a HANDWRITTEN BIFM Unit Trust "
+            f"'{form_label}' form where two independent reads disagreed. This is a "
+            "focused recheck of only the field(s) below, not a fresh full read - go "
+            "slowly.\n"
+            "- Pay special attention to easily confused digits: 0/O, 1/7, 5/6, 8/3.\n"
+            "- Use surrounding context (field label, expected format) to disambiguate.\n"
+            "- If the value is genuinely illegible, use null rather than guessing.\n"
+        )
+    else:
+        intro = (
+            f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
+            f"'{form_label}' form. Read it the way a careful human clerk would:\n"
+            "- Look at each letter/digit individually; don't guess from word shape alone.\n"
+            "- Pay special attention to easily confused digits: 0/O, 1/7, 5/6, 8/3.\n"
+            "- Use surrounding context (field label, expected format) to disambiguate.\n"
+            "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading INSIDE the box.\n"
+            "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
+            "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n"
+        )
+
     return (
-        f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
-        f"'{form_label}' form. Read it the way a careful human clerk would:\n"
-        "- Look at each letter/digit individually; don't guess from word shape alone.\n"
-        "- Pay special attention to easily confused digits: 0/O, 1/7, 5/6, 8/3.\n"
-        "- Use surrounding context (field label, expected format) to disambiguate.\n"
-        "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading INSIDE the box.\n"
-        "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
-        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n"
+        f"{intro}"
         f"{fund_guidance}\n"
         f"FIELDS TO EXTRACT:\n{field_block}\n\n"
         "Also extract any beneficiary table rows (name, relationship, split_percent).\n\n"
@@ -146,16 +219,17 @@ def _build_field_prompt(field_subset: list[dict], form_label: str, form_code: st
 
 
 # ---------------------------------------------------------------------------
-# Core extraction call
+# Single vision call (one image, one prompt)
 # ---------------------------------------------------------------------------
 
-def _extract_fields_from_page(
+def _single_vision_pass(
     image_path: Path,
     field_subset: list[dict],
     form_label: str,
     form_code: str = "",
+    tiebreak_candidates: dict[str, tuple] | None = None,
 ) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
-    prompt = _build_field_prompt(field_subset, form_label, form_code)
+    prompt = _build_field_prompt(field_subset, form_label, form_code, tiebreak_candidates)
     response = ask_vision(prompt, image_path, json_mode=True)
 
     try:
@@ -192,9 +266,137 @@ def _extract_fields_from_page(
 
 def _page_number(image_path: Path) -> int:
     try:
-        return int(image_path.stem.split("_")[-1])
+        return int(image_path.stem.split("_")[0 - 1].replace("raw", "").replace("tiebreak", "") or 0)
     except (IndexError, ValueError):
-        return 0
+        # Fall back to the leading numeric run in the stem (handles
+        # "page_003", "page_003_raw", "page_003_tiebreak" alike).
+        m = re.search(r"page_(\d+)", image_path.stem)
+        return int(m.group(1)) if m else 0
+
+
+# ---------------------------------------------------------------------------
+# Multi-pass self-consistency merge
+# ---------------------------------------------------------------------------
+
+def _normalize_for_compare(value) -> str:
+    return re.sub(r"\s+", " ", str(value)).strip().casefold()
+
+
+def _merge_passes(
+    fields_a: dict[str, FieldValue],
+    fields_b: dict[str, FieldValue],
+) -> tuple[dict[str, FieldValue], set[str]]:
+    """
+    Compares two independent extraction passes field-by-field. Returns the
+    merged field set plus the set of field_ids that disagreed (candidates
+    for a tie-break pass). See module docstring for the confidence math.
+    """
+    merged: dict[str, FieldValue] = {}
+    disagreements: set[str] = set()
+
+    for fid in set(fields_a) | set(fields_b):
+        fa = fields_a.get(fid)
+        fb = fields_b.get(fid)
+
+        if fa and fb:
+            if _normalize_for_compare(fa.value) == _normalize_for_compare(fb.value):
+                winner = fa if fa.confidence >= fb.confidence else fb
+                boosted = cap_confidence(max(fa.confidence, fb.confidence) + AGREEMENT_CONFIDENCE_BONUS)
+                merged[fid] = FieldValue(
+                    field_id=fid, value=winner.value, confidence=boosted,
+                    source_page=winner.source_page, source=winner.source,
+                )
+            else:
+                disagreements.add(fid)
+                fallback = fa if fa.confidence >= fb.confidence else fb
+                merged[fid] = FieldValue(
+                    field_id=fid, value=fallback.value,
+                    confidence=min(fallback.confidence, DISAGREEMENT_CONFIDENCE_CAP),
+                    source_page=fallback.source_page, source=fallback.source,
+                )
+        else:
+            only = fa or fb
+            merged[fid] = FieldValue(
+                field_id=fid, value=only.value,
+                confidence=cap_confidence(only.confidence * SINGLE_PASS_CONFIDENCE_FACTOR),
+                source_page=only.source_page, source=only.source,
+            )
+
+    return merged, disagreements
+
+
+def _make_tiebreak_variant(image_path: Path) -> Path:
+    """
+    Produces a further-upscaled, extra-sharpened variant of an already-
+    enhanced page image, used only for the tie-break pass on fields where
+    the primary and secondary reads disagreed. Cached alongside the
+    source image so repeated tie-breaks within the same run reuse it.
+    """
+    out_path = image_path.parent / f"{image_path.stem}_tiebreak{image_path.suffix}"
+    if out_path.exists():
+        return out_path
+    img = Image.open(image_path)
+    img = img.resize((int(img.width * 1.5), int(img.height * 1.5)), Image.LANCZOS)
+    img = ImageEnhance.Sharpness(img).enhance(2.0)
+    img = ImageEnhance.Contrast(img).enhance(1.2)
+    img.save(out_path, "PNG")
+    return out_path
+
+
+def _extract_fields_from_page(
+    image_path: Path,
+    field_subset: list[dict],
+    form_label: str,
+    form_code: str = "",
+) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
+    """
+    Multi-pass, self-consistency extraction for one page. See module
+    docstring for the full explanation. Falls back to a single pass when
+    multi_pass_extraction is off, or when no raw sibling image is
+    available to serve as a genuinely independent second read.
+    """
+    fields_a, beneficiaries = _single_vision_pass(image_path, field_subset, form_label, form_code)
+
+    if not settings.multi_pass_extraction:
+        return fields_a, beneficiaries
+
+    raw_path = raw_sibling_path(image_path)
+    if raw_path is None:
+        return fields_a, beneficiaries
+
+    fields_b, beneficiaries_b = _single_vision_pass(raw_path, field_subset, form_label, form_code)
+    if not beneficiaries and beneficiaries_b:
+        beneficiaries = beneficiaries_b
+
+    merged, disagreement_ids = _merge_passes(fields_a, fields_b)
+
+    if disagreement_ids:
+        tiebreak_subset = [f for f in field_subset if f["id"] in disagreement_ids]
+        candidates = {
+            fid: (
+                fields_a[fid].value if fid in fields_a else None,
+                fields_b[fid].value if fid in fields_b else None,
+            )
+            for fid in disagreement_ids
+        }
+        try:
+            zoom_path = _make_tiebreak_variant(image_path)
+            fields_c, _ = _single_vision_pass(
+                zoom_path, tiebreak_subset, form_label, form_code, tiebreak_candidates=candidates,
+            )
+            for fid, fv in fields_c.items():
+                merged[fid] = fv
+            logger.info(
+                "%s: tie-break resolved %d/%d disputed field(s): %s",
+                image_path.name, len(fields_c), len(disagreement_ids), ", ".join(disagreement_ids),
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Tie-break pass failed for %s - keeping capped disagreement value(s) for: %s",
+                image_path.name, ", ".join(disagreement_ids),
+            )
+
+    return merged, beneficiaries
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +462,6 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
         derived[field_id] = FieldValue(field_id=field_id, value=value, confidence=confidence)
 
     # Form type label
-    from app.utils.config_loader import load_field_definitions
     form_defs = load_field_definitions()
     form_label = form_defs.get(form_code, {}).get("label", form_code)
     _add("form_type", form_label)
@@ -432,6 +633,7 @@ def _extract_appform(page_images: list[Path]) -> ExtractionResult:
         logger.warning("id_type not extracted directly - downstream validation will treat it as unknown")
 
     _clean_fund_fields(all_fields)
+    apply_field_validation("APPFORM", all_fields)
     all_fields.update(_derive_metadata("APPFORM", all_fields))
 
     result = ExtractionResult(
@@ -460,8 +662,6 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
     all_fields: dict[str, FieldValue] = {}
     all_beneficiaries: list[Beneficiary] = []
 
-    # For STATIC forms that may span two pages (Form A and Form B are separate sections),
-    # run extraction on up to 2 pages and merge.
     # BIFM's own PDF templates put a cover/instructions page ("please read
     # carefully", cut-off times) FIRST on every form except KYC - the actual
     # Investor Details + fund table + banking section is page 2. Sending
@@ -486,6 +686,11 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
     # (strip '*'/'**' risk-tier markers, strip non-digits from fund_number)
     # before deriving metadata that depends on fund_name (fund_category, cutoff).
     _clean_fund_fields(all_fields)
+
+    # Independent shape/format check (email, phone, numeric IDs,
+    # percentage, currency) - adjusts confidence based on whether the
+    # value actually looks well-formed, not just what the model reported.
+    apply_field_validation(form_code, all_fields)
 
     # Append system-derived metadata fields
     all_fields.update(_derive_metadata(form_code, all_fields))
