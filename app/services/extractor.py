@@ -585,21 +585,29 @@ def _clean_fund_fields(fields: dict[str, FieldValue]) -> None:
 # Public entry points (one per form type, plus the routing dispatcher)
 # ---------------------------------------------------------------------------
 
-def extract_form(form_code: str, page_images: list[Path]) -> ExtractionResult:
+def extract_form(form_code: str, pages: dict[int, Path]) -> ExtractionResult:
     """
     Routes to the correct extraction logic based on form_code.
     This is the single entry point called by pipeline.py.
+
+    pages: {1-indexed page number: rendered image path}, e.g. {1: ..., 10:
+    ...} for an APPFORM's primary + guardian pages. Keyed by real page
+    number rather than a positionally-dense list, since pipeline.py only
+    ever renders the specific pages a form type needs (see
+    app.ocr.pdf_utils.render_pdf_to_images) - a 10-page APPFORM submission
+    may only have pages {1, 10} rendered at all, with pages 2-9 never
+    touched.
     """
-    if not page_images:
+    if not pages:
         raise ValueError(f"No page images provided for extraction (form_code={form_code})")
 
     if form_code == "APPFORM":
-        return _extract_appform(page_images)
+        return _extract_appform(pages)
     else:
-        return _extract_standard_form(form_code, page_images)
+        return _extract_standard_form(form_code, pages)
 
 
-def _extract_appform(page_images: list[Path]) -> ExtractionResult:
+def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
     """
     Investment Application Form extractor.
     Uses page 1 for primary fields; page 10 conditionally for guardian/minor details.
@@ -612,21 +620,21 @@ def _extract_appform(page_images: list[Path]) -> ExtractionResult:
     all_beneficiaries: list[Beneficiary] = []
 
     # Pass 1: primary page
-    fields, beneficiaries = _extract_fields_from_page(page_images[0], primary_fields, "Investment Application Form")
+    fields, beneficiaries = _extract_fields_from_page(pages[1], primary_fields, "Investment Application Form")
     all_fields.update(fields)
     all_beneficiaries.extend(beneficiaries)
 
     # Pass 2 (conditional): guardian/minor section on page 10
     account_type = all_fields.get("account_type")
     is_minor_account = account_type is not None and "behalf" in str(account_type.value).lower()
-    if is_minor_account and len(page_images) >= GUARDIAN_PAGE_NUMBER:
-        guardian_page = page_images[GUARDIAN_PAGE_NUMBER - 1]
+    guardian_page = pages.get(GUARDIAN_PAGE_NUMBER)
+    if is_minor_account and guardian_page is not None:
         g_fields, _ = _extract_fields_from_page(guardian_page, guardian_fields, "Investment Application Form (Guardian Section)")
         all_fields.update(g_fields)
     elif is_minor_account:
         logger.warning(
-            "Account flagged 'Acting on Behalf of' but document has only %d page(s); "
-            "expected guardian section on page %d.", len(page_images), GUARDIAN_PAGE_NUMBER,
+            "Account flagged 'Acting on Behalf of' but page %d (guardian section) "
+            "wasn't available in this document.", GUARDIAN_PAGE_NUMBER,
         )
 
     if "id_type" not in all_fields and "id_number" in all_fields:
@@ -637,18 +645,18 @@ def _extract_appform(page_images: list[Path]) -> ExtractionResult:
     all_fields.update(_derive_metadata("APPFORM", all_fields))
 
     result = ExtractionResult(
-        source_file=page_images[0].parent.name,
+        source_file=pages[1].parent.name,
         form_code="APPFORM",
         fields=all_fields,
         beneficiaries=all_beneficiaries,
-        page_count=len(page_images),
+        page_count=len(pages),
     )
     logger.info("Extracted %d field(s) and %d beneficiary row(s) from %s (APPFORM)",
                 len(all_fields), len(all_beneficiaries), result.source_file)
     return result
 
 
-def _extract_standard_form(form_code: str, page_images: list[Path]) -> ExtractionResult:
+def _extract_standard_form(form_code: str, pages: dict[int, Path]) -> ExtractionResult:
     """
     General extractor for ADD, DEBIT, DIS, DIS_GSG, STATIC, KYC.
     Sends the first two pages in one vision call each and merges the result
@@ -665,13 +673,11 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
     # BIFM's own PDF templates put a cover/instructions page ("please read
     # carefully", cut-off times) FIRST on every form except KYC - the actual
     # Investor Details + fund table + banking section is page 2. Sending
-    # only page_images[0] for DIS/ADD/DEBIT/DIS_GSG means the model is shown
-    # a page with no investor data on it at all, and returns nothing for
-    # every field. KYC is the one form whose page 1 genuinely is the form.
-    if form_code == "KYC":
-        pages_to_process = page_images[:1]
-    else:
-        pages_to_process = page_images[:2]
+    # only page 1 for DIS/ADD/DEBIT/DIS_GSG means the model is shown a page
+    # with no investor data on it at all, and returns nothing for every
+    # field. KYC is the one form whose page 1 genuinely is the form.
+    wanted_page_numbers = (1,) if form_code == "KYC" else (1, 2)
+    pages_to_process = [pages[n] for n in wanted_page_numbers if n in pages]
 
     for page_img in pages_to_process:
         fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label, form_code)
@@ -696,20 +702,15 @@ def _extract_standard_form(form_code: str, page_images: list[Path]) -> Extractio
     all_fields.update(_derive_metadata(form_code, all_fields))
 
     result = ExtractionResult(
-        source_file=page_images[0].parent.name,
+        source_file=pages[1].parent.name,
         form_code=form_code,
         fields=all_fields,
         beneficiaries=all_beneficiaries,
-        page_count=len(page_images),
+        page_count=len(pages),
     )
     logger.info("Extracted %d field(s) from %s (%s)", len(all_fields), result.source_file, form_code)
     return result
 
-
-# Keep backward-compatible alias used by older pipeline code
-def extract_investment_application_form(page_images: list[Path]) -> ExtractionResult:
-    """Backward-compatible alias for APPFORM extraction."""
-    return _extract_appform(page_images)
 
 latest_extraction_as_list: list[list] = []
 

@@ -126,9 +126,9 @@ instruction types do not share one generic folder tree:
 | Additional Investment | `<Year>/<Month>` (dump, awaiting e-stamp) → `<Day>/MoneyMarket\|NonMoneyMarket/Captured[/Approved\|Rejected]` |
 | Disinvestment (Standard) | `<Year>/<Month>/<Day>/Money Market\|Non-Money Market/Captured\|Approved\|Rejected` |
 | Disinvestment (GSGF) | `<Year>/Q<n>-<Year>/<quarter-end date>/Captured\|Approved\|Rejected` (quarterly, not daily) |
-| Debit Order | `<Year>/<Month>` (dump) → `Send to AWD/<Day>` |
-| Static (Change of Details) | `<Year>/<Month>` (dump) → `Send to AWD/<Day>` |
-| KYC | flat holding area (companion document, not a standalone instruction) |
+| Debit Order | `<Year>/<Month>` (dump) → `Send to AWD/<Day>` \| `Rejected/<Day>` |
+| Static (Change of Details) | `<Year>/<Month>` (dump) → `Send to AWD/<Day>` \| `Rejected/<Day>` |
+| KYC | `<Year>/<Month>/<Day>` (companion document, not a standalone instruction) \| `Rejected` |
 
 ## Supported Form Types
 

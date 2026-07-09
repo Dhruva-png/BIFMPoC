@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -116,3 +117,31 @@ def test_save_produces_two_sheets(tmp_path: Path):
     for r in range(2, recon.max_row):
         if recon.cell(row=r, column=1).value == "Additional Investments":
             assert recon.cell(row=r, column=idx + 1).value == 1
+
+
+def test_add_form_is_thread_safe_under_concurrent_batches():
+    # app.core.pipeline.run_batch shares one QueryRegisterBuilder across
+    # multiple people's batches running concurrently - self._counter and
+    # self._recon_counts are read-modify-write, so a missing lock would
+    # silently lose increments (duplicate "No." values, undercounted
+    # recon figures) under real concurrency, not just look wrong on paper.
+    qr = QueryRegisterBuilder()
+    n_calls = 50
+
+    def make_and_add(i: int) -> None:
+        extraction = _make_extraction("ADD", full_name=f"Investor {i}")
+        validation = ValidationReport(source_file="test.pdf", entity_number="E1", results=[])
+        log_entry = _make_log_entry("Rejected", rejection_reason="missing bank details")
+        qr.add_form(extraction, validation, log_entry, prevalidation_flags=[])
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        list(pool.map(make_and_add, range(n_calls)))
+
+    assert len(qr._query_rows) == n_calls
+    assert qr._counter == n_calls
+    # No.s must be unique 1..n_calls - a lost increment would produce a
+    # duplicate instead of every value appearing exactly once.
+    numbers = sorted(row["No."] for row, _ in qr._query_rows)
+    assert numbers == list(range(1, n_calls + 1))
+    assert qr._recon_counts["Additional Investments"]["Received"] == n_calls
+    assert qr._recon_counts["Additional Investments"]["Pending"] == n_calls
