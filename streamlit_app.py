@@ -29,6 +29,7 @@ from __future__ import annotations
 import io
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -417,16 +418,36 @@ if run_clicked:
             all_outcomes: list = []
             person_reports: dict = {}  # person_key -> ExcelReportBuilder
             combined_report = ExcelReportBuilder()  # every person, one workbook
-            for group in person_groups:
+
+            def _process_one_person(group: list) -> tuple[str, ExcelReportBuilder, list]:
                 person_key = _person_key_for_batch(group)
                 progress_cb(f"--- Processing batch for '{person_key}' ({len(group)} document(s)) ---")
+                # A dedicated report per call (not shared across threads) -
+                # only query_register is shared, and it's lock-protected
+                # (see QueryRegisterBuilder's docstring) for exactly this.
                 person_report = ExcelReportBuilder()
                 group_outcomes = process_batch(
                     group, person_report, progress_cb, channel, query_register=query_register,
                 )
-                all_outcomes.extend(group_outcomes)
-                person_reports[person_key] = person_report
-                combined_report.merge_from(person_report)
+                return person_key, person_report, group_outcomes
+
+            # Different people's batches run concurrently instead of one
+            # full person finishing before the next starts - each document
+            # mostly just waits on an LLM HTTP call, so this overlaps that
+            # wait across people the same way process_batch already
+            # overlaps it across one person's own documents. Iterating
+            # `futures` in submission order (not completion order) keeps
+            # all_outcomes/person_reports in stable, input-file order while
+            # every future still runs concurrently in the background.
+            workers = max(1, settings.max_workers)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(_process_one_person, group) for group in person_groups]
+                for future in futures:
+                    person_key, person_report, group_outcomes = future.result()
+                    all_outcomes.extend(group_outcomes)
+                    person_reports[person_key] = person_report
+                    combined_report.merge_from(person_report)
+
             _batch_result["outcomes"] = all_outcomes
             _batch_result["person_reports"] = person_reports
             _batch_result["combined_report"] = combined_report

@@ -54,6 +54,17 @@
       }
     },
     {
+      "id": "kyc_contact_or_signature_missing",
+      "label": "KYC contact info or signature missing",
+      "trigger_condition": "KYC document present in the batch but contact number, email, or signatory name was not captured off it",
+      "rejection_risk": "High",
+      "applies_to": ["KYC"],
+      "logic": {
+        "type": "any_blank",
+        "fields": ["contact_number", "email", "authorized_signatory_name"]
+      }
+    },
+    {
       "id": "id_document_not_detected",
       "label": "ID document not detected",
       "trigger_condition": "No identity document found as an attachment to the submission",

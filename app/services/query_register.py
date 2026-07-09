@@ -37,6 +37,7 @@ flags don't get a Query Log row at all - only the Recon counts move.
 """
 from __future__ import annotations
 
+import threading
 from datetime import date
 from pathlib import Path
 
@@ -125,9 +126,18 @@ class QueryRegisterBuilder:
     writes the two-sheet workbook once. Mirrors the add_form(...) / save()
     pattern of app.services.report_generator.ExcelReportBuilder so the two
     can be filled in from the same call site in the pipeline.
+
+    One instance is shared across every document in a run, including
+    documents from DIFFERENT people's batches processed concurrently by
+    app.core.pipeline.run_batch - unlike ExcelReportBuilder (whose state is
+    plain list.append calls, atomic under the GIL), self._counter and
+    self._recon_counts are read-modify-write, so add_form is guarded by
+    self._lock to stop two threads' calls from racing and silently losing
+    an increment (duplicate "No." values, undercounted recon figures).
     """
 
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         self._query_rows: list[tuple[dict, str]] = []  # (row, rejection_risk) for colour-coding
         self._counter = 0
         self._recon_counts: dict[str, dict[str, int]] = {
@@ -143,6 +153,16 @@ class QueryRegisterBuilder:
     ) -> None:
         """One call per processed document - same call site as
         ExcelReportBuilder.add_form in app.core.pipeline."""
+        with self._lock:
+            self._add_form_locked(extraction, validation, log_entry, prevalidation_flags)
+
+    def _add_form_locked(
+        self,
+        extraction: ExtractionResult,
+        validation: ValidationReport,
+        log_entry: ProcessingLogEntry,
+        prevalidation_flags: list[PreValidationFlag] | None = None,
+    ) -> None:
         recon_type = recon_type_for_form_code(extraction.form_code)
         if recon_type:
             counts = self._recon_counts[recon_type]

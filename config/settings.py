@@ -206,7 +206,18 @@ class AppSettings:
     # a large batch, at the cost of the confidence-calibration accuracy
     # improvement.
     multi_pass_extraction: bool = os.environ.get("MULTI_PASS_EXTRACTION", "true").lower() != "false"
-    max_workers: int = int(os.environ.get("BIFM_MAX_WORKERS", "2"))
+    # Used at TWO levels in app.core.pipeline.run_batch: up to this many
+    # different PEOPLE's batches run concurrently, and within each of
+    # those, up to this many of that person's own documents run
+    # concurrently - so at 3 (the default), a multi-person folder can have
+    # up to 9 documents genuinely in flight at once. Each document mostly
+    # just waits on an LLM HTTP call, so this is I/O-bound concurrency, not
+    # CPU parallelism - the real ceiling is the LLM provider's rate limit,
+    # which for Groq is enforced separately and safely by the proactive
+    # TPM limiter in app.llm.groq_client (workers queue on it rather than
+    # ever exceeding the account's real budget), so raising this number is
+    # safe to try even before knowing your exact tier's headroom.
+    max_workers: int = int(os.environ.get("BIFM_MAX_WORKERS", "3"))
     log_level: str = os.environ.get("LOG_LEVEL", "INFO")
     excel_report_name: str = "BIFM_UT_Processing_Report.xlsx"
     query_register_report_name: str = "BIFM_UT_Query_Register.xlsx"

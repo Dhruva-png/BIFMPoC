@@ -46,7 +46,7 @@ from app.ocr.pdf_utils import render_pdf_to_images
 from app.services import classifier, filer
 from app.services.filer import flag_missing_documents
 from app.services.consolidator import backfill_from_profile, build_person_profile
-from app.services.extractor import extract_form
+from app.services.extractor import GUARDIAN_PAGE_NUMBER, extract_form
 from app.services.report_generator import ExcelReportBuilder, build_single_document_workbook
 from app.services.query_register import QueryRegisterBuilder
 from app.utils.config_loader import load_validation_rules
@@ -61,16 +61,22 @@ ProgressCallback = Optional[Callable[[str], None]]
 
 HIGH_CONFIDENCE_MIN = load_validation_rules()["confidence_thresholds"]["high"]["min"]
 
-# Pre-validation flags (config/prevalidation_flags.json) that specifically mean
-# "an important companion document appears to be missing from this batch" —
-# as opposed to a field on the document itself being incomplete. When any of
-# these trigger, the whole batch gets an extra marker in the "Missing" folder
-# (app.services.filer.flag_missing_documents) so ops can spot incomplete
-# batches straight from the folder tree, not just from the Excel report.
+# Pre-validation flags (config/prevalidation_flags.json) that mean either
+# "an important companion document appears to be missing from this batch"
+# (kyc_document_absent, third_party_bank_form_b_absent,
+# acting_on_behalf_form_c_absent) OR "the companion document IS present but
+# is missing something that makes it unusable as KYC on file"
+# (kyc_contact_or_signature_missing — a KYC form with no way to contact the
+# investor and/or no signature is operationally no better than no KYC form
+# at all). When any of these trigger, the whole batch gets an extra marker
+# in the "Missing" folder (app.services.filer.flag_missing_documents) so
+# ops can spot incomplete batches straight from the folder tree, not just
+# from the Excel report.
 MISSING_DOCUMENT_FLAG_IDS = {
     "kyc_document_absent",
     "third_party_bank_form_b_absent",
     "acting_on_behalf_form_c_absent",
+    "kyc_contact_or_signature_missing",
 }
 
 
@@ -182,11 +188,18 @@ def _extract_only(
     batch's consolidation/validation down with it.
     """
     try:
-        _emit(progress_cb, f"Rendering pages for {pdf_path.name}...")
-        page_images = render_pdf_to_images(pdf_path)
+        # Page 1 is all classification (and every form type's primary
+        # extraction pass) ever needs, so render just that first - not
+        # every page in the source PDF. The rest of the pages this
+        # specific form type needs (if any) are rendered below, once
+        # classification tells us which form type this is.
+        _emit(progress_cb, f"Rendering page 1 of {pdf_path.name}...")
+        pages = render_pdf_to_images(pdf_path, page_numbers=[1])
+        if 1 not in pages:
+            raise ValueError(f"Could not render page 1 of {pdf_path.name}")
 
         _emit(progress_cb, f"Classifying {pdf_path.name}...")
-        classification = classifier.classify_form(page_images[0])
+        classification = classifier.classify_form(pages[1])
 
         if classification.form_code == "UNRECOGNIZED":
             # Not one of the 6 known BIFM UT form types - e.g. a proof-of-
@@ -202,13 +215,29 @@ def _extract_only(
         # Disambiguate GSG vs Standard disinvestment when confidence is borderline
         if classification.form_code in ("DIS", "DIS_GSG") and classification.confidence < HIGH_CONFIDENCE_MIN:
             _emit(progress_cb, f"Disambiguating DIS vs DIS_GSG for {pdf_path.name}...")
-            classification = classifier.disambiguate_gsg_vs_standard(page_images[0])
+            classification = classifier.disambiguate_gsg_vs_standard(pages[1])
 
         form_code = classification.form_code
         _emit(progress_cb, f"{pdf_path.name}: classified as '{classification.form_name}' ({classification.confidence:.0f}% confidence)")
 
+        # Now that the form type is known, render exactly whatever else it
+        # needs - page 2 for the standard forms (their cover page is page
+        # 1), page 10 for APPFORM's guardian/minor section, nothing more
+        # for KYC (its page 1 already IS the form). See extract_form's
+        # docstring for why over-rendering the rest of the document (e.g.
+        # pages 2-9 of a 10-page APPFORM) was wasted work.
+        if form_code == "KYC":
+            more_pages: list[int] = []
+        elif form_code == "APPFORM":
+            more_pages = [GUARDIAN_PAGE_NUMBER]
+        else:
+            more_pages = [2]
+        if more_pages:
+            _emit(progress_cb, f"Rendering page(s) {more_pages} of {pdf_path.name}...")
+            pages.update(render_pdf_to_images(pdf_path, page_numbers=more_pages))
+
         _emit(progress_cb, f"Extracting fields from {pdf_path.name} ({form_code})...")
-        extraction = extract_form(form_code, page_images)
+        extraction = extract_form(form_code, pages)
 
         return classification, extraction, None
 
@@ -544,11 +573,16 @@ def run_batch(
     (the UI offers this as a per-batch choice, since submission channel is
     typically consistent within one intake drop).
 
-    Documents are extracted concurrently (settings.max_workers, default 2)
-    within each person's group. Each document spends most of its time
-    waiting on the LLM HTTP call, so overlapping that wait with another
-    document's page rendering (CPU-bound) cuts wall-clock time even
-    without extra GPU/API capacity.
+    Documents are extracted concurrently (settings.max_workers, default 3)
+    within each person's group, AND different people's groups run
+    concurrently too (up to the same settings.max_workers), instead of one
+    full person-batch finishing before the next one starts — a folder of
+    N people previously took N times as long as a single person's batch
+    even though each document mostly just waits on an LLM HTTP call, which
+    overlaps fine across people the same way it already does across
+    documents within one person. report/query_register are shared,
+    thread-safe accumulators (see QueryRegisterBuilder's own docstring for
+    why it needs a lock that ExcelReportBuilder doesn't).
     """
     intake_dir = intake_dir or settings.paths.intake_dir
     pdf_files = sorted(intake_dir.glob("*.pdf"))
@@ -565,16 +599,32 @@ def run_batch(
     _emit(
         progress_cb,
         f"Found {len(pdf_files)} document(s) across {len(person_groups)} "
-        f"person(s) to process (up to {settings.max_workers} in parallel per person).",
+        f"person(s) to process (up to {settings.max_workers} people, and up to "
+        f"{settings.max_workers} documents per person, in parallel).",
     )
     report = ExcelReportBuilder()
     query_register = QueryRegisterBuilder()
 
+    outcome_groups: dict[int, list[DocumentOutcome]] = {}
+    workers = max(1, settings.max_workers)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {}
+        for i, group in enumerate(person_groups):
+            person_key = _person_key_for_batch(group)
+            _emit(progress_cb, f"--- Queuing batch for '{person_key}' ({len(group)} document(s)) ---")
+            futures[pool.submit(
+                process_batch, group, report, progress_cb, channel, query_register=query_register,
+            )] = i
+        for future in as_completed(futures):
+            outcome_groups[futures[future]] = future.result()
+
+    # Preserve stable input-file order across people, same contract as
+    # before this ran concurrently - callers (Excel row order, DocumentOutcome
+    # lists) shouldn't see results reordered just because person B's LLM
+    # calls happened to finish before person A's.
     outcomes: list[DocumentOutcome] = []
-    for group in person_groups:
-        person_key = _person_key_for_batch(group)
-        _emit(progress_cb, f"--- Processing batch for '{person_key}' ({len(group)} document(s)) ---")
-        outcomes.extend(process_batch(group, report, progress_cb, channel, query_register=query_register))
+    for i in range(len(person_groups)):
+        outcomes.extend(outcome_groups[i])
 
     output_path = report.save()
     query_register_path = query_register.save()

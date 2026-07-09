@@ -42,9 +42,10 @@ types follows its OWN filing convention — they are not interchangeable:
     Additional Inv.:  <Y>/<M> (dump, awaiting e-stamp) -> <D>/MM|NMM/Captured[/Approved|Rejected]
     Disinvestment:    <Y>/<M>/<D>/MM|NMM/Captured|Approved|Rejected
     Disinvestment-GSGF: <Y>/Q<n>-<Y>/<quarter-end date>/Captured|Approved|Rejected
-    Debit Order:      <Y>/<M> (dump) -> Send to AWD/<D> | Rejected
-    Static:           <Y>/<M> (dump) -> Send to AWD/<D> | Rejected
-    KYC:              flat holding area (companion doc, Section 9.1)
+    Debit Order:      <Y>/<M> (dump) -> Send to AWD/<D> | Rejected/<D>
+    Static:           <Y>/<M> (dump) -> Send to AWD/<D> | Rejected/<D>
+    KYC:              <Y>/<M>/<D> (dump, pending parent-instruction link,
+                      Section 9.1) [/Rejected]
 
 See resolve_destination_dir() for the exact per-form-type folder routing
 logic (independent of filename convention above), kept as a pure,
@@ -252,16 +253,22 @@ def resolve_destination_dir(
                                      / Q<n>-<Year> / <last-month-end date>
                                      / Captured|Approved|Rejected
       DEBIT (Debit Order):          Debit Orders / <Year>/<Month>
-                                     [ / Send to AWD / <Day> | Rejected ]
+                                     [ / Send to AWD | Rejected / <Day> ]
       STATIC (Change of Details):   Static / <Year>/<Month>
-                                     [ / Send to AWD / <Day> | Rejected ]
-      KYC (supporting document):    filed alongside its parent instruction's
-                                     stage folder — this POC doesn't model
-                                     the parent link at file-routing time, so
-                                     KYC docs are held in a flat "KYC"
-                                     holding folder pending that linkage
+                                     [ / Send to AWD | Rejected / <Day> ]
+      KYC (supporting document):    KYC / <Year>/<Month>/<Day>[/Rejected] —
+                                     this POC doesn't model the parent-
+                                     instruction link at file-routing time
                                      (Section 9.1: KYC is a companion
-                                     document, not a standalone instruction).
+                                     document, not a standalone instruction),
+                                     so KYC docs are held in a dated holding
+                                     folder pending that linkage. Still gets
+                                     the same Year/Month/Day granularity and
+                                     Rejected segregation as every other
+                                     form type, rather than the flat
+                                     Year/Month bucket this used to dump
+                                     everything into regardless of date or
+                                     validation outcome.
     """
     as_of = as_of or datetime.now()
     base = settings.paths.filed_dir
@@ -321,15 +328,25 @@ def resolve_destination_dir(
         if rejected:
             # A rejected instruction was never queued for AWD authorization -
             # filing it under "Send to AWD" alongside genuinely-captured
-            # ones (as every rejected DEBIT/STATIC form previously was) is
-            # misleading and inconsistent with how APPFORM/ADD/DIS/DIS_GSG
-            # all separate their Rejected instructions out.
-            return month_dir / "Rejected"
+            # ones is misleading, so it gets its own status folder - but
+            # still at the same Day-level granularity as the "Send to AWD"
+            # branch below (previously flat at Year/Month with no Day
+            # folder, inconsistent with how ADD/DIS/DIS_GSG/KYC all keep
+            # day-level detail on their Rejected documents too).
+            return month_dir / "Rejected" / day
         return month_dir / "Send to AWD" / day
 
-    # KYC and any unrecognised form code: flat holding area pending linkage
-    # to its parent instruction (out of scope for this POC per Section 9.1).
-    return base / "KYC" / year / month.split("-", 1)[1]
+    # KYC and any unrecognised form code: dated day-level holding area,
+    # pending linkage to its parent instruction (out of scope for this POC
+    # per Section 9.1). Previously stopped at Year/Month with no Day
+    # folder and no Rejected split - the one form type inconsistent with
+    # every other's day-level granularity and status segregation above.
+    day_dir = base / "KYC" / year / month.split("-", 1)[1] / day
+    if rejected:
+        return day_dir / "Rejected"
+    if approved:
+        return day_dir / "Approved"
+    return day_dir
 
 
 def flag_missing_documents(

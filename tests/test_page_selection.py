@@ -11,7 +11,10 @@ from app.utils.config_loader import get_fields_for_form
 def _fake_pages(n):
     # Extraction only ever reads .stem/.parent off these - real image
     # files aren't needed since _extract_fields_from_page is mocked out.
-    return [Path(f"/tmp/fake_page_{i}.png") for i in range(1, n + 1)]
+    # Keyed by real 1-indexed page number, matching extract_form's actual
+    # contract now that pipeline.py only renders the pages a form type
+    # needs rather than every page in the source PDF.
+    return {i: Path(f"/tmp/fake_page_{i}.png") for i in range(1, n + 1)}
 
 
 def _run_and_capture_requested_pages(form_code, n_pages=3):

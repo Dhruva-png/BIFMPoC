@@ -86,6 +86,20 @@ def _eval_all_blank(extraction: ExtractionResult, logic: dict) -> tuple[bool, st
     return False, ""
 
 
+def _eval_any_blank(extraction: ExtractionResult, logic: dict) -> tuple[bool, str]:
+    """
+    Triggers if ANY of the given fields is blank (as opposed to all_blank's
+    "none of them populated") - for a group where each one is independently
+    required, e.g. a KYC document needs BOTH a way to contact the investor
+    AND a signature; missing either one on its own is already a problem.
+    """
+    fields = logic["fields"]
+    missing = [f for f in fields if _is_blank(extraction.field_value(f))]
+    if missing:
+        return True, f"{', '.join(missing)} not captured"
+    return False, ""
+
+
 def _eval_conditional_group_blank(extraction: ExtractionResult, logic: dict) -> tuple[bool, str]:
     condition_field = logic.get("condition_field")
     condition_equals = logic.get("condition_equals")
@@ -212,6 +226,8 @@ def evaluate_prevalidation_flags(
                 triggered, reason = _eval_field_blank(extraction, logic)
             elif logic_type == "all_blank":
                 triggered, reason = _eval_all_blank(extraction, logic)
+            elif logic_type == "any_blank":
+                triggered, reason = _eval_any_blank(extraction, logic)
             elif logic_type == "conditional_group_blank":
                 triggered, reason = _eval_conditional_group_blank(extraction, logic)
             elif logic_type == "checkbox_and_companion_doc":
