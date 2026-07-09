@@ -61,6 +61,23 @@ def get_mandatory_fields_for_form(form_code: str) -> list[str]:
     return form_def.get("mandatory_fields", [])
 
 
+@lru_cache(maxsize=1)
+def _field_type_index() -> dict[str, str]:
+    """field_id -> declared type, indexed once across every form's field list."""
+    index: dict[str, str] = {}
+    for form_def in load_field_definitions().values():
+        for f in form_def.get("fields", []):
+            index[f["id"]] = f.get("type", "text")
+    return index
+
+
+def get_field_type(field_id: str) -> str:
+    """Returns the declared type for a field_id (e.g. 'phone', 'date',
+    'currency', 'id_number', 'email', 'text'), defaulting to 'text' for
+    unknown/system-derived field ids."""
+    return _field_type_index().get(field_id, "text")
+
+
 def get_fund_info(fund_name: str) -> dict | None:
     """
     Look up fund metadata by name (case-insensitive substring match).
@@ -120,6 +137,7 @@ def clear_config_cache() -> None:
     load_field_definitions.cache_clear()
     load_validation_rules.cache_clear()
     load_prevalidation_flags.cache_clear()
+    _field_type_index.cache_clear()
 
 def fund_category_priority(fund_category: str | None) -> int:
     """

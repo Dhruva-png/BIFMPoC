@@ -5,6 +5,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.services import extractor
+from app.utils.config_loader import get_fields_for_form
 
 
 def _fake_pages(n):
@@ -66,10 +67,33 @@ def test_single_page_document_does_not_crash():
     assert len(pages) == 1
 
 
+def test_appform_defines_date_signed_field():
+    # The handwritten "date signed" next to the signature block was never
+    # captured for APPFORM (every other form type already asks for it) -
+    # config/field_definitions.json must declare it so the extractor's
+    # prompt actually asks the vision model to read it.
+    field_ids = {f["id"] for f in get_fields_for_form("APPFORM")}
+    assert "date_signed" in field_ids
+
+
+def test_appform_date_signed_is_read_on_the_primary_page_not_guardian_only():
+    # date_signed applies to every APPFORM submission, not just the
+    # guardian/minor section on page 10 - it must be in the primary field
+    # subset sent for page 1, not filtered out alongside GUARDIAN_FIELD_IDS.
+    field_defs = get_fields_for_form("APPFORM")
+    primary_fields = [
+        f for f in field_defs
+        if f.get("page_hint") != "Page 10" and f["id"] not in extractor.GUARDIAN_FIELD_IDS
+    ]
+    assert any(f["id"] == "date_signed" for f in primary_fields)
+
+
 if __name__ == "__main__":
     test_dis_scans_first_two_pages_not_just_the_cover_page()
     test_add_and_debit_also_scan_two_pages()
     test_kyc_only_needs_page_one()
     test_static_still_scans_two_pages()
     test_single_page_document_does_not_crash()
+    test_appform_defines_date_signed_field()
+    test_appform_date_signed_is_read_on_the_primary_page_not_guardian_only()
     print("All page-selection tests passed.")

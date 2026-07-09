@@ -20,6 +20,17 @@ Required environment variables (see config.settings.ImapSettings):
     IMAP_SEARCH_CRITERIA   - IMAP SEARCH string (default "UNSEEN")
     IMAP_PROCESSED_FOLDER  - folder to move processed messages into, if the
                               server supports it (default "BIFM-Processed")
+    IMAP_MIN_UNREAD_MINUTES - minimum time (minutes) a message must have
+                              sat unread before it's processed (default 60)
+    IMAP_ALLOWED_SENDERS    - comma-separated list of sender email
+                              addresses allowed to submit instruction
+                              forms; a message from anyone else is left
+                              unread and skipped. Blank disables the check
+                              (every sender allowed). Matched against the
+                              bare address only (case-insensitive) - a
+                              display name in the From header, e.g. "Jane
+                              Doe <jane@example.com>", doesn't need to
+                              match exactly.
 
 If IMAP_HOST/IMAP_USERNAME/IMAP_PASSWORD aren't all set, is_configured()
 returns False and the app falls back to the other intake channels.
@@ -33,7 +44,7 @@ from email.message import Message
 from pathlib import Path
 from typing import Any
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
+from email.utils import parseaddr, parsedate_to_datetime
 
 from app.utils.logger import get_logger
 from config.settings import settings
@@ -102,6 +113,13 @@ def _ensure_processed_folder(conn: imaplib.IMAP4, folder_name: str) -> bool:
         return False
 
 
+def _allowed_sender_set() -> set[str]:
+    """Parses IMAP_ALLOWED_SENDERS into a lowercase address set. Empty set
+    means the check is disabled (every sender allowed)."""
+    raw = settings.imap.allowed_senders
+    return {addr.strip().lower() for addr in raw.split(",") if addr.strip()}
+
+
 def _iter_pdf_attachments(msg: Message):
     for part in msg.walk():
         if part.get_content_maintype() == "multipart":
@@ -118,10 +136,6 @@ def _iter_pdf_attachments(msg: Message):
         yield filename, payload
 
 
-whitelist_mails = [
-    "Shyam S P <shyam.sp@kgisl.com>"
-]
-
 def fetch_pdf_attachments(dest_dir: Path, search_criteria: str | None = None) -> list[dict[str, Any]]:
     """
     Searches the configured IMAP mailbox/folder for messages matching
@@ -130,7 +144,13 @@ def fetch_pdf_attachments(dest_dir: Path, search_criteria: str | None = None) ->
     message \\Seen (moving it to the processed folder too, if configured
     and supported) so it isn't picked up again.
 
-    Only emails received within the last hour are processed.
+    Only messages that have been sitting unread for at least
+    settings.imap.min_unread_minutes (default 60) are processed - this is
+    a MINIMUM age, not a recency window, so a message that's been unread
+    for days is just as eligible as one that crossed the threshold a
+    minute ago. Keeps a just-arrived, possibly still-incomplete submission
+    (e.g. a client sending the form and a follow-up attachment moments
+    apart) from being grabbed and processed prematurely.
 
     Returns a list of {"path": Path, "sender": str, "subject": str,
     "message_id": str} dicts — one per downloaded PDF.
@@ -142,12 +162,17 @@ def fetch_pdf_attachments(dest_dir: Path, search_criteria: str | None = None) ->
     criteria = search_criteria or im.search_criteria
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # Only process emails received within the last hour
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    min_age = timedelta(minutes=im.min_unread_minutes)
+    age_cutoff = datetime.now(timezone.utc) - min_age
 
-    # Restrict IMAP search to today's emails for efficiency
-    today = datetime.now().strftime("%d-%b-%Y")
-    search_query = f'({criteria} SINCE "{today}")'
+    # IMAP SEARCH date keys (SINCE/BEFORE) only have day-level granularity,
+    # so they can't express "at least N minutes old" directly - the actual
+    # cutoff is enforced per-message below, from each message's real Date
+    # header. This SINCE bound is just a coarse efficiency guard against
+    # scanning a mailbox's entire history; it's set well before the age
+    # cutoff so it never excludes a message that's still genuinely eligible.
+    search_floor = (datetime.now() - min_age - timedelta(days=1)).strftime("%d-%b-%Y")
+    search_query = f'({criteria} SINCE "{search_floor}")'
 
     results: list[dict[str, Any]] = []
     conn = _connect()
@@ -182,45 +207,49 @@ def fetch_pdf_attachments(dest_dir: Path, search_criteria: str | None = None) ->
             raw_email = msg_data[0][1]
             msg = email.message_from_bytes(raw_email)
 
-            # Skip emails older than one hour
+            # Only process a message once it's been unread for at least
+            # min_unread_minutes - if we can't determine its age at all
+            # (missing/unparseable Date header), skip it rather than risk
+            # processing a just-arrived, possibly-incomplete submission.
             date_header = msg.get("Date")
+            email_time = None
             if date_header:
                 try:
                     email_time = parsedate_to_datetime(date_header)
-
                     if email_time.tzinfo is None:
                         email_time = email_time.replace(tzinfo=timezone.utc)
+                except Exception:  # noqa: BLE001
+                    email_time = None
 
-                    if email_time < one_hour_ago:
-                        logger.info(
-                            "Skipping email %s (older than one hour)",
-                            num.decode()
-                        )
-                        continue
+            if email_time is None:
+                logger.warning(
+                    "Could not determine age of message %s (missing/unparseable "
+                    "Date header) — skipping until it can be re-checked",
+                    num.decode(),
+                )
+                continue
 
-                except Exception:
-                    logger.warning(
-                        "Could not parse Date header for message %s",
-                        num.decode()
-                    )
-                    continue
+            if email_time > age_cutoff:
+                logger.info(
+                    "Skipping message %s — unread for less than %d minute(s)",
+                    num.decode(), im.min_unread_minutes,
+                )
+                continue
 
             sender = _decode_header_value(msg.get("From", "unknown"))
             subject = _decode_header_value(msg.get("Subject", "(no subject)"))
             message_id = msg.get("Message-ID", num.decode())
-            
 
-            print("=="*30)
-            print(sender)
-            print("=="*30)
-
-            if sender not in whitelist_mails:
-                logger.info(
-                    "Skipping IMAP message %s from %s (not in whitelist)",
-                    message_id,
-                    sender,
-                )
-                continue
+            allowed_senders = _allowed_sender_set()
+            if allowed_senders:
+                _, sender_email = parseaddr(msg.get("From", ""))
+                if sender_email.lower() not in allowed_senders:
+                    logger.info(
+                        "Skipping IMAP message %s from %s (sender not in "
+                        "IMAP_ALLOWED_SENDERS)",
+                        message_id, sender,
+                    )
+                    continue
 
             downloaded_any = False
 

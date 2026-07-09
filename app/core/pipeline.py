@@ -496,12 +496,21 @@ def process_batch(
     # whole batch in the top-level "Missing" folder so it's visible in the
     # filed folder tree, not just buried in the Excel report.
     missing_labels: list[str] = []
+    missing_reasons: list[str] = []  # concise, deduped flag labels for the marker filename
+    missing_form_code: str | None = None
     for outcome in outcomes:
         for flag in outcome.prevalidation_flags or []:
             if flag.triggered and flag.flag_id in MISSING_DOCUMENT_FLAG_IDS:
                 missing_labels.append(f"{outcome.filename}: {flag.label} — {flag.reason}")
+                if flag.label not in missing_reasons:
+                    missing_reasons.append(flag.label)
+                if missing_form_code is None:
+                    missing_form_code = outcome.form_code
     if missing_labels:
-        flag_missing_documents(person_key, missing_labels, source_files=source_files)
+        flag_missing_documents(
+            person_key, missing_labels, source_files=source_files,
+            reasons=missing_reasons, form_code=missing_form_code,
+        )
         _emit(
             progress_cb,
             f"Batch '{person_key}' flagged as missing {len(missing_labels)} important "

@@ -5,14 +5,24 @@ Renames and copies each source PDF using one of two naming conventions,
 depending on outcome:
 
   PASS / WARNING (no rejection):
-      [FormType].[InvestorFullName].[EntityNumber].[InstructionDateSigned].[ext]
-      e.g. "DIS.Amolemo.4471928.20260709.pdf"
+      [FormType]_[EntityNumber]_[InvestorSurname]_[YYYYMMDD].[ext]
+      e.g. "ADD_ENT12345_MODISE_20260630.pdf"
+      Matches the README's documented Document Naming Convention exactly -
+      uppercased, underscore-separated, so it's both human- and
+      machine-parseable in the filed-documents folder listing.
 
   Rejected:
-      [FormType]_[InvestorFullName]_[RejectionReason].[ext]
-      e.g. "DIS_Amolemo_wrong banking details.pdf"
+      [FormType] - [InvestorFullName] - [RejectionReason].[ext]
+      e.g. "ADD - Alomelo - missing bank details.pdf"
       No entity number / date on rejected files — short form so Sales can
-      read the rejection reason at a glance in the folder listing.
+      read the rejection reason at a glance in the folder listing. Case is
+      preserved here (unlike the PASS/WARNING format) to match how a
+      rejection reason is naturally phrased.
+
+Missing/incomplete companion-document batches (Section 8/9.1 - e.g. a New
+Business submission with no KYC form attached) get a similar reason-
+bearing marker filename in the top-level "Missing" folder - see
+flag_missing_documents() below.
 
 InstructionDateSigned is the date the client actually signed the form -
 the "Instruction Date (signed)" metadata field from Section 6 of the
@@ -138,8 +148,13 @@ def build_filename(
     Pure function. Two formats depending on outcome:
 
     PASS / WARNING (rejection_reason is empty/None):
-        [FormType].[InvestorFullName].[EntityNumber].[Date].[ext]
-        e.g. "DIS.Amolemo.4471928.20260709.pdf"
+        [FormType]_[EntityNumber]_[InvestorSurname]_[YYYYMMDD].[ext]
+        e.g. "ADD_ENT12345_MODISE_20260630.pdf"
+
+        Uppercased, underscore-separated, matching the README's documented
+        Document Naming Convention. investor_name is uppercased and
+        spaces become hyphens (via _clean_token) so a multi-word name
+        stays readable rather than being squashed together.
 
         - date_signed: the extracted "Instruction Date (signed)" field,
           per Section 6 - used in place of the processing date whenever
@@ -147,29 +162,29 @@ def build_filename(
           unparseable.
 
     Rejected (rejection_reason is provided):
-        [FormType]_[InvestorFullName]_[RejectionReason].[ext]
-        e.g. "DIS_Amolemo_wrong banking details.pdf"
+        [FormType] - [InvestorFullName] - [RejectionReason].[ext]
+        e.g. "ADD - Alomelo - missing bank details.pdf"
 
-        Deliberately omits entity number and date - matches the client's
-        own rejection-file example, kept short so the reason is visible
-        at a glance in the folder listing.
-
-    Both formats preserve the original casing/spacing of investor_name
-    and rejection_reason (only filesystem-forbidden characters are
-    stripped) - form_code is left as-is too (e.g. "DIS", not "dis").
+        Deliberately omits entity number and date - kept short so the
+        reason is visible at a glance in the folder listing. Casing/
+        spacing is preserved here (unlike the PASS/WARNING format above),
+        matching how a rejection reason is naturally phrased (e.g. "missing
+        bank details", not "MISSING-BANK-DETAILS").
     """
     as_of = as_of or datetime.now()
-    form_token = _clean_token_preserve_case(form_code)
-    name_token = _clean_token_preserve_case(investor_name)
 
     if rejection_reason:
+        form_token = _clean_token_preserve_case(form_code)
+        name_token = _clean_token_preserve_case(investor_name)
         reason_token = _clean_token_preserve_case(rejection_reason)
-        return f"{form_token}_{name_token}_{reason_token}.{ext.lstrip('.')}"
+        return f"{form_token} - {name_token} - {reason_token}.{ext.lstrip('.')}"
 
     effective_date = _parse_signed_date(date_signed) or as_of
     date_str = effective_date.strftime("%Y%m%d")
-    entity_token = _clean_token_preserve_case(entity_number)
-    return f"{form_token}.{name_token}.{entity_token}.{date_str}.{ext.lstrip('.')}"
+    form_token = _clean_token(form_code)
+    entity_token = _clean_token(entity_number)
+    name_token = _clean_token(investor_name)
+    return f"{form_token}_{entity_token}_{name_token}_{date_str}.{ext.lstrip('.')}"
 
 
 def _fund_bucket(fund_category: str | None) -> str:
@@ -322,6 +337,8 @@ def flag_missing_documents(
     missing_labels: list[str],
     source_files: list[str] | None = None,
     as_of: datetime | None = None,
+    reasons: list[str] | None = None,
+    form_code: str | None = None,
 ) -> Path | None:
     """
     Creates/updates a marker file under the top-level "Missing" folder for a
@@ -330,6 +347,18 @@ def flag_missing_documents(
     with no Form B banking annex) — the pre-validation flags engine
     (app.validation.prevalidation) is what determines which documents count
     as "missing" for a given batch; this function just files the result.
+
+    The marker FILENAME itself (not just its body text) carries the form
+    type, person, and reason(s) so ops can see what's missing straight from
+    the folder listing without opening the file - e.g.
+    "APPFORM - Amolemo - KYC document absent.txt" - matching the same
+    "reason visible in the filename" principle as a rejected instruction's
+    filename (see build_filename above). `reasons` should be the short flag
+    label(s) (e.g. PreValidationFlag.label), not the longer per-document
+    explanation - that longer text still goes in the file body below.
+    Falls back to `missing_labels` itself if `reasons` isn't given, and to
+    "Missing" for form_code when the batch's triggering form type isn't
+    known to the caller.
 
     No-op (returns None) if missing_labels is empty — nothing to flag.
     """
@@ -342,7 +371,10 @@ def flag_missing_documents(
     destination_dir.mkdir(parents=True, exist_ok=True)
 
     date_str = as_of.strftime("%Y%m%d")
-    marker_name = f"{_clean_token(person_key)}_{date_str}.txt"
+    form_token = _clean_token_preserve_case(form_code) if form_code else "Missing"
+    name_token = _clean_token_preserve_case(person_key)
+    reason_token = _clean_token_preserve_case(", ".join(reasons or missing_labels))
+    marker_name = f"{form_token} - {name_token} - {reason_token} - {date_str}.txt"
     destination = destination_dir / marker_name
 
     lines = [

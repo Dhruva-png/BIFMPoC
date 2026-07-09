@@ -651,6 +651,10 @@ else:
                     )
 
             if o.extraction and o.extraction.fields:
+                # Only this document's own fields - never a value backfilled
+                # in from a sibling document in the same batch (see
+                # ExtractionResult.own_fields / app.services.consolidator).
+                own_fields = o.extraction.own_fields()
                 # Separate derived/system fields from extracted fields for clarity
                 derived_ids = {
                     "form_type", "fund_category", "processing_cutoff", "instruction_mode",
@@ -658,12 +662,12 @@ else:
                 }
                 extracted_rows = [
                     {"Field": fid, "Value": str(fv.value), "Confidence": f"{fv.confidence:.0f}%", "Source": "Extracted"}
-                    for fid, fv in o.extraction.fields.items()
+                    for fid, fv in own_fields.items()
                     if fid not in derived_ids
                 ]
                 derived_rows = [
                     {"Field": fid, "Value": str(fv.value), "Confidence": "—", "Source": "Derived"}
-                    for fid, fv in o.extraction.fields.items()
+                    for fid, fv in own_fields.items()
                     if fid in derived_ids
                 ]
 

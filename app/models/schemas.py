@@ -60,6 +60,11 @@ class FieldValue:
     # batch - see app.services.consolidator. Purely informational/auditable;
     # never affects validation logic.
     source: str = "extracted"
+    # Optional human-readable note on how a *consolidated* (batch-level)
+    # value was chosen, e.g. "majority vote: 3/4 documents agree" or
+    # "NO MAJORITY - 3-way tie ...". Only set by app.services.consolidator
+    # on profile-level FieldValues; None for plain per-document extractions.
+    agreement: Optional[str] = None
 
 
 @dataclass
@@ -89,6 +94,21 @@ class ExtractionResult:
     def field_value(self, field_id: str) -> Any:
         fv = self.fields.get(field_id)
         return fv.value if fv else None
+
+    def own_fields(self) -> dict[str, "FieldValue"]:
+        """
+        Returns only the fields genuinely read off THIS document, excluding
+        any that were backfilled in from a sibling document in the same
+        batch (see app.services.consolidator.backfill_from_profile, which
+        tags a backfilled FieldValue's source as "backfilled:<source_file>").
+        Every view of a single document on its own - Investor Master row,
+        the individual per-document workbook, the Streamlit "Document
+        Detail" panel - should use this instead of `fields` directly, so a
+        value copied in to satisfy validation never displays as if it were
+        read straight off this page. The batch-wide "Consolidated Investor
+        Profile" view is the one place backfilled/merged data belongs.
+        """
+        return {fid: fv for fid, fv in self.fields.items() if not fv.source.startswith("backfilled:")}
 
     def to_flat_dict(self) -> dict[str, Any]:
         flat = {fid: fv.value for fid, fv in self.fields.items()}
