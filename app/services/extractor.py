@@ -1,61 +1,25 @@
 """
 Module 2: Field Extractor — supports ALL 6 BIFM UT form types.
+... (unchanged docstring content above) ...
 
-Form types in scope:
-  APPFORM  Investment Application Form
-  ADD      Additional Investment Form
-  DEBIT    Debit Order Form
-  DIS      Disinvestment Form (Standard)
-  DIS_GSG  Disinvestment Form (GSGF — Global Sustainable Growth Fund)
-  STATIC   Static / Change of Investor Details Form
-  KYC      KYC (Know Your Customer)
-
-Design:
-- Each form type's field list comes from config/field_definitions.json so
-  the prompt is always form-specific — not a single generic mega-prompt that
-  confuses the model with fields that don't exist on the current form.
-- After extraction, derived metadata fields are computed deterministically:
-    fund_category, processing_cutoff, form_type_label, instruction_mode,
-    kyc_completeness_flag, sub_instruction_type.
-
-MULTI-PASS SELF-CONSISTENCY EXTRACTION (settings.multi_pass_extraction,
-default on):
-Every page is read TWICE, independently, and the two reads are compared
-field-by-field:
-  - Agree (after whitespace/case normalization)  -> confidence pushed up
-    toward the ceiling; this is real evidence the value is right, not
-    just the model's own stated confidence.
-  - Disagree                                     -> confidence capped low
-    and a third, focused tie-break pass is fired ONLY for the disputed
-    field(s), on a further-upscaled/sharpened image, with a prompt that
-    shows the model both candidate reads and asks it to look very
-    carefully at just that field.
-  - Only one pass saw the field at all            -> confidence discounted
-    slightly (one read isn't as solid as two agreeing reads).
-
-Pass 1 uses the enhanced page image; pass 2 uses the raw, un-enhanced
-sibling saved by app.ocr.pdf_utils (enhancement helps in most cases but
-occasionally over-sharpens noise into a false stroke — a genuinely
-different image is what makes this a real independent check rather than
-asking the same question twice). If no raw sibling exists (enhancement
-was off for this run), multi-pass falls back to a single read rather than
-asking the identical image the identical question twice at temperature 0,
-which would just return the same answer and add nothing.
-
-This roughly doubles vision-API calls per document (triples only for
-fields that end up disputed) — see config.settings.AppSettings.
-multi_pass_extraction to turn it off if you need to conserve Groq TPM
-budget on a large batch.
-
-On top of this, app.utils.field_validators runs a second, independent
-check: does the extracted value actually look like a well-formed email /
-phone / ID / percentage / currency, regardless of what confidence the
-model reported for it. This catches misreads a model can be "confident"
-about (e.g. a clean-looking but wrong digit).
+CONCURRENCY vs RATE LIMITS: Parallelizing pass A/B and page 1/2 (below)
+cuts wall-clock latency, but Groq enforces a TPM (tokens-per-minute) cap
+at the account level - concurrency only helps up to that ceiling. Past
+it, firing more concurrent requests just produces 429s and backoff
+retries, which is slower than not parallelizing at all. VISION_SEMAPHORE
+below caps TOTAL concurrent vision calls across the entire run (all
+documents, all pages, all passes) at settings.max_concurrent_vision_calls,
+so nested thread pools (per-document, per-page, per-pass) can spawn as
+many threads as convenient without ever actually sending more than N
+requests to Groq at once. Tune max_concurrent_vision_calls to match your
+actual Groq tier's concurrent-request headroom - too high and you're back
+to thrashing on 429s, too low and you're back to serial-latency.
 """
 from __future__ import annotations
 
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from PIL import Image, ImageEnhance
@@ -86,13 +50,19 @@ logger = get_logger(__name__)
 GUARDIAN_FIELD_IDS = {"guardian_name", "guardian_id_number"}
 GUARDIAN_PAGE_NUMBER = 10
 
+# Global cap on concurrent Groq vision calls across the ENTIRE run,
+# regardless of how many nested thread pools exist upstream (per-document,
+# per-page, per-pass). Add `max_concurrent_vision_calls: int = 8` (or
+# whatever your Groq tier supports) to config/settings.py's AppSettings -
+# defaults to 8 here if that setting doesn't exist yet so this doesn't
+# break on an old settings.py.
+VISION_SEMAPHORE = threading.Semaphore(getattr(settings, "max_concurrent_vision_calls", 8))
+
 
 # ---------------------------------------------------------------------------
 # Prompt builder
 # ---------------------------------------------------------------------------
 
-# Fund fields that live inside a "Core fund range" / fund-list table rather
-# than a single dedicated form field — see _fund_table_guidance() below.
 _FUND_TABLE_HINT = "fund_table"
 
 _FUND_TABLE_GUIDANCE_COMMON = (
@@ -230,7 +200,13 @@ def _single_vision_pass(
     tiebreak_candidates: dict[str, tuple] | None = None,
 ) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
     prompt = _build_field_prompt(field_subset, form_label, form_code, tiebreak_candidates)
-    response = ask_vision(prompt, image_path, json_mode=True)
+
+    # Gate the actual network call behind the global semaphore - everything
+    # upstream (thread pools per document/page/pass) can still fan out
+    # freely, but only N calls are ever in flight against Groq at once,
+    # avoiding TPM-triggered 429s/backoff.
+    with VISION_SEMAPHORE:
+        response = ask_vision(prompt, image_path, json_mode=True)
 
     try:
         parsed = parse_json_response(response.text)
@@ -268,8 +244,6 @@ def _page_number(image_path: Path) -> int:
     try:
         return int(image_path.stem.split("_")[0 - 1].replace("raw", "").replace("tiebreak", "") or 0)
     except (IndexError, ValueError):
-        # Fall back to the leading numeric run in the stem (handles
-        # "page_003", "page_003_raw", "page_003_tiebreak" alike).
         m = re.search(r"page_(\d+)", image_path.stem)
         return int(m.group(1)) if m else 0
 
@@ -286,11 +260,6 @@ def _merge_passes(
     fields_a: dict[str, FieldValue],
     fields_b: dict[str, FieldValue],
 ) -> tuple[dict[str, FieldValue], set[str]]:
-    """
-    Compares two independent extraction passes field-by-field. Returns the
-    merged field set plus the set of field_ids that disagreed (candidates
-    for a tie-break pass). See module docstring for the confidence math.
-    """
     merged: dict[str, FieldValue] = {}
     disagreements: set[str] = set()
 
@@ -326,12 +295,6 @@ def _merge_passes(
 
 
 def _make_tiebreak_variant(image_path: Path) -> Path:
-    """
-    Produces a further-upscaled, extra-sharpened variant of an already-
-    enhanced page image, used only for the tie-break pass on fields where
-    the primary and secondary reads disagreed. Cached alongside the
-    source image so repeated tie-breaks within the same run reuse it.
-    """
     out_path = image_path.parent / f"{image_path.stem}_tiebreak{image_path.suffix}"
     if out_path.exists():
         return out_path
@@ -350,21 +313,24 @@ def _extract_fields_from_page(
     form_code: str = "",
 ) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
     """
-    Multi-pass, self-consistency extraction for one page. See module
-    docstring for the full explanation. Falls back to a single pass when
-    multi_pass_extraction is off, or when no raw sibling image is
-    available to serve as a genuinely independent second read.
+    Multi-pass, self-consistency extraction for one page. Pass A/B run
+    concurrently (independent images, no data dependency); both go
+    through VISION_SEMAPHORE so this concurrency never exceeds your
+    Groq tier's real capacity.
     """
-    fields_a, beneficiaries = _single_vision_pass(image_path, field_subset, form_label, form_code)
-
     if not settings.multi_pass_extraction:
-        return fields_a, beneficiaries
+        return _single_vision_pass(image_path, field_subset, form_label, form_code)
 
     raw_path = raw_sibling_path(image_path)
     if raw_path is None:
-        return fields_a, beneficiaries
+        return _single_vision_pass(image_path, field_subset, form_label, form_code)
 
-    fields_b, beneficiaries_b = _single_vision_pass(raw_path, field_subset, form_label, form_code)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        future_a = pool.submit(_single_vision_pass, image_path, field_subset, form_label, form_code)
+        future_b = pool.submit(_single_vision_pass, raw_path, field_subset, form_label, form_code)
+        fields_a, beneficiaries = future_a.result()
+        fields_b, beneficiaries_b = future_b.result()
+
     if not beneficiaries and beneficiaries_b:
         beneficiaries = beneficiaries_b
 
@@ -407,14 +373,6 @@ _CHECKED_TOKENS = {"true", "yes", "y", "1", "checked", "ticked", "x", "✓", "on
 
 
 def _is_checked(value) -> bool:
-    """
-    Normalizes a checkbox-sourced field value to True/False. Vision-LLM
-    extraction can hand back a native JSON boolean, or any of several
-    string spellings for "ticked" (e.g. "Yes", "Checked", "X", "1") - this
-    is the single place that vocabulary is defined so every checkbox field
-    (account_closure, KYC document flags, etc.) is interpreted consistently
-    instead of each call site inventing its own partial token list.
-    """
     if value is None:
         return False
     if isinstance(value, bool):
@@ -423,13 +381,6 @@ def _is_checked(value) -> bool:
 
 
 def _has_amount(fv: FieldValue | None) -> bool:
-    """
-    True if a currency/percentage FieldValue actually carries a usable
-    amount. Deliberately distinct from a plain truthiness check on
-    fv.value: a legitimate extracted amount of 0 is falsy in Python
-    (`0 == False`), and blank/placeholder strings like "", "N/A", "-"
-    should NOT count as an amount having been written in that column.
-    """
     if fv is None or fv.value is None:
         return False
     text = str(fv.value).strip()
@@ -437,9 +388,6 @@ def _has_amount(fv: FieldValue | None) -> bool:
         return False
     stripped = re.sub(r"[^0-9.\-]", "", text)
     if stripped in ("", "-", "."):
-        # Non-numeric but non-blank (extraction glitch/handwriting noise) -
-        # still treat as "something was written here" rather than
-        # silently dropping it from consideration.
         return True
     try:
         return float(stripped) != 0
@@ -452,21 +400,15 @@ def _has_amount(fv: FieldValue | None) -> bool:
 # ---------------------------------------------------------------------------
 
 def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str, FieldValue]:
-    """
-    Compute all metadata fields that must be generated by the system
-    (not extracted from the form directly), per the requirements doc.
-    """
     derived: dict[str, FieldValue] = {}
 
     def _add(field_id: str, value, confidence: float = CONFIDENCE_CEILING) -> None:
         derived[field_id] = FieldValue(field_id=field_id, value=value, confidence=confidence)
 
-    # Form type label
     form_defs = load_field_definitions()
     form_label = form_defs.get(form_code, {}).get("label", form_code)
     _add("form_type", form_label)
 
-    # Fund category & processing cut-off (applies to forms with fund selection)
     fund_name = None
     for fid in ("fund_name",):
         fv = fields.get(fid)
@@ -475,7 +417,6 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
             break
 
     if form_code == "DIS_GSG":
-        # GSGF form always has the GSGF-specific cut-off
         _add("fund_name", "BIFM Global Sustainable Growth Fund")
         _add("fund_category", "Non-Money Market (GSGF)")
         _add("processing_cutoff", "Quarterly - 7th of last month of quarter")
@@ -490,21 +431,6 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
         _add("processing_cutoff", "Unknown")
         _add("fund_category_priority", fund_category_priority(None))
 
-    # Instruction mode for DIS / DIS_GSG - one of three mutually exclusive
-    # modes, in priority order:
-    #   1. Full Closure     - the "close account" checkbox at the foot of
-    #                         the form is ticked. This overrides everything
-    #                         else: an investor closing the account may
-    #                         still have stray digits in the amount/percent
-    #                         boxes, but the tick is the authoritative signal.
-    #   2. Percentage       - the dedicated disinvestment_percentage column
-    #                         has a number written in it.
-    #   3. Partial Withdrawal - a currency amount is written in the
-    #                         deposit/withdrawal (disinvestment_amount)
-    #                         column, with no closure tick and no percentage.
-    #   Unknown             - none of the above could be determined -
-    #                         surfaced so it gets flagged for manual review
-    #                         rather than silently defaulting to a mode.
     if form_code in ("DIS", "DIS_GSG"):
         closure = fields.get("account_closure")
         dis_amount = fields.get("disinvestment_amount")
@@ -519,7 +445,6 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
         else:
             _add("instruction_mode", "Unknown", confidence=0.0)
 
-    # Sub-instruction type for DEBIT
     if form_code == "DEBIT":
         instr = fields.get("instruction_type")
         if instr and instr.value:
@@ -533,13 +458,11 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
             else:
                 _add("sub_instruction_type", instr.value)
 
-    # Sub-type for STATIC
     if form_code == "STATIC":
         change_type = fields.get("change_type")
         if change_type and change_type.value:
             _add("static_sub_type", change_type.value)
 
-    # KYC completeness flag
     if form_code == "KYC":
         kyc_fields = ["kyc_certified_id", "kyc_proof_address", "kyc_proof_banking", "kyc_proof_source"]
         ticked = [
@@ -557,16 +480,6 @@ def _derive_metadata(form_code: str, fields: dict[str, FieldValue]) -> dict[str,
 # ---------------------------------------------------------------------------
 
 def _clean_fund_fields(fields: dict[str, FieldValue]) -> None:
-    """
-    Normalizes fund_name / fund_number in place after extraction from the
-    Core Fund Range table:
-      - Strips leading '*' / '**' risk-tier markers and stray whitespace from
-        fund_name (these are printed annotations on the form, not part of
-        the fund's actual name).
-      - Strips non-digit characters from fund_number while preserving the
-        digit string exactly as written (BIFM fund/entity numbers can range
-        from 7 to 13 digits - no padding or truncation).
-    """
     import re as _re
 
     fund_name_fv = fields.get("fund_name")
@@ -582,22 +495,10 @@ def _clean_fund_fields(fields: dict[str, FieldValue]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Public entry points (one per form type, plus the routing dispatcher)
+# Public entry points
 # ---------------------------------------------------------------------------
 
 def extract_form(form_code: str, pages: dict[int, Path]) -> ExtractionResult:
-    """
-    Routes to the correct extraction logic based on form_code.
-    This is the single entry point called by pipeline.py.
-
-    pages: {1-indexed page number: rendered image path}, e.g. {1: ..., 10:
-    ...} for an APPFORM's primary + guardian pages. Keyed by real page
-    number rather than a positionally-dense list, since pipeline.py only
-    ever renders the specific pages a form type needs (see
-    app.ocr.pdf_utils.render_pdf_to_images) - a 10-page APPFORM submission
-    may only have pages {1, 10} rendered at all, with pages 2-9 never
-    touched.
-    """
     if not pages:
         raise ValueError(f"No page images provided for extraction (form_code={form_code})")
 
@@ -608,10 +509,6 @@ def extract_form(form_code: str, pages: dict[int, Path]) -> ExtractionResult:
 
 
 def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
-    """
-    Investment Application Form extractor.
-    Uses page 1 for primary fields; page 10 conditionally for guardian/minor details.
-    """
     field_defs = get_fields_for_form("APPFORM")
     primary_fields = [f for f in field_defs if f.get("page_hint") != "Page 10" and f["id"] not in GUARDIAN_FIELD_IDS]
     guardian_fields = [f for f in field_defs if f["id"] in GUARDIAN_FIELD_IDS or f.get("page_hint") == "Page 10"]
@@ -619,12 +516,10 @@ def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
     all_fields: dict[str, FieldValue] = {}
     all_beneficiaries: list[Beneficiary] = []
 
-    # Pass 1: primary page
     fields, beneficiaries = _extract_fields_from_page(pages[1], primary_fields, "Investment Application Form")
     all_fields.update(fields)
     all_beneficiaries.extend(beneficiaries)
 
-    # Pass 2 (conditional): guardian/minor section on page 10
     account_type = all_fields.get("account_type")
     is_minor_account = account_type is not None and "behalf" in str(account_type.value).lower()
     guardian_page = pages.get(GUARDIAN_PAGE_NUMBER)
@@ -657,48 +552,36 @@ def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
 
 
 def _extract_standard_form(form_code: str, pages: dict[int, Path]) -> ExtractionResult:
-    """
-    General extractor for ADD, DEBIT, DIS, DIS_GSG, STATIC, KYC.
-    Sends the first two pages in one vision call each and merges the result
-    (page 1 is a cover/instructions page with no form data on the BIFM
-    template for every form here except KYC, where page 1 is the form
-    itself - see the pages_to_process comment below).
-    """
     field_defs = get_fields_for_form(form_code)
     form_label = load_field_definitions().get(form_code, {}).get("label", form_code)
 
     all_fields: dict[str, FieldValue] = {}
     all_beneficiaries: list[Beneficiary] = []
 
-    # BIFM's own PDF templates put a cover/instructions page ("please read
-    # carefully", cut-off times) FIRST on every form except KYC - the actual
-    # Investor Details + fund table + banking section is page 2. Sending
-    # only page 1 for DIS/ADD/DEBIT/DIS_GSG means the model is shown a page
-    # with no investor data on it at all, and returns nothing for every
-    # field. KYC is the one form whose page 1 genuinely is the form.
     wanted_page_numbers = (1,) if form_code == "KYC" else (1, 2)
     pages_to_process = [pages[n] for n in wanted_page_numbers if n in pages]
 
-    for page_img in pages_to_process:
-        fields, beneficiaries = _extract_fields_from_page(page_img, field_defs, form_label, form_code)
-        # Merge: don't overwrite a higher-confidence extraction from a prior page
+    if len(pages_to_process) > 1:
+        with ThreadPoolExecutor(max_workers=len(pages_to_process)) as pool:
+            page_results = list(pool.map(
+                lambda p: _extract_fields_from_page(p, field_defs, form_label, form_code),
+                pages_to_process,
+            ))
+    else:
+        page_results = [
+            _extract_fields_from_page(p, field_defs, form_label, form_code)
+            for p in pages_to_process
+        ]
+
+    for fields, beneficiaries in page_results:
         for fid, fv in fields.items():
             existing = all_fields.get(fid)
             if existing is None or fv.confidence > existing.confidence:
                 all_fields[fid] = fv
         all_beneficiaries.extend(beneficiaries)
 
-    # Normalize fund_name / fund_number pulled from the Core Fund Range table
-    # (strip '*'/'**' risk-tier markers, strip non-digits from fund_number)
-    # before deriving metadata that depends on fund_name (fund_category, cutoff).
     _clean_fund_fields(all_fields)
-
-    # Independent shape/format check (email, phone, numeric IDs,
-    # percentage, currency) - adjusts confidence based on whether the
-    # value actually looks well-formed, not just what the model reported.
     apply_field_validation(form_code, all_fields)
-
-    # Append system-derived metadata fields
     all_fields.update(_derive_metadata(form_code, all_fields))
 
     result = ExtractionResult(
