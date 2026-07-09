@@ -72,4 +72,7 @@ def test_filer_debit_and_static_use_send_to_awd_dated_folder():
 def test_filer_dis_standard_splits_money_market_and_rejected():
     as_of = datetime(2026, 7, 9)
     path = resolve_destination_dir("DIS", "Money Market", InstructionStatus.REJECTED.value, as_of)
-    assert path.as_posix().endswith("Disinvestments/2026/July/09-Jul-2026/Money Market/Rejected")
+    # Normalized, space-free token ("MoneyMarket") so DIS and ADD route the
+    # same investor's documents into the same bucket folder instead of
+    # "MoneyMarket" vs "Money Market" siblings - see filer._fund_bucket.
+    assert path.as_posix().endswith("Disinvestments/2026/July/09-Jul-2026/MoneyMarket/Rejected")

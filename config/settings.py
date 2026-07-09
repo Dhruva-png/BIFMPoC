@@ -145,6 +145,18 @@ class ImapSettings:
     supports it, moves each processed message there after its PDF
     attachments are downloaded (in addition to marking it \\Seen) so the
     contact center inbox stays clean without deleting anything.
+
+    IMAP_MIN_UNREAD_MINUTES (default 60) holds a message back until it's
+    been sitting unread for at least this long, so a client who sends the
+    form itself in one email and forgets an attachment in a follow-up a
+    minute later still gets picked up as one submission, not processed
+    prematurely off the first, incomplete email. This is a MINIMUM age,
+    not a window - a still-unread message from days ago is just as
+    eligible as one from exactly an hour ago.
+
+    IMAP_ALLOWED_SENDERS restricts intake to a known set of sender
+    addresses (comma-separated) - anyone else's email is left unread and
+    ignored rather than fed into the pipeline. Blank disables the check.
     """
     host: str = os.environ.get("IMAP_HOST", "")
     port: int = int(os.environ.get("IMAP_PORT", "993"))
@@ -154,6 +166,8 @@ class ImapSettings:
     folder: str = os.environ.get("IMAP_FOLDER", "INBOX")
     search_criteria: str = os.environ.get("IMAP_SEARCH_CRITERIA", "UNSEEN")
     processed_folder: str = os.environ.get("IMAP_PROCESSED_FOLDER", "BIFM-Processed")
+    min_unread_minutes: int = int(os.environ.get("IMAP_MIN_UNREAD_MINUTES", "60"))
+    allowed_senders: str = os.environ.get("IMAP_ALLOWED_SENDERS", "shyam.sp@kgisl.com")
 
 
 @dataclass

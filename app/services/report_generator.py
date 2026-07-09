@@ -31,6 +31,7 @@ from app.models.schemas import (
     ValidationReport,
     ValidationStatus,
 )
+from app.utils.confidence import needs_recheck
 from app.utils.logger import get_logger
 from config.settings import settings
 
@@ -45,6 +46,38 @@ HEADER_FILL  = PatternFill(start_color="305496", end_color="305496", fill_type="
 # NEW: styling for the confidence sub-row under each Investor Master record
 CONFIDENCE_FONT = Font(italic=True, size=9, color="808080")
 CONFIDENCE_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+
+def _format_detail(fv: FieldValue | None, own_source_file: str | None = None) -> str:
+    """
+    Formats one FieldValue's confidence + provenance for a detail cell.
+
+    `own_source_file` is the filename of the document the *row* itself
+    represents (e.g. "DIS - AMOLEMO.pdf") - used so a plain on-document
+    extraction still names the document it came from, not just "extracted",
+    since the detail row is read on its own when the sheet is filtered/
+    scrolled and shouldn't require cross-referencing the source_file column.
+    """
+    if fv is None:
+        return ""
+    bits = [f"{fv.confidence:.0f}% confidence"]
+    if getattr(fv, "agreement", None):
+        bits.append(f"{fv.agreement} — value taken from {fv.source}")
+    elif fv.source == "extracted":
+        doc = own_source_file or "this document"
+        if fv.source_page:
+            bits.append(f"extracted from {doc}, p.{fv.source_page}")
+        else:
+            bits.append(f"extracted from {doc}")
+    elif fv.source.startswith("backfilled:"):
+        bits.append(f"backfilled from {fv.source.split(':', 1)[1]}")
+    else:
+        bits.append(f"from {fv.source}")
+    detail = " — ".join(bits)
+    if needs_recheck(fv.confidence):
+        detail += " — recommend recheck"
+    return detail
+
 
 _STATUS_FILL = {
     ValidationStatus.PASS:    FILL_PASS,
@@ -168,12 +201,14 @@ def build_single_document_workbook(
     ws = wb.active
     ws.title = "Document"
 
+    own_fields = extraction.own_fields()
+
     meta_rows = [
         ("Source file",          log_entry.original_filename),
         ("Filed as",             log_entry.new_filename),
         ("Form type",            log_entry.form_type_detected),
         ("Entity number",        validation.entity_number),
-        ("Full name",            extraction.field_value("full_name") or ""),
+        ("Full name",            own_fields.get("full_name").value if "full_name" in own_fields else ""),
         ("Classification conf.", f"{log_entry.classification_confidence:.0f}%"),
         ("Overall status",       validation.overall_status.value),
         ("Instruction status",   log_entry.instruction_status),
@@ -193,7 +228,7 @@ def build_single_document_workbook(
     ws.append([])
     _write_header(ws, ["Field", "Value", "Confidence", "Source"])
     ws.freeze_panes = None  # freeze_panes from _write_header targets row 1; not meaningful mid-sheet
-    for fid, fv in extraction.fields.items():
+    for fid, fv in own_fields.items():
         ws.append([fid, str(fv.value), f"{fv.confidence:.0f}%", fv.source])
         if fv.confidence >= 85:
             fill = FILL_PASS
@@ -249,11 +284,12 @@ class ExcelReportBuilder:
 
     def __init__(self) -> None:
         self._investor_rows: list[dict] = []
-        self._investor_confidence: list[dict] = []  # parallel per-field confidence for each investor row
+        self._investor_field_values: list[dict] = []  # parallel per-field FieldValue for each investor row
         self._beneficiary_rows: list[dict] = []
         self._validation_rows: list[tuple[dict, ValidationStatus]] = []
         self._log_entries: list[ProcessingLogEntry] = []
         self._consolidated_rows: list[dict] = []
+        self._consolidated_field_values: list[dict] = []  # parallel per-field FieldValue for each consolidated row
         self._prevalidation_rows: list[tuple[dict, bool]] = []
         self._confidence_rows: list[dict] = []
 
@@ -267,11 +303,12 @@ class ExcelReportBuilder:
         calls) a second time just to populate a second report.
         """
         self._investor_rows.extend(other._investor_rows)
-        self._investor_confidence.extend(other._investor_confidence)
+        self._investor_field_values.extend(other._investor_field_values)
         self._beneficiary_rows.extend(other._beneficiary_rows)
         self._validation_rows.extend(other._validation_rows)
         self._log_entries.extend(other._log_entries)
         self._consolidated_rows.extend(other._consolidated_rows)
+        self._consolidated_field_values.extend(other._consolidated_field_values)
         self._prevalidation_rows.extend(other._prevalidation_rows)
         self._confidence_rows.extend(other._confidence_rows)
 
@@ -282,7 +319,16 @@ class ExcelReportBuilder:
         log_entry: ProcessingLogEntry,
         prevalidation_flags: list[PreValidationFlag] | None = None,
     ) -> None:
-        flat = extraction.to_flat_dict()
+        # Individual-document views (this row, the confidence sub-row below
+        # it, and the Confidence Scores sheet) show only what THIS document
+        # itself contained - never a value copied in from a sibling document
+        # by app.services.consolidator.backfill_from_profile. That merged
+        # view belongs on the "Consolidated Investor Profile" sheet only.
+        own_fields = extraction.own_fields()
+
+        flat = {fid: fv.value for fid, fv in own_fields.items()}
+        flat["source_file"] = extraction.source_file
+        flat["form_code"] = extraction.form_code
         flat["entity_number"] = validation.entity_number
         flat["overall_validation_status"] = validation.overall_status.value
         # Workflow/audit metadata (Metadata Fields for Filing table) lives on
@@ -297,11 +343,9 @@ class ExcelReportBuilder:
         flat["authorized_by"] = log_entry.authorized_by
         self._investor_rows.append(flat)
 
-        # Per-field confidence, keyed the same way as `flat`, so it can be
+        # Per-field FieldValue, keyed the same way as `flat`, so it can be
         # looked up column-for-column when writing the confidence sub-row.
-        self._investor_confidence.append(
-            {fid: fv.confidence for fid, fv in extraction.fields.items()}
-        )
+        self._investor_field_values.append(own_fields)
 
         for b in extraction.beneficiaries:
             self._beneficiary_rows.append({
@@ -346,8 +390,10 @@ class ExcelReportBuilder:
             ))
 
         # Section 7: Confidence Scores column group — per-field extraction
-        # confidence, most useful on handwritten/low-quality scans.
-        for fid, fv in extraction.fields.items():
+        # confidence, most useful on handwritten/low-quality scans. Own
+        # fields only (see own_fields above) - a backfilled value has no
+        # extraction confidence of its own to report here.
+        for fid, fv in own_fields.items():
             self._confidence_rows.append({
                 "entity_number": validation.entity_number,
                 "source_file":   extraction.source_file,
@@ -356,6 +402,7 @@ class ExcelReportBuilder:
                 "value":         fv.value,
                 "confidence":    fv.confidence,
                 "source":        fv.source,
+                "detail":        _format_detail(fv, own_source_file=extraction.source_file),
             })
 
     def add_consolidated_profile(
@@ -376,6 +423,7 @@ class ExcelReportBuilder:
         flat["document_count"] = len(source_files)
         flat["source_documents"] = ", ".join(source_files)
         self._consolidated_rows.append(flat)
+        self._consolidated_field_values.append(dict(profile))
 
     def _build_workbook(self) -> Workbook:
         wb = Workbook()
@@ -415,8 +463,18 @@ class ExcelReportBuilder:
         rest = sorted(all_keys - set(priority))
         headers = priority + rest
         _write_header(ws, headers)
-        for row in self._consolidated_rows:
+        for row, field_values in zip(self._consolidated_rows, self._consolidated_field_values):
             ws.append([row.get(h, "") for h in headers])
+            # Detail sub-row: shows how each value was resolved across the
+            # batch (majority vote / NO MAJORITY tie / single source) so Ops
+            # can see agreement strength without opening every source document.
+            ws.append([_format_detail(field_values.get(h)) for h in headers])
+            detail_row_idx = ws.max_row
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=detail_row_idx, column=col_idx)
+                cell.font = CONFIDENCE_FONT
+                cell.fill = CONFIDENCE_FILL
+            ws.row_dimensions[detail_row_idx].height = 12
         _autosize(ws, headers)
 
     def _write_investor_master(self, wb: Workbook) -> None:
@@ -438,7 +496,7 @@ class ExcelReportBuilder:
 
         status_col_idx = headers.index("overall_validation_status") + 1 if "overall_validation_status" in headers else None
 
-        for row, conf in zip(self._investor_rows, self._investor_confidence):
+        for row, field_values in zip(self._investor_rows, self._investor_field_values):
             data_row_idx = ws.max_row + 1
             ws.append([row.get(h, "") for h in headers])
 
@@ -456,14 +514,11 @@ class ExcelReportBuilder:
                     for col_idx in range(1, len(headers) + 1):
                         ws.cell(row=data_row_idx, column=col_idx).fill = fill
 
-            # Confidence sub-row directly beneath the data row
-            conf_values = []
-            for h in headers:
-                c = conf.get(h)
-                if isinstance(c, (int, float)):
-                    conf_values.append(f"{c:.0f}%")
-                else:
-                    conf_values.append("")
+            # Confidence/provenance sub-row directly beneath the data row.
+            # Columns with no FieldValue (derived/metadata columns like
+            # 'instruction_status', 'fund_category', etc.) are left blank.
+            own_source_file = row.get("source_file")
+            conf_values = [_format_detail(field_values.get(h), own_source_file) for h in headers]
             ws.append(conf_values)
             conf_row_idx = ws.max_row
             for col_idx in range(1, len(headers) + 1):
@@ -521,7 +576,7 @@ class ExcelReportBuilder:
         'medium' threshold) are highlighted amber/red for reviewer attention,
         especially relevant for handwritten forms."""
         ws = wb.create_sheet("Confidence Scores")
-        headers = ["entity_number", "source_file", "form_code", "field", "value", "confidence", "source"]
+        headers = ["entity_number", "source_file", "form_code", "field", "value", "confidence", "source", "detail"]
         _write_header(ws, headers)
         for row in self._confidence_rows:
             ws.append([row.get(h, "") for h in headers])
