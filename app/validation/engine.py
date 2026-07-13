@@ -204,6 +204,37 @@ def _eval_conditional_required(extraction: ExtractionResult, rule: dict) -> list
     return results
 
 
+def _eval_conditional_expected_value(extraction: ExtractionResult, rule: dict) -> FieldValidationResult | None:
+    """When condition_field == condition_equals, the target field is expected
+    to be one of expected_values. A mismatch is reported at the configured
+    status (default WARNING) rather than a hard FAIL, since it's a
+    consistency signal, not a missing mandatory field. When the condition
+    isn't met, or the target field is blank (already covered by the
+    mandatory-field check where relevant), nothing is reported."""
+    logic = rule["logic"]
+    if extraction.field_value(logic["condition_field"]) != logic["condition_equals"]:
+        return None
+
+    field_id = logic["field"]
+    value = extraction.field_value(field_id)
+    if _is_blank(value):
+        return None
+
+    expected = logic["expected_values"]
+    expected_l = {str(e).strip().casefold() for e in expected}
+    keywords = {w for e in expected for w in re.split(r"[^a-z]+", str(e).casefold()) if w}
+    value_l = str(value).strip().casefold()
+    if value_l in expected_l or any(k in value_l for k in keywords):
+        return FieldValidationResult(field_id, value, ValidationStatus.PASS)
+
+    status = ValidationStatus(logic.get("status_if_mismatch", "WARNING"))
+    return FieldValidationResult(
+        field_id, value, status,
+        f"Expected one of {expected} because {logic['condition_field']} = "
+        f"'{logic['condition_equals']}', got '{value}'",
+    )
+
+
 def _eval_default_if_blank(extraction: ExtractionResult, field_id: str, rule: dict) -> FieldValidationResult:
     value = extraction.field_value(field_id)
     default = rule["logic"]["default"]
@@ -256,6 +287,7 @@ _RULE_DISPATCH = {
     "email_format": lambda ex, rule: [_eval_regex(ex, "email", rule)],
     "contact_number_numeric": lambda ex, rule: [_eval_numeric_length(ex, "contact_number", rule)],
     "minor_fields_required_if_acting_on_behalf": lambda ex, rule: _eval_conditional_required(ex, rule),
+    "occupation_type_minor_if_acting_on_behalf": lambda ex, rule: [_eval_conditional_expected_value(ex, rule)],
     "guardian_id_format": lambda ex, rule: [
         r for r in [_eval_exact_digits(ex.field_value("guardian_id_number"), rule["logic"]["length"],
                                         rule["logic"].get("only_if_present", False))]
@@ -274,6 +306,7 @@ _RULE_DISPATCH = {
 _RULE_FORM_SCOPE: dict[str, set[str]] = {
     "gender_derivation": {"APPFORM", "KYC"},
     "minor_fields_required_if_acting_on_behalf": {"APPFORM"},
+    "occupation_type_minor_if_acting_on_behalf": {"APPFORM"},
     "guardian_id_format": {"APPFORM"},
     "pref_sms_default": {"APPFORM"},
     "pref_marketing_default": {"APPFORM"},

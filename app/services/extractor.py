@@ -50,6 +50,13 @@ logger = get_logger(__name__)
 GUARDIAN_FIELD_IDS = {"guardian_name", "guardian_id_number"}
 GUARDIAN_PAGE_NUMBER = 10
 
+# Page 3 of APPFORM contains the Investment Fund details section (fund
+# table, lump sum / debit amounts, income distribution). Its fields are
+# tagged page_hint "Page 3" in config/field_definitions.json so they're
+# read off page 3 rather than the page-1 primary pass.
+INVESTMENT_PAGE_NUMBER = 3
+INVESTMENT_PAGE_HINT = "Page 3"
+
 # Global cap on concurrent Groq vision calls across the ENTIRE run,
 # regardless of how many nested thread pools exist upstream (per-document,
 # per-page, per-pass). Add `max_concurrent_vision_calls: int = 8` (or
@@ -510,8 +517,10 @@ def extract_form(form_code: str, pages: dict[int, Path]) -> ExtractionResult:
 
 def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
     field_defs = get_fields_for_form("APPFORM")
-    primary_fields = [f for f in field_defs if f.get("page_hint") != "Page 10" and f["id"] not in GUARDIAN_FIELD_IDS]
     guardian_fields = [f for f in field_defs if f["id"] in GUARDIAN_FIELD_IDS or f.get("page_hint") == "Page 10"]
+    investment_fields = [f for f in field_defs if f.get("page_hint") == INVESTMENT_PAGE_HINT]
+    _off_primary = {f["id"] for f in guardian_fields} | {f["id"] for f in investment_fields}
+    primary_fields = [f for f in field_defs if f["id"] not in _off_primary]
 
     all_fields: dict[str, FieldValue] = {}
     all_beneficiaries: list[Beneficiary] = []
@@ -519,6 +528,18 @@ def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
     fields, beneficiaries = _extract_fields_from_page(pages[1], primary_fields, "Investment Application Form")
     all_fields.update(fields)
     all_beneficiaries.extend(beneficiaries)
+
+    # Investment Fund details live on page 3 (fund table, lump sum / debit
+    # amounts, income distribution) - extracted here rather than the page-1
+    # primary pass. Follows the same per-page pattern as the guardian
+    # section below; if page 3 wasn't rendered for this document, these
+    # optional fields are simply left blank.
+    investment_page = pages.get(INVESTMENT_PAGE_NUMBER)
+    if investment_fields and investment_page is not None:
+        inv_fields, _ = _extract_fields_from_page(
+            investment_page, investment_fields, "Investment Application Form (Investment Details)", "APPFORM",
+        )
+        all_fields.update(inv_fields)
 
     account_type = all_fields.get("account_type")
     is_minor_account = account_type is not None and "behalf" in str(account_type.value).lower()
