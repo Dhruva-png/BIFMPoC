@@ -46,7 +46,12 @@ from app.ocr.pdf_utils import render_pdf_to_images
 from app.services import classifier, filer
 from app.services.filer import flag_missing_documents
 from app.services.consolidator import backfill_from_profile, build_person_profile
-from app.services.extractor import GUARDIAN_PAGE_NUMBER, INVESTMENT_PAGE_NUMBER, extract_form
+from app.services.extractor import (
+    BANKING_PAGE_NUMBER,
+    GUARDIAN_PAGE_NUMBER,
+    INVESTMENT_PAGE_NUMBER,
+    extract_form,
+)
 from app.services.report_generator import ExcelReportBuilder, build_single_document_workbook
 from app.services.query_register import QueryRegisterBuilder
 from app.utils.config_loader import load_validation_rules
@@ -230,7 +235,7 @@ def _extract_only(
         if form_code == "KYC":
             more_pages: list[int] = []
         elif form_code == "APPFORM":
-            more_pages = [INVESTMENT_PAGE_NUMBER, GUARDIAN_PAGE_NUMBER]
+            more_pages = [INVESTMENT_PAGE_NUMBER, BANKING_PAGE_NUMBER, GUARDIAN_PAGE_NUMBER]
         else:
             more_pages = [2]
         if more_pages:

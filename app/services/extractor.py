@@ -57,6 +57,13 @@ GUARDIAN_PAGE_NUMBER = 10
 INVESTMENT_PAGE_NUMBER = 3
 INVESTMENT_PAGE_HINT = "Page 3"
 
+# Page 4 of APPFORM carries Source of Funds + the investor's banking
+# details. Its fields are tagged page_hint "Page 4" in
+# config/field_definitions.json so they're read off page 4, same per-page
+# pattern as the investment (page 3) and guardian/Form C (page 10) sections.
+BANKING_PAGE_NUMBER = 4
+BANKING_PAGE_HINT = "Page 4"
+
 # Global cap on concurrent Groq vision calls across the ENTIRE run,
 # regardless of how many nested thread pools exist upstream (per-document,
 # per-page, per-pass). Add `max_concurrent_vision_calls: int = 8` (or
@@ -519,7 +526,12 @@ def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
     field_defs = get_fields_for_form("APPFORM")
     guardian_fields = [f for f in field_defs if f["id"] in GUARDIAN_FIELD_IDS or f.get("page_hint") == "Page 10"]
     investment_fields = [f for f in field_defs if f.get("page_hint") == INVESTMENT_PAGE_HINT]
-    _off_primary = {f["id"] for f in guardian_fields} | {f["id"] for f in investment_fields}
+    banking_fields = [f for f in field_defs if f.get("page_hint") == BANKING_PAGE_HINT]
+    _off_primary = (
+        {f["id"] for f in guardian_fields}
+        | {f["id"] for f in investment_fields}
+        | {f["id"] for f in banking_fields}
+    )
     primary_fields = [f for f in field_defs if f["id"] not in _off_primary]
 
     all_fields: dict[str, FieldValue] = {}
@@ -541,16 +553,30 @@ def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
         )
         all_fields.update(inv_fields)
 
+    # Source of Funds + investor banking details live on page 4, same
+    # per-page pattern.
+    banking_page = pages.get(BANKING_PAGE_NUMBER)
+    if banking_fields and banking_page is not None:
+        b_fields, _ = _extract_fields_from_page(
+            banking_page, banking_fields, "Investment Application Form (Banking & Source of Funds)", "APPFORM",
+        )
+        all_fields.update(b_fields)
+
+    # Page 10 holds Form C (authorisation to act on behalf / joint /
+    # motshelo) and the guardian/minor section. Form C is expected whenever
+    # the account is Acting on Behalf, Joint, or Motshelo - not just for
+    # minors - so page 10 is read for any of those investor types.
     account_type = all_fields.get("account_type")
-    is_minor_account = account_type is not None and "behalf" in str(account_type.value).lower()
+    account_type_text = str(account_type.value).lower() if account_type is not None else ""
+    needs_form_c = any(k in account_type_text for k in ("behalf", "joint", "motshelo"))
     guardian_page = pages.get(GUARDIAN_PAGE_NUMBER)
-    if is_minor_account and guardian_page is not None:
-        g_fields, _ = _extract_fields_from_page(guardian_page, guardian_fields, "Investment Application Form (Guardian Section)")
+    if needs_form_c and guardian_page is not None:
+        g_fields, _ = _extract_fields_from_page(guardian_page, guardian_fields, "Investment Application Form (Form C / Guardian Section)")
         all_fields.update(g_fields)
-    elif is_minor_account:
+    elif needs_form_c:
         logger.warning(
-            "Account flagged 'Acting on Behalf of' but page %d (guardian section) "
-            "wasn't available in this document.", GUARDIAN_PAGE_NUMBER,
+            "Investor type '%s' expects Form C but page %d wasn't available in this document.",
+            account_type.value if account_type is not None else "", GUARDIAN_PAGE_NUMBER,
         )
 
     if "id_type" not in all_fields and "id_number" in all_fields:
