@@ -1,19 +1,32 @@
 """
 Module 2: Field Extractor — supports ALL 6 BIFM UT form types.
-... (unchanged docstring content above) ...
 
-CONCURRENCY vs RATE LIMITS: Parallelizing pass A/B and page 1/2 (below)
-cuts wall-clock latency, but Groq enforces a TPM (tokens-per-minute) cap
-at the account level - concurrency only helps up to that ceiling. Past
-it, firing more concurrent requests just produces 429s and backoff
-retries, which is slower than not parallelizing at all. VISION_SEMAPHORE
-below caps TOTAL concurrent vision calls across the entire run (all
-documents, all pages, all passes) at settings.max_concurrent_vision_calls,
-so nested thread pools (per-document, per-page, per-pass) can spawn as
-many threads as convenient without ever actually sending more than N
-requests to Groq at once. Tune max_concurrent_vision_calls to match your
-actual Groq tier's concurrent-request headroom - too high and you're back
-to thrashing on 429s, too low and you're back to serial-latency.
+ONE VISION CALL PER PAGE. This module used to read every page twice (an
+enhanced and a raw render), compare the two, and fire a third "tie-break"
+call on any field where they disagreed - 2-3x the API calls and latency
+per page. That bought less than it looked like it did: comparing two
+guesses has no ground truth, so two passes making the same misread agreed
+confidently on a wrong value, and the tie-break was just a third guess.
+
+Accuracy now comes from app.utils.field_repair instead, which checks each
+value against what we actually know for certain from the config (an Omang
+is exactly 9 digits; occupation is one of 6 listed options; the fund is
+one of 6 real BIFM funds) and repairs it deterministically where that's
+provably safe. That's free, instant, auditable, and strictly better than a
+vote on the constrained fields that validation actually turns on.
+
+CONCURRENCY vs RATE LIMITS: Parallelizing pages cuts wall-clock latency,
+but Groq enforces a TPM (tokens-per-minute) cap at the account level -
+concurrency only helps up to that ceiling. Past it, firing more concurrent
+requests just produces 429s and backoff retries, which is slower than not
+parallelizing at all. VISION_SEMAPHORE below caps TOTAL concurrent vision
+calls across the entire run (all documents, all pages) at
+settings.max_concurrent_vision_calls, so nested thread pools
+(per-document, per-page) can spawn as many threads as convenient without
+ever actually sending more than N requests to Groq at once. Tune
+max_concurrent_vision_calls to match your actual Groq tier's
+concurrent-request headroom - too high and you're back to thrashing on
+429s, too low and you're back to serial-latency.
 """
 from __future__ import annotations
 
@@ -22,18 +35,9 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from PIL import Image, ImageEnhance
-
 from app.llm.router import ask_vision, parse_json_response
 from app.models.schemas import Beneficiary, ExtractionResult, FieldValue
-from app.ocr.pdf_utils import raw_sibling_path
-from app.utils.confidence import (
-    AGREEMENT_CONFIDENCE_BONUS,
-    CONFIDENCE_CEILING,
-    DISAGREEMENT_CONFIDENCE_CAP,
-    SINGLE_PASS_CONFIDENCE_FACTOR,
-    cap_confidence,
-)
+from app.utils.confidence import CONFIDENCE_CEILING, cap_confidence
 from app.utils.config_loader import (
     derive_fund_category,
     fund_category_priority,
@@ -140,54 +144,59 @@ def _fund_table_guidance(form_code: str) -> str:
     return _FUND_TABLE_GUIDANCE_COMMON + _FUND_TABLE_GUIDANCE_SINGLE_TABLE
 
 
+# Exact expected formats for fields whose shape is fixed and known. Stating
+# these in the prompt costs nothing and hands the model the same domain
+# constraints app.utils.field_repair enforces afterwards - it's cheaper to
+# have a value read correctly than repaired, and a model told "exactly 9
+# digits" is less likely to drop or invent one.
+_FORMAT_HINTS: dict[str, str] = {
+    "id_number": "An Omang or Birth Certificate number is EXACTLY 9 digits, no letters; a passport number's format varies by country.",
+    "guardian_id_number": "An Omang number: EXACTLY 9 digits, no letters.",
+    "branch_code": "EXACTLY 6 digits.",
+    "account_number": "Digits only.",
+    "fund_number": "Digits only - capture exactly what is written, do not pad or truncate.",
+}
+
+_TYPE_FORMAT_HINTS: dict[str, str] = {
+    "date": "Written as dd/mm/yyyy on the form.",
+    "currency": "A BWP amount - digits only, no currency symbol or thousands separator.",
+    "percentage": "A number between 0 and 100.",
+    "email": "A standard email address.",
+}
+
+
 def _build_field_prompt(
     field_subset: list[dict],
     form_label: str,
     form_code: str = "",
-    tiebreak_candidates: dict[str, tuple] | None = None,
 ) -> str:
     lines = []
     needs_fund_table_guidance = False
     for f in field_subset:
         opts = f" Allowed values: {f['options']}." if "options" in f else ""
         cond = f" (Only if: {f['condition']})" if f.get("condition") else ""
-        tiebreak_note = ""
-        if tiebreak_candidates and f["id"] in tiebreak_candidates:
-            a, b = tiebreak_candidates[f["id"]]
-            tiebreak_note = (
-                f" TWO INDEPENDENT READS OF THIS FIELD DISAGREED: {a!r} vs {b!r}. "
-                "Slow down and look at individual letter/digit shapes for just this "
-                "field - it may be either candidate, or it's possible both prior reads "
-                "were wrong; if so, provide the value that's actually written."
-            )
-        lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}{cond}{tiebreak_note}")
+        hint = _FORMAT_HINTS.get(f["id"]) or _TYPE_FORMAT_HINTS.get(f.get("type", ""), "")
+        hint = f" {hint}" if hint else ""
+        lines.append(f"- {f['id']} ({f['label']}, type={f['type']}).{opts}{cond}{hint}")
         if f.get("extraction_hint") == _FUND_TABLE_HINT:
             needs_fund_table_guidance = True
     field_block = "\n".join(lines)
 
     fund_guidance = _fund_table_guidance(form_code) if needs_fund_table_guidance else ""
 
-    if tiebreak_candidates:
-        intro = (
-            f"You are re-examining SPECIFIC fields on a HANDWRITTEN BIFM Unit Trust "
-            f"'{form_label}' form where two independent reads disagreed. This is a "
-            "focused recheck of only the field(s) below, not a fresh full read - go "
-            "slowly.\n"
-            "- Pay special attention to easily confused digits: 0/O, 1/7, 5/6, 8/3.\n"
-            "- Use surrounding context (field label, expected format) to disambiguate.\n"
-            "- If the value is genuinely illegible, use null rather than guessing.\n"
-        )
-    else:
-        intro = (
-            f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
-            f"'{form_label}' form. Read it the way a careful human clerk would:\n"
-            "- Look at each letter/digit individually; don't guess from word shape alone.\n"
-            "- Pay special attention to easily confused digits: 0/O, 1/7, 5/6, 8/3.\n"
-            "- Use surrounding context (field label, expected format) to disambiguate.\n"
-            "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading INSIDE the box.\n"
-            "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
-            "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n"
-        )
+    intro = (
+        f"You are an expert document examiner transcribing a HANDWRITTEN BIFM Unit Trust "
+        f"'{form_label}' form. Read it the way a careful human clerk would:\n"
+        "- Look at each letter/digit individually; don't guess from word shape alone.\n"
+        "- Pay special attention to easily confused digits: 0/O, 1/7, 5/6, 8/3.\n"
+        "- Use surrounding context (field label, expected format) to disambiguate.\n"
+        "- Where a field states an exact expected format below, check your read against "
+        "it before answering - if what you transcribed doesn't fit, look again.\n"
+        "- Where a field lists allowed values, return one of them verbatim.\n"
+        "- For checkbox/tick-box fields, look for a tick, cross, circle, or shading INSIDE the box.\n"
+        "- If a value is genuinely illegible or the field is blank, use null rather than guessing.\n"
+        "- Give a LOWER confidence score (<60) for any field where handwriting was hard to read.\n"
+    )
 
     return (
         f"{intro}"
@@ -206,19 +215,22 @@ def _build_field_prompt(
 # Single vision call (one image, one prompt)
 # ---------------------------------------------------------------------------
 
-def _single_vision_pass(
+def _extract_fields_from_page(
     image_path: Path,
     field_subset: list[dict],
     form_label: str,
     form_code: str = "",
-    tiebreak_candidates: dict[str, tuple] | None = None,
 ) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
-    prompt = _build_field_prompt(field_subset, form_label, form_code, tiebreak_candidates)
+    """One vision call for one page. Accuracy beyond the model's own read
+    comes from app.utils.field_repair's domain constraints, applied later
+    in the pipeline by app.utils.field_validators - not from re-reading the
+    page. See this module's docstring."""
+    prompt = _build_field_prompt(field_subset, form_label, form_code)
 
     # Gate the actual network call behind the global semaphore - everything
-    # upstream (thread pools per document/page/pass) can still fan out
-    # freely, but only N calls are ever in flight against Groq at once,
-    # avoiding TPM-triggered 429s/backoff.
+    # upstream (thread pools per document/page) can still fan out freely,
+    # but only N calls are ever in flight against Groq at once, avoiding
+    # TPM-triggered 429s/backoff.
     with VISION_SEMAPHORE:
         response = ask_vision(prompt, image_path, json_mode=True)
 
@@ -256,127 +268,10 @@ def _single_vision_pass(
 
 def _page_number(image_path: Path) -> int:
     try:
-        return int(image_path.stem.split("_")[0 - 1].replace("raw", "").replace("tiebreak", "") or 0)
+        return int(image_path.stem.split("_")[0 - 1] or 0)
     except (IndexError, ValueError):
         m = re.search(r"page_(\d+)", image_path.stem)
         return int(m.group(1)) if m else 0
-
-
-# ---------------------------------------------------------------------------
-# Multi-pass self-consistency merge
-# ---------------------------------------------------------------------------
-
-def _normalize_for_compare(value) -> str:
-    return re.sub(r"\s+", " ", str(value)).strip().casefold()
-
-
-def _merge_passes(
-    fields_a: dict[str, FieldValue],
-    fields_b: dict[str, FieldValue],
-) -> tuple[dict[str, FieldValue], set[str]]:
-    merged: dict[str, FieldValue] = {}
-    disagreements: set[str] = set()
-
-    for fid in set(fields_a) | set(fields_b):
-        fa = fields_a.get(fid)
-        fb = fields_b.get(fid)
-
-        if fa and fb:
-            if _normalize_for_compare(fa.value) == _normalize_for_compare(fb.value):
-                winner = fa if fa.confidence >= fb.confidence else fb
-                boosted = cap_confidence(max(fa.confidence, fb.confidence) + AGREEMENT_CONFIDENCE_BONUS)
-                merged[fid] = FieldValue(
-                    field_id=fid, value=winner.value, confidence=boosted,
-                    source_page=winner.source_page, source=winner.source,
-                )
-            else:
-                disagreements.add(fid)
-                fallback = fa if fa.confidence >= fb.confidence else fb
-                merged[fid] = FieldValue(
-                    field_id=fid, value=fallback.value,
-                    confidence=min(fallback.confidence, DISAGREEMENT_CONFIDENCE_CAP),
-                    source_page=fallback.source_page, source=fallback.source,
-                )
-        else:
-            only = fa or fb
-            merged[fid] = FieldValue(
-                field_id=fid, value=only.value,
-                confidence=cap_confidence(only.confidence * SINGLE_PASS_CONFIDENCE_FACTOR),
-                source_page=only.source_page, source=only.source,
-            )
-
-    return merged, disagreements
-
-
-def _make_tiebreak_variant(image_path: Path) -> Path:
-    out_path = image_path.parent / f"{image_path.stem}_tiebreak{image_path.suffix}"
-    if out_path.exists():
-        return out_path
-    img = Image.open(image_path)
-    img = img.resize((int(img.width * 1.5), int(img.height * 1.5)), Image.LANCZOS)
-    img = ImageEnhance.Sharpness(img).enhance(2.0)
-    img = ImageEnhance.Contrast(img).enhance(1.2)
-    img.save(out_path, "PNG")
-    return out_path
-
-
-def _extract_fields_from_page(
-    image_path: Path,
-    field_subset: list[dict],
-    form_label: str,
-    form_code: str = "",
-) -> tuple[dict[str, FieldValue], list[Beneficiary]]:
-    """
-    Multi-pass, self-consistency extraction for one page. Pass A/B run
-    concurrently (independent images, no data dependency); both go
-    through VISION_SEMAPHORE so this concurrency never exceeds your
-    Groq tier's real capacity.
-    """
-    if not settings.multi_pass_extraction:
-        return _single_vision_pass(image_path, field_subset, form_label, form_code)
-
-    raw_path = raw_sibling_path(image_path)
-    if raw_path is None:
-        return _single_vision_pass(image_path, field_subset, form_label, form_code)
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        future_a = pool.submit(_single_vision_pass, image_path, field_subset, form_label, form_code)
-        future_b = pool.submit(_single_vision_pass, raw_path, field_subset, form_label, form_code)
-        fields_a, beneficiaries = future_a.result()
-        fields_b, beneficiaries_b = future_b.result()
-
-    if not beneficiaries and beneficiaries_b:
-        beneficiaries = beneficiaries_b
-
-    merged, disagreement_ids = _merge_passes(fields_a, fields_b)
-
-    if disagreement_ids:
-        tiebreak_subset = [f for f in field_subset if f["id"] in disagreement_ids]
-        candidates = {
-            fid: (
-                fields_a[fid].value if fid in fields_a else None,
-                fields_b[fid].value if fid in fields_b else None,
-            )
-            for fid in disagreement_ids
-        }
-        try:
-            zoom_path = _make_tiebreak_variant(image_path)
-            fields_c, _ = _single_vision_pass(
-                zoom_path, tiebreak_subset, form_label, form_code, tiebreak_candidates=candidates,
-            )
-            for fid, fv in fields_c.items():
-                merged[fid] = fv
-            logger.info(
-                "%s: tie-break resolved %d/%d disputed field(s): %s",
-                image_path.name, len(fields_c), len(disagreement_ids), ", ".join(disagreement_ids),
-            )
-        except Exception:  # noqa: BLE001
-            logger.exception(
-                "Tie-break pass failed for %s - keeping capped disagreement value(s) for: %s",
-                image_path.name, ", ".join(disagreement_ids),
-            )
-
-    return merged, beneficiaries
 
 
 # ---------------------------------------------------------------------------

@@ -28,7 +28,12 @@ import re
 from typing import Callable
 
 from app.models.schemas import FieldValue
-from app.utils.confidence import cap_confidence
+from app.utils.confidence import (
+    DOMAIN_REPAIRED_BONUS,
+    DOMAIN_VIOLATION_PENALTY,
+    cap_confidence,
+)
+from app.utils import field_repair
 from app.utils.config_loader import get_fields_for_form
 from app.utils.logger import get_logger
 
@@ -176,15 +181,41 @@ def apply_field_validation(form_code: str, fields: dict[str, FieldValue]) -> lis
     _VALIDATORS' keys to match - anything not matched falls back to
     harmless whitespace cleanup only, it doesn't error.
     """
-    type_lookup = {f["id"]: f.get("type", "text") for f in get_fields_for_form(form_code)}
+    field_defs = {f["id"]: f for f in get_fields_for_form(form_code)}
     malformed: list[str] = []
+    repaired: list[str] = []
 
     for field_id, fv in fields.items():
         if fv.value is None or str(fv.value).strip() == "":
             continue
-        declared_type = type_lookup.get(field_id, "text")
+        declared_type = field_defs.get(field_id, {}).get("type", "text")
         validator = _validator_for(field_id, declared_type)
 
+        # 1. Domain-constrained repair FIRST, while the raw model output is
+        #    still intact - the numeric-ID normalizer below strips letters
+        #    out, which would destroy the O/0-style evidence field_repair
+        #    needs. See app.utils.field_repair's module docstring.
+        try:
+            fv.value, outcome = field_repair.repair_field(
+                field_id, fv.value, field_defs.get(field_id, {}), fields,
+            )
+        except Exception:  # noqa: BLE001 - repair must never crash extraction
+            logger.warning("Domain repair failed for field '%s' on form %s", field_id, form_code)
+            outcome = field_repair.NOT_APPLICABLE
+
+        if outcome == field_repair.REPAIRED:
+            # Now provably a legal value for this field, but the raw read
+            # was wrong - worth a small nudge up, not a clean bill of health.
+            fv.confidence = cap_confidence(fv.confidence + DOMAIN_REPAIRED_BONUS)
+            repaired.append(field_id)
+        elif outcome == field_repair.UNREPAIRABLE:
+            # Violates a constraint we know for certain and couldn't be
+            # fixed safely - exactly the field a human should look at,
+            # whatever confidence the model itself reported.
+            fv.confidence = max(0.0, fv.confidence - DOMAIN_VIOLATION_PENALTY)
+            malformed.append(field_id)
+
+        # 2. Shape normalization / confidence calibration, as before.
         try:
             normalized, is_well_formed, was_corrected = validator(fv.value)
         except Exception:  # noqa: BLE001 - a validator must never crash extraction
@@ -194,11 +225,18 @@ def apply_field_validation(form_code: str, fields: dict[str, FieldValue]) -> lis
         fv.value = normalized
         if not is_well_formed:
             fv.confidence = max(0.0, fv.confidence - MALFORMED_PENALTY)
-            malformed.append(field_id)
+            if field_id not in malformed:
+                malformed.append(field_id)
         elif was_corrected:
             fv.confidence = cap_confidence(fv.confidence + CORRECTED_BONUS)
         else:
             fv.confidence = cap_confidence(fv.confidence + WELL_FORMED_BONUS)
+
+    if repaired:
+        logger.info(
+            "Form %s: %d field(s) repaired onto their known domain: %s",
+            form_code, len(repaired), ", ".join(repaired),
+        )
 
     if malformed:
         logger.info(

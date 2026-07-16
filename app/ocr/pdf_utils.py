@@ -8,15 +8,12 @@ pdf2image + Poppler if pypdfium2 is unavailable.
 Also provides an optional Tesseract raw-text pass used only as a lightweight
 cross-check for classification keyword hints — not the primary extraction path.
 
-When ocr_enhance_images is on (the default), each page also gets a raw,
-un-enhanced sibling saved alongside the enhanced version
-("page_003.png" + "page_003_raw.png"). app.services.extractor uses this
-raw sibling as an independent second read for multi-pass self-consistency
-extraction - enhancement helps in most cases but occasionally over-
-sharpens noise into a false stroke, so a raw counterpart catches what
-enhancement introduces and vice versa. Skipped when enhancement is off,
-since enhanced == raw in that case and there'd be nothing to gain from a
-second identical read.
+Each page is rendered once, enhanced (unless ocr_enhance_images is off) and
+saved as a single PNG. Previously a second, un-enhanced "_raw" sibling was
+written alongside it purely so app.services.extractor could read the page a
+second time for multi-pass self-consistency; that approach is gone (see the
+extractor's module docstring), so the extra render, encode and disk write
+per page went with it.
 """
 from __future__ import annotations
 
@@ -93,17 +90,12 @@ def _enhance_for_handwriting(img: Image.Image) -> Image.Image:
 # ---------------------------------------------------------------------------
 
 def _save_enhanced(pil_img: Image.Image, page_num: int, target_dir: Path) -> Path:
-    """Shared save step for both render backends: writes the raw sibling
-    (if enhancement is on) and the enhanced/primary image, keyed by real
-    1-indexed page number so callers can look pages up out of order."""
+    """Shared save step for both render backends: writes one PNG per page,
+    keyed by real 1-indexed page number so callers can look pages up out of
+    order."""
     img_path = target_dir / f"page_{page_num:03d}.png"
-    if settings.ocr_enhance_images:
-        raw_path = target_dir / f"page_{page_num:03d}_raw.png"
-        pil_img.convert("RGB").save(raw_path, "PNG")
-        enhanced_img = _enhance_for_handwriting(pil_img)
-        enhanced_img.save(img_path, "PNG")
-    else:
-        pil_img.convert("RGB").save(img_path, "PNG")
+    out = _enhance_for_handwriting(pil_img) if settings.ocr_enhance_images else pil_img.convert("RGB")
+    out.save(img_path, "PNG")
     return img_path
 
 
@@ -166,20 +158,17 @@ def render_pdf_to_images(
     Renders the given 1-indexed page_numbers of a PDF to PNGs under
     settings.paths.temp_dir (every page, if page_numbers is None),
     applying handwriting-friendly enhancement unless ocr_enhance_images is
-    off. Returns {page_number: enhanced_image_path} - keyed by real page
-    number (not list position) so a caller asking for pages [1, 10] can't
-    misread the second entry as "page 2". A raw sibling for each rendered
-    page is saved alongside on disk when enhancement is on; see
-    raw_sibling_path() below for how callers can find it.
+    off. Returns {page_number: image_path} - keyed by real page number (not
+    list position) so a caller asking for pages [1, 10] can't misread the
+    second entry as "page 2".
 
     Rendering only the pages a document's form type actually needs (rather
     than every page in the source PDF) matters in practice: a real APPFORM
-    submission commonly runs to 10+ pages, but only page 1 (and, for a
-    minor/joint account, page 10's guardian section) is ever read by
-    app.services.extractor - rasterizing, enhancing, and double-saving
-    pages 2-9 for every such document was pure wasted work repeated on
-    every single submission. Called twice per document in practice (page 1
-    alone for classification, then whatever else that form type needs once
+    submission commonly runs to 10+ pages, but only a handful are ever read
+    by app.services.extractor - rasterizing and enhancing the rest for
+    every such document was pure wasted work repeated on every single
+    submission. Called twice per document in practice (page 1 alone for
+    classification, then whatever else that form type needs once
     classified) rather than once for everything up front.
     """
     if not pdf_path.exists():
@@ -209,13 +198,6 @@ def render_pdf_to_images(
 
     logger.info("Rendered %d page(s) from %s", len(image_paths), pdf_path.name)
     return image_paths
-
-
-def raw_sibling_path(enhanced_image_path: Path) -> Path | None:
-    """Returns the un-enhanced sibling of an enhanced page image, if one
-    was saved (i.e. ocr_enhance_images was on for that render), else None."""
-    candidate = enhanced_image_path.parent / f"{enhanced_image_path.stem}_raw{enhanced_image_path.suffix}"
-    return candidate if candidate.exists() else None
 
 
 def quick_text_scan(image_path: Path) -> str:

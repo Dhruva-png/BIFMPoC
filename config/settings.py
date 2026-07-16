@@ -147,15 +147,6 @@ class AppSettings:
     pdf_render_dpi: int = int(os.environ.get("PDF_RENDER_DPI", "220"))
     ocr_enhance_images: bool = os.environ.get("OCR_ENHANCE_IMAGES", "true").lower() != "false"
     ocr_min_long_edge_px: int = int(os.environ.get("OCR_MIN_LONG_EDGE_PX", "1600"))
-    # Runs every page through 2 independent vision reads (enhanced + raw
-    # image) and cross-checks them, firing a focused 3rd tie-break pass
-    # only on fields where they disagree - see app.services.extractor's
-    # module docstring. Roughly doubles Groq API calls per document
-    # (triples only for disputed fields). Turn off with
-    # MULTI_PASS_EXTRACTION=false if you need to conserve TPM budget on
-    # a large batch, at the cost of the confidence-calibration accuracy
-    # improvement.
-    multi_pass_extraction: bool = os.environ.get("MULTI_PASS_EXTRACTION", "true").lower() != "false"
     # Used at TWO levels in app.core.pipeline.run_batch: up to this many
     # different PEOPLE's batches run concurrently, and within each of
     # those, up to this many of that person's own documents run
