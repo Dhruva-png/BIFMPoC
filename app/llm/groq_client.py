@@ -1,8 +1,6 @@
 """
-Groq backend - free, no-credit-card-required cloud API. Recommended when
-Google's Gemini free tier isn't available for your account/region (Google
-has been rolling back no-billing access to gemini-2.0-flash) and your
-machine isn't powerful enough to run an 8B local vision model via Ollama.
+Groq backend - free, no-credit-card-required cloud API. This is the app's
+LLM backend: no local GPU, no model download.
 
 Setup (one-time):
   1. Go to https://console.groq.com/keys (sign up with email or Google
@@ -11,25 +9,21 @@ Setup (one-time):
   3. Set it as an environment variable before launching the app:
        macOS/Linux:  export GROQ_API_KEY="your-key-here"
        Windows:      set GROQ_API_KEY=your-key-here
-     (or put GROQ_API_KEY=your-key-here in a .env file if you use one)
-  4. Set LLM_PROVIDER=groq (or leave it, since it's the default now).
+     (or put GROQ_API_KEY=your-key-here in a .env file - see .env.example)
 
 Free tier limits (subject to Groq changing them, check the console
 dashboard): the vision model used here typically allows on the order of
 ~15-30 requests/minute and several thousand/day at no cost - comfortably
 covers POC-scale batches (a handful of forms at a time, a few pages each).
 Rate limits apply at the organization level (adding more keys won't raise
-them). If you outgrow it, either add billing on the Groq console (still far
-cheaper than most alternatives) or set LLM_PROVIDER=ollama to fall back to
-fully local/offline processing.
+them). If you outgrow it, add billing on the Groq console.
 
 Uses Groq's OpenAI-compatible /chat/completions endpoint directly via
-`requests` (no extra SDK dependency needed - same pattern as gemini_client).
+`requests` (no extra SDK dependency needed).
 
-Same public interface as app.llm.ollama_client / app.llm.gemini_client
-(ask_text, ask_vision, parse_json_response, check_connection, LLMResponse)
-so business logic never needs to know which backend is running - see
-app.llm.router.
+Exposes ask_text, ask_vision, parse_json_response, check_connection and
+LLMResponse - business logic imports these via app.llm.router rather than
+calling this module directly.
 """
 from __future__ import annotations
 
@@ -156,8 +150,8 @@ def _require_api_key() -> str:
     if not settings.groq.api_key:
         raise GroqError(
             "GROQ_API_KEY is not set. Get a free key (no card required) at "
-            "https://console.groq.com/keys and set it as an environment "
-            "variable, or set LLM_PROVIDER=ollama to run fully local instead."
+            "https://console.groq.com/keys and set it in your .env file "
+            "(see .env.example) or as an environment variable."
         )
     return settings.groq.api_key
 

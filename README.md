@@ -1,29 +1,16 @@
 # BIFM Unit Trusts — Document Processing (POC)
 
 AI-powered pipeline for BIFM UT instruction form processing. Runs against
-a **free cloud vision model (default: Groq)**, an **alternate free cloud
-option (Gemini)**, or a **fully local/offline model (Ollama)** — pick
-whichever suits your hardware, budget, and data-handling requirements.
+**Groq's free cloud vision model** — no local GPU, no model download, no
+credit card.
 
-## Quick start: choosing an LLM provider
+## Quick start: set your Groq API key
 
-Running an 8B vision model locally needs a real GPU (or a lot of patience on
-CPU). If your laptop can't handle that, use a free cloud API instead — same
-code, same output, just faster and with zero local model download.
-
-> **Tip — don't re-enter keys every session:** copy `.env.example` to
-> `.env` (already done for you if `.env` is already present in the project
-> root) and fill in your key(s) there instead of `export`ing them each
-> time. `.env` is loaded automatically on startup and is gitignored, so
-> real keys never get committed. Everything below still works via
-> environment variables too — `.env` is just a persistent alternative.
-
-### Option A — Groq (default, recommended for laptops without billing set up)
-
-Groq's free tier requires no credit card and has been the most reliable
-"just works" option — useful since Google has been restricting no-billing
-access to its Gemini free tier for many accounts/regions (you may see a
-`limit: 0` quota error from Gemini if that's hit you).
+> **Tip — don't re-enter the key every session:** copy `.env.example` to
+> `.env` and fill your key in there instead of `export`ing it each time.
+> `.env` is loaded automatically on startup and is gitignored, so real keys
+> never get committed. Environment variables still work too — `.env` is just
+> a persistent alternative.
 
 1. Get a free API key: https://console.groq.com/keys (email or Google
    sign-in, no credit card, no charge on the free tier).
@@ -39,46 +26,16 @@ access to its Gemini free tier for many accounts/regions (you may see a
    # Windows (PowerShell)
    $env:GROQ_API_KEY="your-key-here"
    ```
-3. Run the app as normal (`python main.py`, or `streamlit run streamlit_app.py`).
-   `LLM_PROVIDER` defaults to `groq`, so nothing else changes.
+3. Run the app (`python main.py`, or `streamlit run streamlit_app.py`).
 
 Free-tier limits are generous for a POC (on the order of ~15-30 requests/
 minute and several thousand/day — check the Groq console dashboard for
 current numbers). Rate limits apply at the organization level, not per key.
+The app self-throttles below your account's TPM ceiling (`GROQ_TPM_LIMIT`)
+so concurrent workers queue instead of tripping 429s.
 
-### Option B — Gemini (alternate free cloud option)
-
-1. Get a free API key: https://aistudio.google.com/apikey (any Google
-   account). Note: Google has been rolling back no-billing free-tier access
-   for `gemini-2.0-flash` on many accounts/regions — if you hit a `limit: 0`
-   quota error, this option isn't available to you without enabling billing.
-2. Set it as an environment variable and set the provider explicitly:
-   ```bash
-   # macOS/Linux
-   export GEMINI_API_KEY="your-key-here"
-   export LLM_PROVIDER=gemini
-
-   # Windows (Command Prompt)
-   set GEMINI_API_KEY=your-key-here
-   set LLM_PROVIDER=gemini
-   ```
-3. Run the app as normal.
-
-### Option C — Ollama (fully local/offline)
-
-If you'd rather keep everything on-device (no internet dependency, no data
-leaving the machine — worth considering if your forms carry sensitive
-investor/banking data), set:
-```bash
-export LLM_PROVIDER=ollama
-```
-and follow the local setup below (`ollama serve` + pull the models). This is
-the original setup this POC shipped with — nothing about it changed, it's
-just no longer the default.
-
-All three providers produce identical output (same JSON shape, same
-downstream pipeline) — `app/llm/router.py` is the single switch point, so
-business logic never needs to know which one is active.
+`app/llm/router.py` is the single point the rest of the app talks to, so
+business logic never calls the backend directly.
 
 
 ## What it does
@@ -88,7 +45,7 @@ Processes scanned PDF instruction forms through 5 stages:
 | Stage | Module | What happens |
 |-------|--------|-------------|
 | 1 | Classifier | Identifies the form type from page 1 image |
-| 2 | Extractor | Reads form fields using a vision LLM (qwen3-vl / llava) |
+| 2 | Extractor | Reads form fields using Groq's vision LLM |
 | 3 | Validator | Checks mandatory fields, ID formats, dates, branch codes |
 | 3b | Pre-Validation Flags | Rejection-risk checklist per Section 8 of the understanding doc (see below) |
 | 4 | Report | Builds Excel workbook (7 sheets) |
@@ -166,12 +123,10 @@ The system generates these fields automatically (per requirements doc) — they 
 # 1. Install Python dependencies
 pip install -r requirements.txt
 
-# 2. Start Ollama
-ollama serve
-
-# 3. Pull the required models
-ollama pull qwen3-vl:8b-instruct   # vision model (form classification + extraction)
-ollama pull llama3.2               # text model (fallback reasoning)
+# 2. Set your Groq API key (see "Quick start" above)
+#    Either copy .env.example to .env and fill in GROQ_API_KEY,
+#    or export it:
+export GROQ_API_KEY="your-key-here"     # Windows PowerShell: $env:GROQ_API_KEY="..."
 ```
 
 ### Run the app
@@ -186,16 +141,10 @@ Open http://localhost:8501. Upload PDFs in the sidebar and click **Run Batch**.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `groq` | `groq`, `gemini`, or `ollama` |
-| `GROQ_API_KEY` | (none) | Required for the Groq backend |
+| `GROQ_API_KEY` | (none) | **Required** — the app's LLM backend |
 | `GROQ_VISION_MODEL` | `meta-llama/llama-4-scout-17b-16e-instruct` | Vision model for classification & extraction |
 | `GROQ_TEXT_MODEL` | `llama-3.3-70b-versatile` | Text model |
-| `GEMINI_API_KEY` | (none) | Required for the Gemini backend |
-| `GEMINI_VISION_MODEL` | `gemini-2.0-flash` | Vision model for classification & extraction |
-| `GEMINI_TEXT_MODEL` | `gemini-2.0-flash` | Text model |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_VISION_MODEL` | `qwen3-vl:8b-instruct` | Vision model for classification & extraction |
-| `OLLAMA_TEXT_MODEL` | `llama3.2` | Text model |
+| `GROQ_TPM_LIMIT` | `27000` | Self-throttle budget, kept below your account's real TPM ceiling |
 | `PDF_RENDER_DPI` | `220` | DPI for PDF-to-image rendering |
 | `BIFM_MAX_WORKERS` | `2` | Max parallel documents |
 | `LOG_LEVEL` | `INFO` | Logging level |
@@ -216,7 +165,8 @@ bifm_ocr_app/
 │   └── prevalidation_flags.json  # Section 8: rejection-risk flag definitions
 ├── app/
 │   ├── core/pipeline.py          # Main orchestration (Module 1-5)
-│   ├── llm/ollama_client.py      # LLM calls (ask_text, ask_vision)
+│   ├── llm/groq_client.py        # LLM calls (ask_text, ask_vision)
+│   ├── llm/router.py             # Single entry point the app imports
 │   ├── ocr/pdf_utils.py          # PDF → image rendering (pypdfium2)
 │   ├── services/
 │   │   ├── classifier.py         # Module 1: form type classification

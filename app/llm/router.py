@@ -1,45 +1,22 @@
 """
-Single entry point business logic should import instead of talking to a
-specific backend directly. Picks the backend based on settings.llm_provider
-(env var LLM_PROVIDER, default "groq"):
+Single entry point business logic should import instead of talking to the
+LLM backend directly.
 
-  groq    - Free, no-credit-card cloud API (app.llm.groq_client). Default.
-            No local hardware requirement, no model download, fast.
-            Needs GROQ_API_KEY - see app/llm/groq_client.py docstring for
-            the 2-minute setup. Recommended when Gemini's free tier isn't
-            available for your account/region.
-  gemini  - Google's free-tier cloud API (app.llm.gemini_client). No local
-            hardware requirement, no model download, fast (typically 1-3s/
-            page) when the free tier is actually available for your
-            account. Needs GEMINI_API_KEY - see app/llm/gemini_client.py
-            docstring for the 2-minute setup.
-  ollama  - Fully local/offline via a locally-running Ollama server
-            (app.llm.ollama_client). Needs a machine that can run an 8B
-            vision model at reasonable speed (a decent GPU, or patience).
+The app runs on Groq (app.llm.groq_client) - a free, no-credit-card cloud
+API with no local hardware requirement and no model download. It needs
+GROQ_API_KEY set; see app/llm/groq_client.py's docstring for the 2-minute
+setup.
 
-All three backends expose the identical function signatures (ask_text,
-ask_vision, parse_json_response, check_connection, LLMResponse), so this
-module is a thin dispatch layer - classifier.py, extractor.py, and the UI
-entry points import from here and never need to know which backend is
-actually running.
-
-Switch providers with zero code changes:
-    export LLM_PROVIDER=ollama     # go fully local
-    export LLM_PROVIDER=gemini     # Google's free cloud API
-    export LLM_PROVIDER=groq       # Groq's free cloud API (default)
+This stays a thin indirection layer (rather than importing groq_client
+everywhere) so classifier.py, extractor.py and the UI entry points depend
+on a stable interface - ask_text, ask_vision, parse_json_response,
+check_connection, LLMResponse - instead of a specific backend module.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from config.settings import settings
-
-if settings.llm_provider == "ollama":
-    from app.llm import ollama_client as _backend
-elif settings.llm_provider == "gemini":
-    from app.llm import gemini_client as _backend
-else:
-    from app.llm import groq_client as _backend
+from app.llm import groq_client as _backend
 
 LLMResponse = _backend.LLMResponse
 
@@ -62,8 +39,4 @@ def check_connection() -> bool:
 
 def active_provider() -> str:
     """Human-readable label for the UI."""
-    if settings.llm_provider == "ollama":
-        return "Ollama (local)"
-    if settings.llm_provider == "gemini":
-        return "Gemini (cloud, free tier)"
     return "Groq (cloud, free tier)"

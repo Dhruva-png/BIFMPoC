@@ -21,19 +21,9 @@ def run_headless(intake: str | None, channel: str = "Unknown") -> int:
     from app.core.pipeline import run_batch
 
     if not check_connection():
-        from config.settings import settings
-        if settings.llm_provider == "ollama":
-            print("ERROR: Could not reach Ollama at the configured host. Start it with `ollama serve` "
-                  "and ensure llama3.2 and qwen3-vl:8b-instruct are pulled "
-                  "(`ollama pull llama3.2 && ollama pull qwen3-vl:8b-instruct`).")
-        elif settings.llm_provider == "gemini":
-            print("ERROR: Could not reach Gemini (missing/invalid GEMINI_API_KEY, or quota is 0). "
-                  "Get a free key at https://aistudio.google.com/apikey and set it as an "
-                  "environment variable, or set LLM_PROVIDER=groq or LLM_PROVIDER=ollama instead.")
-        else:
-            print("ERROR: Could not reach Groq (missing or invalid GROQ_API_KEY). "
-                  "Get a free key (no card) at https://console.groq.com/keys and set it as an "
-                  "environment variable, or set LLM_PROVIDER=ollama to run fully local.")
+        print("ERROR: Could not reach Groq (missing or invalid GROQ_API_KEY). "
+              "Get a free key (no card) at https://console.groq.com/keys and set it in "
+              "your .env file (see .env.example) or as an environment variable.")
         return 1
 
     intake_dir = Path(intake) if intake else None
