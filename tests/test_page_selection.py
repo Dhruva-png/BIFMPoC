@@ -19,14 +19,19 @@ def _fake_pages(n):
 
 def _run_and_capture_requested_pages(form_code, n_pages=3):
     """Runs _extract_standard_form with a mocked page-extraction call and
-    returns the list of page images it was actually asked to read."""
+    returns the list of page images it was actually asked to read. The
+    failure-gated mandatory-field retry is disabled: the mock returns no
+    fields at all, which would legitimately trigger a focused re-read and
+    obscure the page-selection behaviour these tests pin down (retry
+    behaviour has its own tests in test_targeted_retry.py)."""
     requested_pages = []
 
     def fake_extract(page_img, field_defs, form_label, fc=""):
         requested_pages.append(page_img)
         return {}, []
 
-    with patch.object(extractor, "_extract_fields_from_page", side_effect=fake_extract):
+    with patch.object(extractor, "_extract_fields_from_page", side_effect=fake_extract), \
+         patch.object(extractor.settings, "retry_missing_mandatory", False):
         extractor._extract_standard_form(form_code, _fake_pages(n_pages))
 
     return requested_pages

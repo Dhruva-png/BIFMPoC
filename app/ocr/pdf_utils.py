@@ -21,7 +21,7 @@ import shutil
 import threading
 from pathlib import Path
 
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from app.utils.logger import get_logger
 from config.settings import settings
@@ -60,6 +60,69 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
+# Deskew
+# ---------------------------------------------------------------------------
+# Scanned/photographed forms routinely arrive rotated by a degree or three,
+# and even a small tilt measurably hurts handwriting transcription (strokes
+# smear across the model's patch grid, printed field labels stop lining up
+# with the boxes next to them). BIFM forms are ideal deskew subjects: full
+# of long horizontal rules, so the classic projection-profile method works -
+# try candidate rotations, keep the one where ink concentrates into the
+# sharpest horizontal bands. Pure numpy + PIL on a downscaled copy:
+# ~100ms/page, no API cost, no new dependency (numpy already ships via
+# pandas).
+
+_DESKEW_MAX_ANGLE = 3.0        # degrees each way - scanner tilt, not sideways pages
+_DESKEW_STEP = 0.25
+_DESKEW_MIN_CORRECTION = 0.3   # below this, rotating costs more (resample blur) than it fixes
+_DESKEW_WORKING_WIDTH = 600    # angle estimation runs on a copy this wide
+
+
+def _estimate_skew_angle(img: Image.Image) -> float:
+    """Angle (degrees, PIL counterclockwise convention) that best aligns the
+    page's ink into horizontal bands - i.e. the rotation that FIXES the
+    skew. 0.0 when numpy is unavailable or the page has no usable signal."""
+    try:
+        import numpy as np
+    except ImportError:  # numpy comes with pandas; belt-and-braces only
+        return 0.0
+
+    gray = ImageOps.grayscale(img)
+    if gray.width > _DESKEW_WORKING_WIDTH:
+        gray = gray.resize(
+            (_DESKEW_WORKING_WIDTH, max(1, round(gray.height * _DESKEW_WORKING_WIDTH / gray.width)))
+        )
+
+    best_angle, best_score = 0.0, -1.0
+    for angle in np.arange(-_DESKEW_MAX_ANGLE, _DESKEW_MAX_ANGLE + _DESKEW_STEP / 2, _DESKEW_STEP):
+        rotated = gray.rotate(float(angle), fillcolor=255)
+        ink = 255.0 - np.asarray(rotated, dtype=np.float32)
+        profile = ink.sum(axis=1)
+        # When text lines / form rules are horizontal, the row profile is
+        # spiky (dense rows next to empty ones); when tilted, ink smears
+        # across rows and the profile flattens. Sum of squared differences
+        # between adjacent rows peaks at the correct alignment.
+        score = float(np.square(np.diff(profile)).sum())
+        if score > best_score:
+            best_score, best_angle = score, float(angle)
+    return best_angle
+
+
+def _deskew(img: Image.Image) -> Image.Image:
+    if not getattr(settings, "ocr_deskew", True):
+        return img
+    try:
+        angle = _estimate_skew_angle(img)
+    except Exception:  # noqa: BLE001 - deskew must never take rendering down
+        logger.warning("Deskew estimation failed - using the page as scanned")
+        return img
+    if abs(angle) < _DESKEW_MIN_CORRECTION:
+        return img
+    logger.info("Deskewing page by %.2f degrees", angle)
+    return img.rotate(angle, resample=Image.BICUBIC, fillcolor="white")
+
+
+# ---------------------------------------------------------------------------
 # Image enhancement
 # ---------------------------------------------------------------------------
 
@@ -68,7 +131,10 @@ def _enhance_for_handwriting(img: Image.Image) -> Image.Image:
     Lightweight preprocessing to help the vision model read handwriting:
     - Upscale small renders so faint/small handwriting has enough pixels.
     - Grayscale removes colour noise; autocontrast uses the full tonal range.
-    - Mild unsharp mask crisps stroke edges without artefacts.
+    - Median despeckle kills the salt-and-pepper dots scanners add, which
+      otherwise sharpen into marks that read as stray punctuation/diacritics.
+    - Unsharp mask (edge-aware, thresholded) crisps stroke edges without
+      amplifying the flat background the way plain global sharpening does.
     """
     long_edge = max(img.size)
     if long_edge < settings.ocr_min_long_edge_px:
@@ -79,8 +145,9 @@ def _enhance_for_handwriting(img: Image.Image) -> Image.Image:
         )
 
     gray = ImageOps.grayscale(img)
+    gray = gray.filter(ImageFilter.MedianFilter(3))
     gray = ImageOps.autocontrast(gray, cutoff=1)
-    gray = ImageEnhance.Sharpness(gray).enhance(1.6)
+    gray = gray.filter(ImageFilter.UnsharpMask(radius=2, percent=110, threshold=2))
     gray = ImageEnhance.Contrast(gray).enhance(1.15)
     return gray.convert("RGB")  # vision model expects RGB
 
@@ -90,10 +157,11 @@ def _enhance_for_handwriting(img: Image.Image) -> Image.Image:
 # ---------------------------------------------------------------------------
 
 def _save_enhanced(pil_img: Image.Image, page_num: int, target_dir: Path) -> Path:
-    """Shared save step for both render backends: writes one PNG per page,
-    keyed by real 1-indexed page number so callers can look pages up out of
-    order."""
+    """Shared save step for both render backends: deskews, enhances (unless
+    disabled) and writes one PNG per page, keyed by real 1-indexed page
+    number so callers can look pages up out of order."""
     img_path = target_dir / f"page_{page_num:03d}.png"
+    pil_img = _deskew(pil_img)
     out = _enhance_for_handwriting(pil_img) if settings.ocr_enhance_images else pil_img.convert("RGB")
     out.save(img_path, "PNG")
     return img_path

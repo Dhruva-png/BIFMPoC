@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -107,24 +108,59 @@ def test_save_produces_two_sheets(tmp_path: Path):
     assert out_path.exists()
 
     wb = load_workbook(out_path)
-    assert wb.sheetnames == ["Query Log", "Recon"]
+    # The query-log sheet is named for the run month, the way BIFM names
+    # theirs ("August 2").
+    month_sheet = date.today().strftime("%B %Y")
+    assert wb.sheetnames == [month_sheet, "Recon"]
 
-    query_log = wb["Query Log"]
+    query_log = wb[month_sheet]
     # Row 1 is the merged "Operations Use ONLY" banner; column headers are
     # on row 2, matching BIFM's own file.
     assert query_log.cell(row=2, column=1).value == "No."
     assert query_log.cell(row=2, column=3).value == "Type of Enquiry"
+    assert query_log.cell(row=2, column=19).value == "Sales Comments To Ops"
     # The single rejected ADD row carries the form-code enquiry tag.
     assert query_log.cell(row=3, column=3).value == "Instruction-Additional"
+    # Dates are real datetimes (the days-open formula subtracts them).
+    assert isinstance(query_log.cell(row=3, column=2).value, datetime)
+    # No. of Days Open (column R) is BIFM's live formula, not a frozen 0.
+    days_open = query_log.cell(row=3, column=18).value
+    assert isinstance(days_open, str) and days_open.startswith('=IF(AND(P3="Open"')
 
     recon = wb["Recon"]
-    # Recon starts one column in (B), with headers on row 2.
-    assert recon.cell(row=2, column=2).value == "Instruction Type"
-    header = [recon.cell(row=2, column=c).value for c in range(2, 6)]
-    idx = header.index("Received")
+    # Recon starts one column in (B) with no header over the label column,
+    # and BIFM's exact header text in C2:E2.
+    assert recon.cell(row=2, column=2).value is None
+    assert recon.cell(row=2, column=3).value == "Number Of Instructions Received"
+    assert recon.cell(row=2, column=4).value == "Processed"
+    assert recon.cell(row=2, column=5).value == "Pending"
     for r in range(3, recon.max_row + 1):
         if recon.cell(row=r, column=2).value == "Additional Investments":
-            assert recon.cell(row=r, column=2 + idx).value == 1
+            assert recon.cell(row=r, column=3).value == 1
+            # Pending is a live formula so hand-edited counts keep reconciling.
+            assert recon.cell(row=r, column=5).value == f"=C{r}-D{r}"
+
+
+def test_dropdown_validations_are_stored_without_a_leading_equals(tmp_path: Path):
+    # Excel can silently strip data validations whose stored source range
+    # carries a leading "=" ("we found a problem with some content"), which
+    # presents to the user as the dropdowns being gone entirely. BIFM's own
+    # file stores bare ranges ("$D$3:$D$17") - ours must too.
+    qr = QueryRegisterBuilder()
+    extraction = _make_extraction("ADD")
+    validation = ValidationReport(source_file="test.pdf", entity_number="E1", results=[])
+    log_entry = _make_log_entry("Rejected", rejection_reason="missing signature")
+    qr.add_form(extraction, validation, log_entry, prevalidation_flags=[])
+    out_path = qr.save(tmp_path / "query_register.xlsx")
+
+    wb = load_workbook(out_path)
+    ws = wb[date.today().strftime("%B %Y")]
+    validations = ws.data_validations.dataValidation
+    assert len(validations) == 4  # Type of Enquiry, Logged Via, Registered by, Status
+    for dv in validations:
+        assert dv.type == "list"
+        assert not str(dv.formula1).startswith("="), f"formula1 {dv.formula1!r} would risk Excel stripping it"
+        assert str(dv.formula1).startswith("$")
 
 
 def test_add_form_is_thread_safe_under_concurrent_batches():

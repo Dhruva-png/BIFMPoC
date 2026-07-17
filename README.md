@@ -146,6 +146,8 @@ Open http://localhost:8501. Upload PDFs in the sidebar and click **Run Batch**.
 | `GROQ_TEXT_MODEL` | `llama-3.3-70b-versatile` | Text model |
 | `GROQ_TPM_LIMIT` | `27000` | Self-throttle budget, kept below your account's real TPM ceiling |
 | `PDF_RENDER_DPI` | `220` | DPI for PDF-to-image rendering |
+| `OCR_DESKEW` | `true` | Straighten tilted scans before reading (local, ~100ms/page) |
+| `RETRY_MISSING_MANDATORY` | `true` | One focused re-read when mandatory fields come back blank |
 | `BIFM_MAX_WORKERS` | `2` | Max parallel documents |
 | `LOG_LEVEL` | `INFO` | Logging level |
 

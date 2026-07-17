@@ -11,20 +11,30 @@ dropdown picklist source for the real column, referenced by Excel's own
 "list" data validation. This module writes those lists once near the top
 and wires up matching dropdowns, exactly like BIFM's file.
 
-Sheet 1 - Query Log (21 physical columns):
+Sheet 1 - the query log, named for the run month the way BIFM names theirs
+("August 2") - 21 physical columns:
   A No.                                  L Checked by
   B Date                                 M Resolution Progress
   C Type of Enquiry   (dropdown)         N Date Submitted to Ops / Resolved
   D   [picklist: enquiry types]          O Date Captured
   E Client Name                          P Status              (dropdown)
-  F Query Description                    Q   [picklist: Open/Resolved]
-  G Logged Via        (dropdown)         R No. of Days Open
-  H   [picklist: logged-via channels]    S Sales Comments to Ops  \
-  I Registered by      (dropdown)        T Ops Resolution          } merged
-  J   [picklist: staff names]            U Ops Resolution Date    / "Operations
-  K Assigned to                                                     Use ONLY"
+  F Query Description                    Q   [picklist: Resolved/Open]
+  G Logged Via        (dropdown)         R No. of Days Open (live formula,
+  H   [picklist: logged-via channels]        same one BIFM's file uses)
+  I Registered by      (dropdown)        S Sales Comments To Ops  \
+  J   [picklist: staff names]            T Ops Resolution          } merged
+  K Assigned to                          U Ops Resolution Date    / "Operations
+                                                                    Use ONLY"
                                                                     banner,
                                                                     row 1
+
+Two Excel-compat details learned the hard way from BIFM's own file:
+  - Data-validation source ranges are stored WITHOUT a leading "=" (e.g.
+    "$D$3:$D$17"). Excel can silently strip validations whose stored
+    formula carries the "=", which presents as "the dropdowns are gone"
+    even though openpyxl and LibreOffice both accept either form.
+  - Date columns hold real datetime values, not ISO strings - the
+    days-open formula subtracts them, and text dates turn it into #VALUE!.
 
 Sheet 2 - Recon: daily/periodic reconciliation tracker (Received /
 Processed / Pending) by instruction type, columns B-E to match BIFM's own
@@ -57,7 +67,7 @@ picklist BIFM's file uses.
 from __future__ import annotations
 
 import threading
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -114,7 +124,7 @@ _COLUMNS: list[tuple[str, str | None]] = [
     ("Status", "Status"),
     ("_status_list", None),
     ("No. of Days Open", "No. of Days Open"),
-    ("Sales Comments to Ops", "Sales Comments to Ops"),
+    ("Sales Comments To Ops", "Sales Comments To Ops"),
     ("Ops Resolution", "Ops Resolution"),
     ("Ops Resolution Date", "Ops Resolution Date"),
 ]
@@ -146,7 +156,32 @@ REGISTERED_BY_OPTIONS = [
     "Comfort", "Tefo", "Theo", "Onalenna", "Gaolatlhe", "Goiponyeone",
     "Brian", "Naomi", "Amolemo", "Nnnelo", "Kago",
 ]
-STATUS_OPTIONS = ["Open", "Resolved"]
+# Same order as BIFM's file (Q3 = Resolved, Q4 = Open).
+STATUS_OPTIONS = ["Resolved", "Open"]
+
+# Columns holding real dates - written as datetime values (not ISO strings)
+# so the days-open formula can subtract them.
+_DATE_COLUMNS = {"Date", "Date Submitted to Ops / Resolved", "Date Captured", "Ops Resolution Date"}
+
+
+def _as_datetime(value):
+    """ISO date/datetime strings -> datetime; everything else unchanged."""
+    if isinstance(value, (datetime, date)) or value in ("", None):
+        return value
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return value
+
+
+def _days_open_formula(row: int) -> str:
+    """The exact No.-of-Days-Open formula from BIFM's own file: still open
+    and not yet captured -> days since logged; captured -> capture date
+    minus logged date; otherwise -> submitted date minus logged date."""
+    return (
+        f'=IF(AND(P{row}="Open",O{row}=""),(TODAY()-B{row}),'
+        f'IF(AND(O{row}<>"",P{row}<>""),O{row}-B{row},N{row}-B{row}))'
+    )
 
 RECON_HEADERS = ["Instruction Type", "Received", "Processed", "Pending"]
 
@@ -319,8 +354,7 @@ class QueryRegisterBuilder:
             "Date Submitted to Ops / Resolved": "",
             "Date Captured": log_entry.upload_date,
             "Status": "Open",
-            "No. of Days Open": 0,
-            "Sales Comments to Ops": "",
+            "Sales Comments To Ops": "",
             "Ops Resolution": "",
             "Ops Resolution Date": "",
         }
@@ -342,7 +376,9 @@ class QueryRegisterBuilder:
     # -----------------------------------------------------------------
 
     def _write_query_log(self, wb: Workbook) -> None:
-        ws = wb.create_sheet("Query Log")
+        # BIFM names the query-log sheet for the period it covers
+        # ("August 2"); ours is named for the run month.
+        ws = wb.create_sheet(date.today().strftime("%B %Y"))
 
         # Row 1: "Operations Use ONLY" banner, merged over the 3 Ops-only
         # columns (Sales Comments to Ops / Ops Resolution / Ops Resolution
@@ -381,10 +417,16 @@ class QueryRegisterBuilder:
                 if key.startswith("_"):
                     continue  # picklist-only column, no per-row data
                 col_idx = _COL_INDEX[key]
-                cell = ws.cell(row=row_idx, column=col_idx, value=row.get(key, ""))
+                if key == "No. of Days Open":
+                    # Live formula, exactly as in BIFM's own file - not a
+                    # frozen snapshot that goes stale the day after the run.
+                    cell = ws.cell(row=row_idx, column=col_idx, value=_days_open_formula(row_idx))
+                else:
+                    value = _as_datetime(row.get(key, "")) if key in _DATE_COLUMNS else row.get(key, "")
+                    cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                    if isinstance(value, (datetime, date)):
+                        cell.number_format = DATE_FORMAT
                 cell.border = THIN_BORDER
-                if key in ("Date", "Date Submitted to Ops / Resolved", "Date Captured", "Ops Resolution Date"):
-                    cell.number_format = DATE_FORMAT
 
             risk_l = str(risk).lower()
             fill = FILL_HIGH_RISK if risk_l.startswith("high") else (
@@ -399,6 +441,13 @@ class QueryRegisterBuilder:
 
         last_data_row = max(row_idx - 1, 3)
         validation_last_row = last_data_row + VALIDATION_ROW_BUFFER
+
+        # Pre-fill the days-open formula down the buffer rows too, exactly
+        # like BIFM's file (theirs runs to row ~1750), so rows Sales adds
+        # by hand in Excel compute without anyone copying the formula down.
+        days_col = _COL_INDEX["No. of Days Open"]
+        for r in range(row_idx, validation_last_row + 1):
+            ws.cell(row=r, column=days_col, value=_days_open_formula(r))
 
         self._add_dropdown(ws, "C", f"$D$3:$D${2 + len(ENQUIRY_TYPE_OPTIONS)}", 3, validation_last_row)
         self._add_dropdown(ws, "G", f"$H$3:$H${2 + len(LOGGED_VIA_OPTIONS)}", 3, validation_last_row)
@@ -423,7 +472,12 @@ class QueryRegisterBuilder:
 
     @staticmethod
     def _add_dropdown(ws: Worksheet, column_letter: str, source_range: str, first_row: int, last_row: int) -> None:
-        dv = DataValidation(type="list", formula1=f"={source_range}", allow_blank=True)
+        # NO leading "=" on formula1: openpyxl writes it verbatim into the
+        # sheet XML, and while LibreOffice tolerates "=$D$3:$D$17", real
+        # Excel can flag it as invalid content and silently strip the
+        # validation on open - i.e. the dropdowns vanish. BIFM's own file
+        # stores the bare range ("$D$3:$D$16"), so we do exactly that.
+        dv = DataValidation(type="list", formula1=source_range, allow_blank=True)
         ws.add_data_validation(dv)
         dv.add(f"{column_letter}{first_row}:{column_letter}{last_row}")
 
@@ -432,14 +486,14 @@ class QueryRegisterBuilder:
     # -----------------------------------------------------------------
 
     def _write_recon(self, wb: Workbook) -> None:
-        """Matches BIFM's own Recon layout: starts one column in (B, not
-        A), with instruction-type row labels bold in column B and counts
-        in C/D/E."""
+        """Matches BIFM's own Recon layout exactly: starts one column in
+        (B, not A), no header over the label column, header text
+        "Number Of Instructions Received" / "Processed" / "Pending" in
+        C2:E2, and live formulas for Pending and the TOTAL row so counts
+        Ops edits by hand keep reconciling."""
         ws = wb.create_sheet("Recon")
 
-        headers = ["Instruction Type", "Received", "Processed", "Pending"]
-        for i, header in enumerate(headers):
-            col_idx = 2 + i  # starts at column B
+        for col_idx, header in ((3, "Number Of Instructions Received"), (4, "Processed"), (5, "Pending")):
             cell = ws.cell(row=2, column=col_idx, value=header)
             cell.font = HEADER_FONT
             cell.fill = HEADER_FILL
@@ -451,18 +505,19 @@ class QueryRegisterBuilder:
             label_cell = ws.cell(row=row_idx, column=2, value=instr_type)
             label_cell.font = Font(bold=True)
             label_cell.border = THIN_BORDER
-            for i, col_key in enumerate(("Received", "Processed", "Pending")):
-                cell = ws.cell(row=row_idx, column=3 + i, value=counts[col_key])
-                cell.border = THIN_BORDER
+            ws.cell(row=row_idx, column=3, value=counts["Received"]).border = THIN_BORDER
+            ws.cell(row=row_idx, column=4, value=counts["Processed"]).border = THIN_BORDER
+            pending = ws.cell(row=row_idx, column=5, value=f"=C{row_idx}-D{row_idx}")
+            pending.border = THIN_BORDER
             row_idx += 1
 
         total_cell = ws.cell(row=row_idx, column=2, value="TOTAL")
         total_cell.font = Font(bold=True)
-        for i, col_key in enumerate(("Received", "Processed", "Pending")):
-            total = sum(self._recon_counts[t][col_key] for t in RECON_INSTRUCTION_TYPES)
-            cell = ws.cell(row=row_idx, column=3 + i, value=total)
+        for col_letter, col_idx in (("C", 3), ("D", 4), ("E", 5)):
+            cell = ws.cell(row=row_idx, column=col_idx, value=f"=SUM({col_letter}3:{col_letter}{row_idx - 1})")
             cell.font = Font(bold=True)
 
         ws.column_dimensions["B"].width = 26
-        for letter in ("C", "D", "E"):
+        ws.column_dimensions["C"].width = 30
+        for letter in ("D", "E"):
             ws.column_dimensions[letter].width = 14

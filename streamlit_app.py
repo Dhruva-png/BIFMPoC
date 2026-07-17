@@ -636,7 +636,7 @@ else:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     width="stretch",
                 )
-            st.caption("2 sheets: Query Log · Recon (matches BIFM's shared Query Register format)")
+            st.caption("2 sheets: month-named Query Log · Recon — matches BIFM's Query Register template, dropdowns and days-open formula included")
 
         filed_dir = settings.paths.filed_dir
         filed_count = len(list(filed_dir.glob("*"))) if filed_dir.exists() else 0
