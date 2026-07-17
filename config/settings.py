@@ -147,6 +147,16 @@ class AppSettings:
     pdf_render_dpi: int = int(os.environ.get("PDF_RENDER_DPI", "220"))
     ocr_enhance_images: bool = os.environ.get("OCR_ENHANCE_IMAGES", "true").lower() != "false"
     ocr_min_long_edge_px: int = int(os.environ.get("OCR_MIN_LONG_EDGE_PX", "1600"))
+    # Straightens tilted scans (projection-profile deskew, pure local math,
+    # ~100ms/page, no API cost) before enhancement. OCR_DESKEW=false to skip.
+    ocr_deskew: bool = os.environ.get("OCR_DESKEW", "true").lower() != "false"
+    # When a document's MANDATORY fields come back blank after the normal
+    # read, re-ask once with a focused prompt listing only those fields
+    # (narrower prompts get more attention per field). Costs at most ONE
+    # extra vision call per document, and only on documents that would
+    # otherwise auto-reject for missing mandatory data - a clean batch pays
+    # nothing. RETRY_MISSING_MANDATORY=false to disable.
+    retry_missing_mandatory: bool = os.environ.get("RETRY_MISSING_MANDATORY", "true").lower() != "false"
     # Used at TWO levels in app.core.pipeline.run_batch: up to this many
     # different PEOPLE's batches run concurrently, and within each of
     # those, up to this many of that person's own documents run

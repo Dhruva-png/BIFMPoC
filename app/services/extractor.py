@@ -42,6 +42,7 @@ from app.utils.config_loader import (
     derive_fund_category,
     fund_category_priority,
     get_fields_for_form,
+    get_mandatory_fields_for_form,
     load_field_definitions,
 )
 from app.utils.field_validators import apply_field_validation
@@ -275,6 +276,58 @@ def _page_number(image_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Failure-gated retry: one focused re-read, only when mandatory data is missing
+# ---------------------------------------------------------------------------
+
+def _retry_missing_mandatory(
+    form_code: str,
+    field_defs: list[dict],
+    page: Path | None,
+    fields: dict[str, FieldValue],
+    form_label: str,
+) -> dict[str, FieldValue]:
+    """
+    If any of this form's MANDATORY fields came back blank after the normal
+    read, re-ask ONCE with a prompt listing only those fields - a narrow
+    prompt concentrates the model's attention on exactly the values that
+    would otherwise auto-reject the instruction. Unlike the old multi-pass
+    approach (every page read twice, always), this costs nothing on a clean
+    document and at most one extra vision call on a bad one.
+    """
+    if page is None or not getattr(settings, "retry_missing_mandatory", True):
+        return {}
+
+    mandatory = set(get_mandatory_fields_for_form(form_code))
+
+    def _blank(fid: str) -> bool:
+        fv = fields.get(fid)
+        return fv is None or fv.value is None or str(fv.value).strip() == ""
+
+    missing_defs = [f for f in field_defs if f["id"] in mandatory and _blank(f["id"])]
+    if not missing_defs:
+        return {}
+
+    missing_ids = [f["id"] for f in missing_defs]
+    logger.info(
+        "%s: mandatory field(s) missing after first read (%s) - one focused re-read of %s",
+        form_code, ", ".join(missing_ids), page.name,
+    )
+    try:
+        retry_fields, _ = _extract_fields_from_page(page, missing_defs, form_label, form_code)
+    except Exception:  # noqa: BLE001 - the retry is best-effort; the first read stands
+        logger.exception("Focused re-read failed for %s - keeping first-read results", page.name)
+        return {}
+
+    recovered = {
+        fid: fv for fid, fv in retry_fields.items()
+        if fid in set(missing_ids) and fv.value is not None and str(fv.value).strip() != ""
+    }
+    if recovered:
+        logger.info("%s: focused re-read recovered %s", form_code, ", ".join(recovered))
+    return recovered
+
+
+# ---------------------------------------------------------------------------
 # Shared truthiness helpers for checkbox / amount-sourced fields
 # ---------------------------------------------------------------------------
 
@@ -477,6 +530,12 @@ def _extract_appform(pages: dict[int, Path]) -> ExtractionResult:
     if "id_type" not in all_fields and "id_number" in all_fields:
         logger.warning("id_type not extracted directly - downstream validation will treat it as unknown")
 
+    # Every APPFORM mandatory field lives in the primary field set, so a
+    # focused re-read (if any are still blank) targets the primary page.
+    all_fields.update(_retry_missing_mandatory(
+        "APPFORM", primary_fields, pages.get(1), all_fields, "Investment Application Form",
+    ))
+
     _clean_fund_fields(all_fields)
     apply_field_validation("APPFORM", all_fields)
     all_fields.update(_derive_metadata("APPFORM", all_fields))
@@ -521,6 +580,14 @@ def _extract_standard_form(form_code: str, pages: dict[int, Path]) -> Extraction
             if existing is None or fv.confidence > existing.confidence:
                 all_fields[fid] = fv
         all_beneficiaries.extend(beneficiaries)
+
+    # Standard forms carry their data on page 2 (page 1 is the cover /
+    # instructions page); KYC's page 1 IS the form. Target the focused
+    # re-read there if any mandatory field is still blank after the merge.
+    retry_page = pages.get(1) if form_code == "KYC" else (pages.get(2) or pages.get(1))
+    all_fields.update(_retry_missing_mandatory(
+        form_code, field_defs, retry_page, all_fields, form_label,
+    ))
 
     _clean_fund_fields(all_fields)
     apply_field_validation(form_code, all_fields)
