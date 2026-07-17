@@ -1,20 +1,3 @@
-"""
-Shared helpers for OCR/vision-model confidence scores.
-
-A vision model claiming 100% confidence on handwritten text is never
-honest - there's always some residual doubt - so every confidence score
-that ultimately reaches a human (report cells, the Streamlit review UI)
-is capped below that ceiling. A separate, lower threshold marks the point
-below which a human should double-check the field before it's relied on.
-
-Both numbers live here, in one place, so extraction, classification, and
-the report/UI layers all agree on what "confident" and "needs a recheck"
-mean. The domain-constraint calibration constants below live here for the
-same reason - app.utils.field_repair decides WHETHER a value satisfies its
-known domain, and app.utils.field_validators needs to agree on what that
-verdict is worth.
-"""
-
 from __future__ import annotations
 
 CONFIDENCE_CEILING = 98.0   # never display/report a value above this

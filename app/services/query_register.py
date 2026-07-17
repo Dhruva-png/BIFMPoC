@@ -1,69 +1,3 @@
-"""
-Module 6: Query Register Automation (Section 4, Output 5 / Section 7 of the
-understanding document).
-
-Produces a workbook matching BIFM's own updated Query Register Excel file
-EXACTLY, including a structural quirk that isn't obvious from just looking
-at it: four of the visible columns (Type of Enquiry, Logged Via,
-Registered by, Status) each have a second, header-less column sitting next
-to them (D, H, J, Q respectively) that is NOT a data field - it's the
-dropdown picklist source for the real column, referenced by Excel's own
-"list" data validation. This module writes those lists once near the top
-and wires up matching dropdowns, exactly like BIFM's file.
-
-Sheet 1 - the query log, named for the run month the way BIFM names theirs
-("August 2") - 21 physical columns:
-  A No.                                  L Checked by
-  B Date                                 M Resolution Progress
-  C Type of Enquiry   (dropdown)         N Date Submitted to Ops / Resolved
-  D   [picklist: enquiry types]          O Date Captured
-  E Client Name                          P Status              (dropdown)
-  F Query Description                    Q   [picklist: Resolved/Open]
-  G Logged Via        (dropdown)         R No. of Days Open (live formula,
-  H   [picklist: logged-via channels]        same one BIFM's file uses)
-  I Registered by      (dropdown)        S Sales Comments To Ops  \
-  J   [picklist: staff names]            T Ops Resolution          } merged
-  K Assigned to                          U Ops Resolution Date    / "Operations
-                                                                    Use ONLY"
-                                                                    banner,
-                                                                    row 1
-
-Two Excel-compat details learned the hard way from BIFM's own file:
-  - Data-validation source ranges are stored WITHOUT a leading "=" (e.g.
-    "$D$3:$D$17"). Excel can silently strip validations whose stored
-    formula carries the "=", which presents as "the dropdowns are gone"
-    even though openpyxl and LibreOffice both accept either form.
-  - Date columns hold real datetime values, not ISO strings - the
-    days-open formula subtracts them, and text dates turn it into #VALUE!.
-
-Sheet 2 - Recon: daily/periodic reconciliation tracker (Received /
-Processed / Pending) by instruction type, columns B-E to match BIFM's own
-layout, which starts one column in from the sheet edge.
-
-This is populated automatically from each batch run instead of being
-hand-maintained by the Sales/Contact Center team, per Section 4 Output 5:
-"Automatically log queried, rejected, or incomplete instructions into the
-Query Register format shared by BIFM ... reducing manual entry by the
-Sales/Contact Center team and keeping the recon counts current."
-
-A "query" line is logged for:
-  - Any instruction that came back REJECTED from validation (Section 3,
-    Step 5's rejection flow) - e.g. wrong banking details.
-  - Any triggered pre-validation flag (Section 3, Step 2's missing/
-    incomplete documentation flow, plus Section 8's other rejection-risk
-    signals), whether or not the instruction ultimately validated PASS/
-    WARNING - a triggered flag is itself something Sales needs to follow
-    up with the client about.
-Clean straight-through instructions with no rejection and no triggered
-flags don't get a Query Log row at all - only the Recon counts move.
-
-Every row this module writes gets Status = "Open" - matching BIFM's own
-convention that new entries start open and Sales/Ops flips them to
-"Resolved" by hand once actioned. Descriptive detail about WHY something
-is open (e.g. "Awaiting corrected form from client") goes in Resolution
-Progress, not Status - Status is strictly the 2-value Open/Resolved
-picklist BIFM's file uses.
-"""
 from __future__ import annotations
 
 import threading
@@ -95,16 +29,8 @@ OPS_BANNER_FILL = PatternFill(start_color="FDE9D9", end_color="FDE9D9", fill_typ
 
 DATE_FORMAT = "dd/mm/yyyy"
 
-# How many rows past the current data to keep the dropdown validations
-# active for, so Sales/Ops can keep adding rows by hand (in Excel
-# directly) with the picklists still working, same as BIFM's own template
-# pre-applying validation across ~1700 rows in advance.
 VALIDATION_ROW_BUFFER = 500
 
-# ---------------------------------------------------------------------------
-# Column layout - position (1-indexed) : header text (None = picklist-only,
-# no visible header, matching BIFM's own file exactly).
-# ---------------------------------------------------------------------------
 _COLUMNS: list[tuple[str, str | None]] = [
     ("No.", "No."),
     ("Date", "Date"),
@@ -137,13 +63,6 @@ _COLUMN_WIDTHS = {
     "Q": 14, "R": 20, "S": 28, "T": 32, "U": 22,
 }
 
-# ---------------------------------------------------------------------------
-# Dropdown picklists - written once as static reference data (rows 3+ in
-# their respective columns), exactly matching BIFM's own file. These are
-# NOT per-row data - they're what the dropdown on the real column offers.
-# ---------------------------------------------------------------------------
-# Dropdown picklist values, taken verbatim (trailing whitespace trimmed) from
-# BIFM's updated Query Register template's D/H/J/Q helper columns.
 ENQUIRY_TYPE_OPTIONS = [
     "Instruction-Additional", "Instruction-Withdrawal", "Instruction-Debit Order",
     "Instruction-Static", "Instruction-Switch", "New Business - Original",
@@ -156,11 +75,9 @@ REGISTERED_BY_OPTIONS = [
     "Comfort", "Tefo", "Theo", "Onalenna", "Gaolatlhe", "Goiponyeone",
     "Brian", "Naomi", "Amolemo", "Nnnelo", "Kago",
 ]
-# Same order as BIFM's file (Q3 = Resolved, Q4 = Open).
+
 STATUS_OPTIONS = ["Resolved", "Open"]
 
-# Columns holding real dates - written as datetime values (not ISO strings)
-# so the days-open formula can subtract them.
 _DATE_COLUMNS = {"Date", "Date Submitted to Ops / Resolved", "Date Captured", "Ops Resolution Date"}
 
 
@@ -194,14 +111,6 @@ RECON_INSTRUCTION_TYPES = [
     "Static",
 ]
 
-# Maps this app's form codes (config/form_types.json) -> the Recon sheet's
-# instruction-type buckets. DIS and DIS_GSG both roll up to "Withdrawals"
-# for recon purposes even though they're tracked separately everywhere
-# else in this app (different cut-offs / lock-ins - see form_types.json).
-# KYC is a companion document (Section 8), not its own instruction line.
-# SWITCH is included for forward-compatibility with Output 1's
-# classification list even though it isn't one of the six sample form
-# types extracted in this POC (Section 5).
 _FORM_CODE_TO_RECON_TYPE: dict[str, str | None] = {
     "APPFORM": "New Business",
     "ADD": "Additional Investments",
@@ -217,13 +126,6 @@ _FORM_CODE_TO_RECON_TYPE: dict[str, str | None] = {
 def recon_type_for_form_code(form_code: str) -> str | None:
     return _FORM_CODE_TO_RECON_TYPE.get(form_code)
 
-
-# The updated Query Register's "Type of Enquiry" picklist is
-# instruction-oriented (Instruction-Additional, New Business - Original,
-# KYC Submission, ...) rather than the old rejection/query-category list, so
-# the enquiry tag is chosen from the document's form type. The free-text
-# Query Description column still carries the full rejection/flag detail
-# regardless of which category tag is picked here.
 _FORM_CODE_TO_ENQUIRY_TYPE: dict[str, str] = {
     "APPFORM": "New Business - Original",
     "ADD": "Instruction-Additional",
@@ -242,23 +144,7 @@ def _map_enquiry_type(form_code: str) -> str:
     for any code without a specific instruction category."""
     return _FORM_CODE_TO_ENQUIRY_TYPE.get(form_code, "General Enquiry")
 
-
 class QueryRegisterBuilder:
-    """
-    Accumulates queried/rejected/incomplete instructions across a batch
-    run, plus Received/Processed/Pending counts by instruction type, then
-    writes the two-sheet workbook once. Mirrors the add_form(...) / save()
-    pattern of app.services.report_generator.ExcelReportBuilder so the two
-    can be filled in from the same call site in the pipeline.
-
-    One instance is shared across every document in a run, including
-    documents from DIFFERENT people's batches processed concurrently by
-    app.core.pipeline.run_batch - unlike ExcelReportBuilder (whose state is
-    plain list.append calls, atomic under the GIL), self._counter and
-    self._recon_counts are read-modify-write, so add_form is guarded by
-    self._lock to stop two threads' calls from racing and silently losing
-    an increment (duplicate "No." values, undercounted recon figures).
-    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -294,8 +180,6 @@ class QueryRegisterBuilder:
             if log_entry.instruction_status in ("Captured", "Approved"):
                 counts["Processed"] += 1
             else:
-                # Rejected or still Submitted - sits with Sales/Ops until
-                # resolved, so it counts as Pending for recon purposes.
                 counts["Pending"] += 1
 
         triggered = [f for f in (prevalidation_flags or []) if f.triggered]
@@ -371,18 +255,11 @@ class QueryRegisterBuilder:
         logger.info("Saved Query Register to %s", output_path)
         return output_path
 
-    # -----------------------------------------------------------------
-    # Query Log sheet
-    # -----------------------------------------------------------------
-
     def _write_query_log(self, wb: Workbook) -> None:
         # BIFM names the query-log sheet for the period it covers
         # ("August 2"); ours is named for the run month.
         ws = wb.create_sheet(date.today().strftime("%B %Y"))
 
-        # Row 1: "Operations Use ONLY" banner, merged over the 3 Ops-only
-        # columns (Sales Comments to Ops / Ops Resolution / Ops Resolution
-        # Date - the last 3 columns), matching BIFM's file exactly.
         last3_start = len(_COLUMNS) - 2  # 1-indexed start of the last 3 columns
         start_letter = _COL_LETTERS[last3_start - 1]
         end_letter = _COL_LETTERS[len(_COLUMNS) - 1]
@@ -442,9 +319,6 @@ class QueryRegisterBuilder:
         last_data_row = max(row_idx - 1, 3)
         validation_last_row = last_data_row + VALIDATION_ROW_BUFFER
 
-        # Pre-fill the days-open formula down the buffer rows too, exactly
-        # like BIFM's file (theirs runs to row ~1750), so rows Sales adds
-        # by hand in Excel compute without anyone copying the formula down.
         days_col = _COL_INDEX["No. of Days Open"]
         for r in range(row_idx, validation_last_row + 1):
             ws.cell(row=r, column=days_col, value=_days_open_formula(r))
@@ -457,9 +331,6 @@ class QueryRegisterBuilder:
         for letter, width in _COLUMN_WIDTHS.items():
             ws.column_dimensions[letter].width = width
 
-        # Matches BIFM's updated file: the header rows plus the first few
-        # identifying columns (No. through Client Name) stay visible while
-        # scrolling right into the "Operations Use ONLY" section.
         ws.freeze_panes = "F3"
 
         if not self._query_rows:
@@ -472,18 +343,9 @@ class QueryRegisterBuilder:
 
     @staticmethod
     def _add_dropdown(ws: Worksheet, column_letter: str, source_range: str, first_row: int, last_row: int) -> None:
-        # NO leading "=" on formula1: openpyxl writes it verbatim into the
-        # sheet XML, and while LibreOffice tolerates "=$D$3:$D$17", real
-        # Excel can flag it as invalid content and silently strip the
-        # validation on open - i.e. the dropdowns vanish. BIFM's own file
-        # stores the bare range ("$D$3:$D$16"), so we do exactly that.
         dv = DataValidation(type="list", formula1=source_range, allow_blank=True)
         ws.add_data_validation(dv)
         dv.add(f"{column_letter}{first_row}:{column_letter}{last_row}")
-
-    # -----------------------------------------------------------------
-    # Recon sheet
-    # -----------------------------------------------------------------
 
     def _write_recon(self, wb: Workbook) -> None:
         """Matches BIFM's own Recon layout exactly: starts one column in

@@ -1,33 +1,3 @@
-"""
-Module 2: Field Extractor — supports ALL 6 BIFM UT form types.
-
-ONE VISION CALL PER PAGE. This module used to read every page twice (an
-enhanced and a raw render), compare the two, and fire a third "tie-break"
-call on any field where they disagreed - 2-3x the API calls and latency
-per page. That bought less than it looked like it did: comparing two
-guesses has no ground truth, so two passes making the same misread agreed
-confidently on a wrong value, and the tie-break was just a third guess.
-
-Accuracy now comes from app.utils.field_repair instead, which checks each
-value against what we actually know for certain from the config (an Omang
-is exactly 9 digits; occupation is one of 6 listed options; the fund is
-one of 6 real BIFM funds) and repairs it deterministically where that's
-provably safe. That's free, instant, auditable, and strictly better than a
-vote on the constrained fields that validation actually turns on.
-
-CONCURRENCY vs RATE LIMITS: Parallelizing pages cuts wall-clock latency,
-but Groq enforces a TPM (tokens-per-minute) cap at the account level -
-concurrency only helps up to that ceiling. Past it, firing more concurrent
-requests just produces 429s and backoff retries, which is slower than not
-parallelizing at all. VISION_SEMAPHORE below caps TOTAL concurrent vision
-calls across the entire run (all documents, all pages) at
-settings.max_concurrent_vision_calls, so nested thread pools
-(per-document, per-page) can spawn as many threads as convenient without
-ever actually sending more than N requests to Groq at once. Tune
-max_concurrent_vision_calls to match your actual Groq tier's
-concurrent-request headroom - too high and you're back to thrashing on
-429s, too low and you're back to serial-latency.
-"""
 from __future__ import annotations
 
 import re
@@ -51,37 +21,16 @@ from config.settings import settings
 
 logger = get_logger(__name__)
 
-# Page 10 of APPFORM contains the guardian/minor section
 GUARDIAN_FIELD_IDS = {"guardian_name", "guardian_id_number"}
 GUARDIAN_PAGE_NUMBER = 10
 
-# Page 3 of APPFORM contains the Investment Fund details section (fund
-# table, lump sum / debit amounts, income distribution). Its fields are
-# tagged page_hint "Page 3" in config/field_definitions.json so they're
-# read off page 3 rather than the page-1 primary pass.
 INVESTMENT_PAGE_NUMBER = 3
 INVESTMENT_PAGE_HINT = "Page 3"
 
-# Page 4 of APPFORM carries Source of Funds + the investor's banking
-# details. Its fields are tagged page_hint "Page 4" in
-# config/field_definitions.json so they're read off page 4, same per-page
-# pattern as the investment (page 3) and guardian/Form C (page 10) sections.
 BANKING_PAGE_NUMBER = 4
 BANKING_PAGE_HINT = "Page 4"
 
-# Global cap on concurrent Groq vision calls across the ENTIRE run,
-# regardless of how many nested thread pools exist upstream (per-document,
-# per-page, per-pass). Add `max_concurrent_vision_calls: int = 8` (or
-# whatever your Groq tier supports) to config/settings.py's AppSettings -
-# defaults to 8 here if that setting doesn't exist yet so this doesn't
-# break on an old settings.py.
 VISION_SEMAPHORE = threading.Semaphore(getattr(settings, "max_concurrent_vision_calls", 8))
-
-
-# ---------------------------------------------------------------------------
-# Prompt builder
-# ---------------------------------------------------------------------------
-
 _FUND_TABLE_HINT = "fund_table"
 
 _FUND_TABLE_GUIDANCE_COMMON = (
@@ -145,11 +94,6 @@ def _fund_table_guidance(form_code: str) -> str:
     return _FUND_TABLE_GUIDANCE_COMMON + _FUND_TABLE_GUIDANCE_SINGLE_TABLE
 
 
-# Exact expected formats for fields whose shape is fixed and known. Stating
-# these in the prompt costs nothing and hands the model the same domain
-# constraints app.utils.field_repair enforces afterwards - it's cheaper to
-# have a value read correctly than repaired, and a model told "exactly 9
-# digits" is less likely to drop or invent one.
 _FORMAT_HINTS: dict[str, str] = {
     "id_number": "An Omang or Birth Certificate number is EXACTLY 9 digits, no letters; a passport number's format varies by country.",
     "guardian_id_number": "An Omang number: EXACTLY 9 digits, no letters.",
@@ -211,11 +155,6 @@ def _build_field_prompt(
         "}"
     )
 
-
-# ---------------------------------------------------------------------------
-# Single vision call (one image, one prompt)
-# ---------------------------------------------------------------------------
-
 def _extract_fields_from_page(
     image_path: Path,
     field_subset: list[dict],
@@ -228,10 +167,6 @@ def _extract_fields_from_page(
     page. See this module's docstring."""
     prompt = _build_field_prompt(field_subset, form_label, form_code)
 
-    # Gate the actual network call behind the global semaphore - everything
-    # upstream (thread pools per document/page) can still fan out freely,
-    # but only N calls are ever in flight against Groq at once, avoiding
-    # TPM-triggered 429s/backoff.
     with VISION_SEMAPHORE:
         response = ask_vision(prompt, image_path, json_mode=True)
 
@@ -274,10 +209,6 @@ def _page_number(image_path: Path) -> int:
         m = re.search(r"page_(\d+)", image_path.stem)
         return int(m.group(1)) if m else 0
 
-
-# ---------------------------------------------------------------------------
-# Failure-gated retry: one focused re-read, only when mandatory data is missing
-# ---------------------------------------------------------------------------
 
 def _retry_missing_mandatory(
     form_code: str,

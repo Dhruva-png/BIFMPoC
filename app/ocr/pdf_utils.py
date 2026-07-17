@@ -1,20 +1,3 @@
-"""
-Converts PDF pages to images for the vision model (llava / qwen-vl).
-
-Renderer: pypdfium2 (ships its own PDF engine in the wheel — no system
-dependency, unlike pdf2image which wraps Poppler CLI tools). Falls back to
-pdf2image + Poppler if pypdfium2 is unavailable.
-
-Also provides an optional Tesseract raw-text pass used only as a lightweight
-cross-check for classification keyword hints — not the primary extraction path.
-
-Each page is rendered once, enhanced (unless ocr_enhance_images is off) and
-saved as a single PNG. Previously a second, un-enhanced "_raw" sibling was
-written alongside it purely so app.services.extractor could read the page a
-second time for multi-pass self-consistency; that approach is gone (see the
-extractor's module docstring), so the extra render, encode and disk write
-per page went with it.
-"""
 from __future__ import annotations
 
 import shutil
@@ -28,15 +11,6 @@ from config.settings import settings
 
 logger = get_logger(__name__)
 
-# pypdfium2 wraps the PDFium C library, which is NOT thread-safe: calling
-# PdfDocument()/page.render()/doc.close() concurrently from multiple threads
-# (as pipeline.py's ThreadPoolExecutor does when processing a batch) corrupts
-# internal PDFium state and crashes the whole process on Windows with
-# "OSError: exception: access violation writing 0x...". This is not a
-# corrupt/password-protected file - it's a race condition. Serializing every
-# pdfium call behind this lock fixes it; the rest of each document's
-# processing (page enhancement, and especially the LLM call, which is the
-# slow part) still runs concurrently, so batch throughput barely changes.
 _PDFIUM_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
@@ -58,19 +32,6 @@ try:
 except ImportError:
     _TESSERACT_AVAILABLE = False
 
-
-# ---------------------------------------------------------------------------
-# Deskew
-# ---------------------------------------------------------------------------
-# Scanned/photographed forms routinely arrive rotated by a degree or three,
-# and even a small tilt measurably hurts handwriting transcription (strokes
-# smear across the model's patch grid, printed field labels stop lining up
-# with the boxes next to them). BIFM forms are ideal deskew subjects: full
-# of long horizontal rules, so the classic projection-profile method works -
-# try candidate rotations, keep the one where ink concentrates into the
-# sharpest horizontal bands. Pure numpy + PIL on a downscaled copy:
-# ~100ms/page, no API cost, no new dependency (numpy already ships via
-# pandas).
 
 _DESKEW_MAX_ANGLE = 3.0        # degrees each way - scanner tilt, not sideways pages
 _DESKEW_STEP = 0.25

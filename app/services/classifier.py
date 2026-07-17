@@ -1,23 +1,3 @@
-"""
-Module 1: Form Classifier.
-
-Classifies a scanned PDF into one of the 6 BIFM UT form types:
-  APPFORM  Investment Application Form (new investor onboarding)
-  ADD      Additional Investment Form
-  DEBIT    Debit Order Form
-  DIS      Disinvestment Form (Standard)
-  DIS_GSG  Disinvestment Form (GSGF — Global Sustainable Growth Fund only)
-  STATIC   Static / Change of Investor Details Form
-  KYC      KYC (Know Your Customer) Form
-
-Design:
-- One llava vision call on page 1 handles classification for virtually every form.
-- A second, targeted disambiguation call is made ONLY when DIS vs DIS_GSG
-  confidence is below the 'high' threshold — the one pair the requirements
-  doc flags as easy to confuse.
-- The classification_hints in form_types.json drive the prompt; updating
-  hints there changes classifier behaviour without touching code.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,16 +37,6 @@ def classify_form(first_page_image: Path) -> ClassificationResult:
         parsed = parse_json_response(response.text)
         code = parsed["form_code"]
         confidence = float(parsed.get("confidence", 0))
-
-        # The model returned a code that isn't one of the 6 known form
-        # types - this document genuinely isn't a recognized BIFM UT
-        # instruction form (e.g. a proof-of-payment scan, an ID copy, a
-        # brochure that got attached to the same email as the real form).
-        # Previously this silently forced it through as a fake "APPFORM"
-        # at 0% confidence, which meant an unrelated attachment could end
-        # up extracted, validated, and filed as if it were a real New
-        # Business application. UNRECOGNIZED is not in valid_codes, so
-        # pipeline.py can detect it and skip processing entirely instead.
         if code not in valid_codes:
             logger.warning("Classifier returned unrecognized code '%s' - not one of the 6 known form types", code)
             code, confidence = "UNRECOGNIZED", 0.0
@@ -97,14 +67,6 @@ def classify_form(first_page_image: Path) -> ClassificationResult:
 
 
 def disambiguate_gsg_vs_standard(fund_table_image: Path) -> ClassificationResult:
-    """
-    Targeted disambiguation between DIS and DIS_GSG.
-    Called only when the primary classification returns one of these two codes
-    at below-high confidence — avoids a wasted second call on every form.
-
-    Rule: If the ONLY fund listed is 'BIFM Global Sustainable Growth Fund'
-    → DIS_GSG. If any other fund is listed → DIS.
-    """
     prompt = (
         "This page is a Disinvestment form. Look at the fund name(s) listed for withdrawal.\n\n"
         "If the ONLY fund listed is 'BIFM Global Sustainable Growth Fund' (or GSGF), "

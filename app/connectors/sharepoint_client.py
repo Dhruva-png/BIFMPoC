@@ -1,25 +1,3 @@
-"""
-SharePoint intake & filing connector, via the Microsoft Graph API.
-
-Auth: app-only (client credentials) flow against an Entra ID app
-registration with Sites.ReadWrite.All (or a site-scoped equivalent)
-granted as an application permission. This suits an unattended batch job
-better than a delegated/user-login flow.
-
-Required environment variables (see config.settings.SharePointSettings):
-    SHAREPOINT_TENANT_ID
-    SHAREPOINT_CLIENT_ID
-    SHAREPOINT_CLIENT_SECRET
-    SHAREPOINT_SITE_ID          - the Graph site id, e.g. "contoso.sharepoint.com,<guid>,<guid>"
-    SHAREPOINT_DRIVE_ID         - the document library's drive id (optional; the
-                                   default document library is used if omitted)
-    SHAREPOINT_SUBMISSION_FOLDER - path within the drive to watch for new
-                                   instruction forms, e.g. "UT Instructions/Submissions"
-
-If these aren't set, is_configured() returns False and the app falls back
-to local-only intake/filing (the existing simulated-SharePoint-on-disk
-behaviour in app.services.filer is untouched).
-"""
 from __future__ import annotations
 
 import time
@@ -130,11 +108,6 @@ def download_file(item: dict[str, Any], dest_dir: Path) -> Path:
 
 
 def fetch_submission_folder(dest_dir: Path) -> list[Path]:
-    """
-    Convenience wrapper: lists and downloads every PDF currently in the
-    submission folder into dest_dir, returning local paths ready to hand
-    to the pipeline.
-    """
     if not is_configured():
         return []
     items = list_new_pdfs()
@@ -142,12 +115,6 @@ def fetch_submission_folder(dest_dir: Path) -> list[Path]:
 
 
 def upload_file(local_path: Path, folder_path: str) -> bool:
-    """
-    Uploads/overwrites local_path into folder_path within the configured
-    drive, mirroring the local filing simulation onto real SharePoint.
-    Best-effort: returns False (and logs) instead of raising, since a
-    filing write-back failure shouldn't block the rest of the batch.
-    """
     if not is_configured():
         return False
     try:
@@ -165,11 +132,6 @@ def upload_file(local_path: Path, folder_path: str) -> bool:
 
 
 def delete_or_move_source(item_id: str, target_folder_path: str) -> bool:
-    """
-    Moves the original submission-folder item into target_folder_path
-    (e.g. the "Captured" subfolder), matching the manual process's
-    "move from submission folder to Captured" step. Best-effort.
-    """
     if not is_configured():
         return False
     try:

@@ -1,29 +1,3 @@
-"""
-BIFM Unit Trusts — Document Processing (POC)
-Streamlit front end.
-
-Run with:
-    streamlit run streamlit_app.py
-
-Supports all 6 BIFM UT form types through the full pipeline:
-  APPFORM  Investment Application Form
-  ADD      Additional Investment Form
-  DEBIT    Debit Order Form
-  DIS      Disinvestment Form (Standard)
-  DIS_GSG  Disinvestment Form (GSGF)
-  STATIC   Static / Change of Investor Details
-  KYC      KYC (Know Your Customer)
-
-Every form is classified, field-extracted, validated, and filed.
-
-Individual, single-document Excel workbooks are saved automatically by the
-pipeline right next to each filed PDF (see app/core/pipeline.py +
-app/services/report_generator.py's build_single_document_workbook). This UI
-additionally offers ONE CONSOLIDATED, multi-sheet workbook PER PERSON as an
-in-memory download after each run — a batch containing several different
-people's forms is automatically split by person first, so each person's
-consolidated file only ever contains their own documents.
-"""
 from __future__ import annotations
 
 import io

@@ -1,27 +1,3 @@
-"""
-Person-level consolidation across a batch.
-
-Business context: one batch (one intake folder / one Streamlit upload) is
-one investor submitting several BIFM UT forms in the same visit - e.g. the
-"AMOLEMO" example: STATIC + DIS + DEBIT + ADD all dropped in together.
-Investors commonly write their identity/contact/banking details on
-whichever form they picked up first and leave those same fields blank on
-the others, assuming the branch already has them from the form right next
-to it in the stack. Validating each document in total isolation rejects
-those as "mandatory field missing" even though the value was captured two
-pages over, in the same envelope.
-
-This module:
-  1. Builds one consolidated profile from every document's extraction in
-     the batch (`build_person_profile`).
-  2. Backfills each individual document's blank person-level fields from
-     that profile before validation (`backfill_from_profile`) - restricted
-     to fields that actually exist on that form type, and never touching
-     instruction-specific fields (disinvestment amount, instruction type,
-     change type, ...) which must always come from their own document.
-  3. Flattens the profile into one row for the "Consolidated Investor
-     Profile" report sheet (`profile_to_flat_dict`).
-"""
 from __future__ import annotations
 
 import re
@@ -34,13 +10,6 @@ from app.utils.confidence import RECHECK_THRESHOLD
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-# Fields that identify the *person* / their banking relationship, not the
-# specific instruction being given on a particular form. Safe to copy
-# across every document in the same batch. Deliberately excludes
-# instruction-specific fields (disinvestment_amount, instruction_type,
-# change_type, lump_sum_deposit_amount, account_closure, ...) - those must
-# always be read from their own form, never inferred from a sibling one.
 SHAREABLE_FIELDS: tuple[str, ...] = (
     "entity_number", "entity_name", "full_name", "title",
     "id_number", "id_type", "id_expiry_date", "date_of_birth", "gender",
@@ -50,21 +19,6 @@ SHAREABLE_FIELDS: tuple[str, ...] = (
     "branch_name", "branch_code", "account_type_banking",
     "authorized_signatory_name", "capacity",
 )
-# NOTE: fund_name / fund_number are deliberately NOT shareable. Which fund an
-# investor is adding to, disinvesting from, or debiting is instruction-
-# specific to that document (e.g. adding to Fund A while disinvesting from
-# Fund B in the same visit), never a person-level attribute like their name
-# or banking details. Backfilling it across documents previously caused a
-# document to display a fund_name copied from a sibling form while its own
-# fund_category/processing_cutoff/fund_category_priority (computed once at
-# extraction time, from that document's own fund_name) stayed "Unknown" -
-# a confusing, silently-wrong combination. If a document's own fund_name
-# truly wasn't extracted, it should surface as a genuine validation gap to
-# review, not be quietly papered over with an unrelated document's fund.
-
-# Backfilled values are discounted slightly below their source confidence -
-# they were read correctly off *some* page, but not this one, so a human
-# reviewer should be able to tell them apart from an on-page extraction.
 _BACKFILL_CONFIDENCE_CAP = 85.0
 
 
@@ -76,19 +30,6 @@ _DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%d %B %Y", "%d
 
 
 def _normalize(field_id: str, value: Any) -> Any:
-    """
-    Normalizes a value for equality-grouping purposes only (the value shown
-    in the report is still taken from the original, un-normalized
-    FieldValue). This is field-type aware: a blanket strip+lowercase on
-    strings means the exact same real-world value written slightly
-    differently on two documents - "71 234 567" vs "71234567",
-    "2024-03-01" vs "01/03/2024", "P 5,000.00" vs "5000" - would be treated
-    as two *different* answers. That silently fragments what should have
-    been one clear majority into several groups of one, so the "majority
-    vote" frequently ends up picking whichever single document had the
-    highest confidence score instead of the value most documents actually
-    agreed on.
-    """
     if value is None:
         return None
 
@@ -148,31 +89,6 @@ def _normalize(field_id: str, value: Any) -> Any:
 
 
 def build_person_profile(extractions: list[ExtractionResult]) -> dict[str, FieldValue]:
-    """
-    Merges shareable fields across every document's extraction in the
-    batch into one profile.
-
-    For each field, groups the non-blank values seen across all documents
-    in the batch by their normalized value (see _normalize), and takes the
-    value with the most documents agreeing (majority vote) - not simply the
-    single highest-confidence reading. OCR/extraction confidence is a
-    per-document signal about how cleanly a page was read; it says nothing
-    about whether that page's *content* is correct. A cleanly-scanned KYC
-    form with one wrong digit can score a higher confidence than three
-    consistent forms that were slightly harder to read - majority vote uses
-    the batch's redundancy (the same person-level fact usually appears on
-    several of their forms) to catch that instead.
-
-    A result only counts as a real majority/plurality if its group is
-    STRICTLY larger than every other group. If two or more groups are tied
-    for the largest size (e.g. three documents each giving a different
-    account number), there is no value more than one document actually
-    supports - picking one via a confidence tie-break and calling it a
-    "majority" would just silently reward whichever document happened to
-    score highest confidence. Genuine ties are surfaced as unresolved
-    (agreement starts with "NO MAJORITY") instead, and excluded from
-    backfill (see backfill_from_profile).
-    """
     profile: dict[str, FieldValue] = {}
 
     for field_id in SHAREABLE_FIELDS:
@@ -258,14 +174,6 @@ def backfill_from_profile(
     extraction: ExtractionResult,
     profile: dict[str, FieldValue],
 ) -> list[str]:
-    """
-    Fills blank shareable fields on `extraction` from the batch-wide
-    profile, in place. Restricted to fields that actually belong on this
-    form type (per field_definitions.json) so a field never gets injected
-    onto a form that doesn't have a box for it.
-
-    Returns the list of field_ids that were backfilled (for logging/audit).
-    """
     valid_field_ids = {f["id"] for f in get_fields_for_form(extraction.form_code)}
     backfilled: list[str] = []
 

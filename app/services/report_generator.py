@@ -1,19 +1,3 @@
-"""
-Module 4: Excel Report Generator — produces the consolidated workbook with the
-sheets specified by the client: Consolidated Investor Profile, Investor Master,
-Beneficiary Details, Validation Flags, Pre-Validation Flags, Confidence Scores,
-Processing Log.
-
-Key metadata columns in Investor Master (from the requirements doc):
-  Form Type, Fund Name, Fund Category, Investor Entity Number, Investor Full Name,
-  Instruction Date (signed), Processing Cut-off, Instruction Status.
-
-FAIL rows are red, WARNING rows are amber, PASS rows are green.
-
-Investor Master now writes two physical rows per record: the data row,
-followed immediately by a shaded/italic confidence sub-row showing the
-extraction confidence for each field directly beneath its cell.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -114,10 +98,6 @@ _INVESTOR_MASTER_PRIORITY_COLS = [
     "account_type",
 ]
 
-
-# Column order for the Consolidated Investor Profile sheet - one row per
-# batch/person, merging person-level fields picked up from any document in
-# their batch (see app.services.consolidator).
 _CONSOLIDATED_PROFILE_PRIORITY_COLS = [
     "person_key",
     "document_count",
@@ -182,21 +162,6 @@ def build_single_document_workbook(
     log_entry: ProcessingLogEntry,
     prevalidation_flags: list[PreValidationFlag] | None = None,
 ) -> Workbook:
-    """
-    Builds a small, single-document workbook — NOT the multi-sheet batch
-    report. One workbook per PDF, meant to sit right next to that PDF in
-    its filed output folder (see app.core.pipeline._validate_and_file),
-    so opening the folder shows a document and its own report side by
-    side, with no cross-document/batch data mixed in.
-
-    Two sheets:
-      "Document"   — metadata (filename, form type, entity/name, status)
-                     plus every extracted field with its value and
-                     per-field confidence, colour-coded like the batch
-                     report's Investor Master rows.
-      "Validation" — this document's own validation + pre-validation
-                     flag results (skipped if there are none).
-    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Document"
@@ -277,11 +242,6 @@ def build_single_document_workbook(
 
 
 class ExcelReportBuilder:
-    """
-    Accumulates results across a batch run, then writes the consolidated workbook once.
-    Call add_form(...) per processed document, then save().
-    """
-
     def __init__(self) -> None:
         self._investor_rows: list[dict] = []
         self._investor_field_values: list[dict] = []  # parallel per-field FieldValue for each investor row
@@ -294,14 +254,6 @@ class ExcelReportBuilder:
         self._confidence_rows: list[dict] = []
 
     def merge_from(self, other: "ExcelReportBuilder") -> None:
-        """
-        Copies every row `other` has accumulated into this builder - used
-        to build one combined ALL-PEOPLE workbook alongside each person's
-        own per-person workbook, from the same already-completed
-        extraction/validation results, without re-running the pipeline
-        (and therefore without a second, possibly-different set of LLM
-        calls) a second time just to populate a second report.
-        """
         self._investor_rows.extend(other._investor_rows)
         self._investor_field_values.extend(other._investor_field_values)
         self._beneficiary_rows.extend(other._beneficiary_rows)
@@ -319,11 +271,6 @@ class ExcelReportBuilder:
         log_entry: ProcessingLogEntry,
         prevalidation_flags: list[PreValidationFlag] | None = None,
     ) -> None:
-        # Individual-document views (this row, the confidence sub-row below
-        # it, and the Confidence Scores sheet) show only what THIS document
-        # itself contained - never a value copied in from a sibling document
-        # by app.services.consolidator.backfill_from_profile. That merged
-        # view belongs on the "Consolidated Investor Profile" sheet only.
         own_fields = extraction.own_fields()
 
         flat = {fid: fv.value for fid, fv in own_fields.items()}
@@ -331,10 +278,6 @@ class ExcelReportBuilder:
         flat["form_code"] = extraction.form_code
         flat["entity_number"] = validation.entity_number
         flat["overall_validation_status"] = validation.overall_status.value
-        # Workflow/audit metadata (Metadata Fields for Filing table) lives on
-        # the ProcessingLogEntry since it's determined at filing time, but the
-        # client expects to see it alongside the extracted data in Investor
-        # Master too, not buried only in the Processing Log sheet.
         flat["instruction_status"] = log_entry.instruction_status
         flat["rejection_reason"] = log_entry.rejection_reason
         flat["channel"] = log_entry.channel
@@ -372,9 +315,6 @@ class ExcelReportBuilder:
 
         self._log_entries.append(log_entry)
 
-        # Section 8: Pre-validation Flags (rejection-risk signals) — one
-        # row per applicable flag, triggered or not, so Ops sees a full
-        # checklist rather than only exceptions.
         for pf in (prevalidation_flags or []):
             self._prevalidation_rows.append((
                 {
@@ -388,11 +328,6 @@ class ExcelReportBuilder:
                 },
                 pf.triggered,
             ))
-
-        # Section 7: Confidence Scores column group — per-field extraction
-        # confidence, most useful on handwritten/low-quality scans. Own
-        # fields only (see own_fields above) - a backfilled value has no
-        # extraction confidence of its own to report here.
         for fid, fv in own_fields.items():
             self._confidence_rows.append({
                 "entity_number": validation.entity_number,
@@ -411,13 +346,6 @@ class ExcelReportBuilder:
         person_key: str,
         source_files: list[str],
     ) -> None:
-        """
-        Records one row for the "Consolidated Investor Profile" sheet: the
-        merged person-level fields (entity_number, full_name, contact
-        details, banking details, etc.) picked up from ACROSS every
-        document in this person's batch — not just whichever single form
-        happened to have that field filled in. One call per batch/person.
-        """
         flat = {fid: fv.value for fid, fv in profile.items()}
         flat["person_key"] = person_key
         flat["document_count"] = len(source_files)
@@ -447,13 +375,6 @@ class ExcelReportBuilder:
         return output_path
 
     def _write_consolidated_profile(self, wb: Workbook) -> None:
-        """
-        One row per batch/person — the merged view an Ops reviewer actually
-        wants: "who is this, and what do we know about them from everything
-        they handed in", rather than having to cross-reference 4 separate
-        Investor Master rows to piece together one person's contact and
-        banking details.
-        """
         ws = wb.create_sheet("Consolidated Investor Profile", 0)
         if not self._consolidated_rows:
             _write_header(ws, ["No data"])
@@ -478,14 +399,6 @@ class ExcelReportBuilder:
         _autosize(ws, headers)
 
     def _write_investor_master(self, wb: Workbook) -> None:
-        """
-        Each record occupies two physical rows: the data row, followed
-        immediately by a shaded/italic sub-row showing the extraction
-        confidence for each field in the cell directly below it. Columns
-        with no confidence value (derived/metadata columns like
-        'instruction_status', 'fund_category', etc.) are left blank in the
-        sub-row rather than showing a misleading 0 or N/A.
-        """
         ws = wb.create_sheet("Investor Master")
         if not self._investor_rows:
             _write_header(ws, ["No data"])
@@ -514,9 +427,6 @@ class ExcelReportBuilder:
                     for col_idx in range(1, len(headers) + 1):
                         ws.cell(row=data_row_idx, column=col_idx).fill = fill
 
-            # Confidence/provenance sub-row directly beneath the data row.
-            # Columns with no FieldValue (derived/metadata columns like
-            # 'instruction_status', 'fund_category', etc.) are left blank.
             own_source_file = row.get("source_file")
             conf_values = [_format_detail(field_values.get(h), own_source_file) for h in headers]
             ws.append(conf_values)
@@ -551,9 +461,6 @@ class ExcelReportBuilder:
         _autosize(ws, headers)
 
     def _write_prevalidation_flags(self, wb: Workbook) -> None:
-        """Section 8: one row per applicable flag per document (full
-        checklist, not just exceptions). Triggered rows are colour-coded by
-        rejection risk so Ops can triage High first."""
         ws = wb.create_sheet("Pre-Validation Flags")
         headers = ["entity_number", "source_file", "form_code", "flag", "rejection_risk", "triggered", "reason"]
         _write_header(ws, headers)
@@ -571,10 +478,6 @@ class ExcelReportBuilder:
         _autosize(ws, headers)
 
     def _write_confidence_scores(self, wb: Workbook) -> None:
-        """Section 7: Confidence Scores column group — per-field extraction
-        confidence. Low-confidence fields (below the validation-rules
-        'medium' threshold) are highlighted amber/red for reviewer attention,
-        especially relevant for handwritten forms."""
         ws = wb.create_sheet("Confidence Scores")
         headers = ["entity_number", "source_file", "form_code", "field", "value", "confidence", "source", "detail"]
         _write_header(ws, headers)

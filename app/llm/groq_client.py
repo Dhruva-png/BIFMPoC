@@ -1,30 +1,3 @@
-"""
-Groq backend - free, no-credit-card-required cloud API. This is the app's
-LLM backend: no local GPU, no model download.
-
-Setup (one-time):
-  1. Go to https://console.groq.com/keys (sign up with email or Google
-     account - no card required).
-  2. Create an API key.
-  3. Set it as an environment variable before launching the app:
-       macOS/Linux:  export GROQ_API_KEY="your-key-here"
-       Windows:      set GROQ_API_KEY=your-key-here
-     (or put GROQ_API_KEY=your-key-here in a .env file - see .env.example)
-
-Free tier limits (subject to Groq changing them, check the console
-dashboard): the vision model used here typically allows on the order of
-~15-30 requests/minute and several thousand/day at no cost - comfortably
-covers POC-scale batches (a handful of forms at a time, a few pages each).
-Rate limits apply at the organization level (adding more keys won't raise
-them). If you outgrow it, add billing on the Groq console.
-
-Uses Groq's OpenAI-compatible /chat/completions endpoint directly via
-`requests` (no extra SDK dependency needed).
-
-Exposes ask_text, ask_vision, parse_json_response, check_connection and
-LLMResponse - business logic imports these via app.llm.router rather than
-calling this module directly.
-"""
 from __future__ import annotations
 
 import base64
@@ -51,26 +24,6 @@ class GroqError(Exception):
 
 
 class _TpmLimiter:
-    """
-    Thread-safe tokens-per-minute limiter.
-
-    The pipeline runs several documents concurrently (settings.max_workers),
-    each of which needs a Groq call. Without this, every worker checks
-    "am I under the limit?" independently and several can pass that check
-    in the same instant, all fire, and collectively blow through the
-    account's real TPM budget - exactly what happened in the DEBIT form
-    failure: three overlapping calls pushed usage from 29,321 to a
-    requested 32,575 against a 30,000 cap, and the 3rd retry attempt still
-    landed inside the same crowded window and failed outright.
-
-    This limiter tracks a sliding 60s window of *estimated* token spend
-    and blocks a caller until there's genuinely enough budget left, so
-    workers queue up cleanly instead of racing each other into a 429.
-    It's a best-effort estimate (exact token counts aren't known until the
-    response comes back), which is why settings.groq.tpm_limit is set
-    below the account's real cap - that gap absorbs the estimation error.
-    """
-
     def __init__(self, tpm_limit: int, window_seconds: float = 60.0) -> None:
         self._tpm_limit = max(1, tpm_limit)
         self._window = window_seconds
@@ -117,13 +70,6 @@ _tpm_limiter = _TpmLimiter(settings.groq.tpm_limit)
 
 
 def _estimate_tokens(body: dict) -> int:
-    """
-    Rough pre-flight estimate used only to reserve TPM budget before we know
-    the real usage. Text: ~4 chars/token. Images: Groq's vision models tile
-    and tokenize images independently of file size, so a flat conservative
-    per-image estimate is used rather than trying to derive it from base64
-    length (which correlates poorly with token cost).
-    """
     total = int(body.get("max_completion_tokens", 0) or 0)
     for message in body.get("messages", []):
         content = message.get("content", "")

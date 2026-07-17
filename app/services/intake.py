@@ -1,15 +1,3 @@
-"""
-Module 0: Intake — pulls instruction-form PDFs in from SharePoint or an
-IMAP email inbox before handing them to the existing render/classify/
-extract pipeline.
-
-This is the automation described in Section 4 ("When a form lands on
-SharePoint, the system should automatically read it...") plus the email
-leg of Section 3 Step 1 ("submits a UT instruction form via email"). Both
-sources are optional and independently configured (config.settings) — if
-neither is set up, the UI's existing "Upload files" / "Use intake folder"
-modes are unaffected.
-"""
 from __future__ import annotations
 
 from pathlib import Path
