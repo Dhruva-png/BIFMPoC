@@ -46,14 +46,17 @@ hand-maintained by the Sales/Contact Center team, per Section 4 Output 5:
 Query Register format shared by BIFM ... reducing manual entry by the
 Sales/Contact Center team and keeping the recon counts current."
 
-A "query" line is logged for:
-  - Any instruction that came back REJECTED from validation (Section 3,
-    Step 5's rejection flow) - e.g. wrong banking details.
-  - Any triggered pre-validation flag (Section 3, Step 2's missing/
-    incomplete documentation flow, plus Section 8's other rejection-risk
-    signals), whether or not the instruction ultimately validated PASS/
-    WARNING - a triggered flag is itself something Sales needs to follow
-    up with the client about.
+ONE query line is logged per instruction that either came back REJECTED
+from validation (Section 3, Step 5's rejection flow) or raised at least
+one triggered pre-validation flag (Section 3, Step 2 / Section 8) - the
+No. column counts instructions, exactly like BIFM's own register. Within
+that row, content goes where BIFM's own entries put it:
+  - Query Description describes the INSTRUCTION, in their shorthand -
+    "P25,000 MMF", "Debit order cancellation", "All documents provided" -
+    built from the extracted amounts/fund/sub-type by
+    _build_instruction_description below.
+  - Sales Comments To Ops carries the problem(s): the rejection reason
+    plus every triggered flag, "; "-joined.
 Clean straight-through instructions with no rejection and no triggered
 flags don't get a Query Log row at all - only the Recon counts move.
 
@@ -66,6 +69,7 @@ picklist BIFM's file uses.
 """
 from __future__ import annotations
 
+import re
 import threading
 from datetime import date, datetime
 from pathlib import Path
@@ -76,6 +80,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.models.schemas import ExtractionResult, PreValidationFlag, ProcessingLogEntry, ValidationReport
+from app.utils.config_loader import get_fund_info
 from app.utils.logger import get_logger
 from config.settings import settings
 
@@ -243,6 +248,137 @@ def _map_enquiry_type(form_code: str) -> str:
     return _FORM_CODE_TO_ENQUIRY_TYPE.get(form_code, "General Enquiry")
 
 
+# ---------------------------------------------------------------------------
+# Query Description - written the way BIFM's own register writes it
+# ---------------------------------------------------------------------------
+# In BIFM's file the Query Description column describes the INSTRUCTION
+# itself, in shorthand - "P25,000 MMF & P5,000 BPF", "Switch P100,000 from
+# MMF to BPF", "Debit order cancellation", "All documents provided" - not
+# the problem with it. The problem (rejection reason, triggered flags) goes
+# to Sales Comments To Ops, which is exactly the sales-to-operations
+# channel that column exists for.
+
+_FORM_DESCRIPTION_FALLBACK = {
+    "APPFORM": "New business application",
+    "ADD": "Additional investment",
+    "DIS": "Withdrawal",
+    "DIS_GSG": "Withdrawal (GSGF)",
+    "DEBIT": "Debit order instruction",
+    "STATIC": "Change of investor details",
+    "SWITCH": "Switch instruction",
+    "KYC": "KYC documents",
+}
+
+def _fund_abbrev(fund_name) -> str:
+    """BIFM's own shorthand for a fund ("MMF", "BPF", "GSGF"), from the
+    abbrev field in config/form_types.json. Unknown/blank -> ""."""
+    if not fund_name:
+        return ""
+    info = get_fund_info(str(fund_name))
+    if info:
+        return str(info.get("abbrev") or info["name"])
+    return ""
+
+
+def _fmt_amount(value) -> str:
+    """-> "P25,000" (BIFM's register style), or "" if not a usable number."""
+    if value in (None, ""):
+        return ""
+    cleaned = re.sub(r"[^\d.]", "", str(value))
+    try:
+        number = float(cleaned)
+    except ValueError:
+        return ""
+    if number <= 0:
+        return ""
+    if number == int(number):
+        return f"P{int(number):,}"
+    return f"P{number:,.2f}"
+
+
+def _fmt_percent(value) -> str:
+    if value in (None, ""):
+        return ""
+    cleaned = re.sub(r"[^\d.]", "", str(value))
+    try:
+        number = float(cleaned)
+    except ValueError:
+        return ""
+    return f"{number:g}%" if number > 0 else ""
+
+
+def _join(*parts: str) -> str:
+    return " ".join(p for p in parts if p)
+
+
+def _build_instruction_description(extraction: ExtractionResult) -> str:
+    """Instruction shorthand for the Query Description column, in the same
+    style as BIFM's own register entries. Falls back to a plain-English
+    instruction label when amounts/funds weren't extracted - never to the
+    validation problem, which belongs in Sales Comments To Ops."""
+    code = extraction.form_code
+    fund = _fund_abbrev(extraction.field_value("fund_name"))
+
+    def amount(field_id: str) -> str:
+        return _fmt_amount(extraction.field_value(field_id))
+
+    description = ""
+    if code in ("DIS", "DIS_GSG"):
+        mode = str(extraction.field_value("instruction_mode") or "")
+        if "Full" in mode:
+            description = _join("Full closure", fund)
+        else:
+            core = amount("disinvestment_amount") or _fmt_percent(
+                extraction.field_value("disinvestment_percentage"))
+            description = _join(core, fund) if core else ""
+    elif code == "ADD":
+        core = amount("lump_sum_deposit_amount") or amount("lump_sum_debit_amount")
+        description = _join(core, fund) if core else ""
+    elif code == "DEBIT":
+        sub = str(extraction.field_value("sub_instruction_type") or "")
+        debit_amount = amount("new_debit_amount") or amount("change_amount")
+        if sub == "Cancel":
+            description = _join("Debit order cancellation", fund)
+        elif sub == "Change":
+            description = _join("Debit order change", debit_amount, fund)
+        elif sub == "New":
+            description = _join("New debit order", debit_amount, fund)
+        elif debit_amount or fund:
+            description = _join("Debit order", debit_amount, fund)
+    elif code == "STATIC":
+        sub = extraction.field_value("static_sub_type") or extraction.field_value("change_type")
+        description = str(sub) if sub else ""
+    elif code == "KYC":
+        flag = str(extraction.field_value("kyc_completeness_flag") or "")
+        if flag.startswith("Complete"):
+            description = "All documents provided"
+        elif flag:
+            description = flag
+    elif code == "APPFORM":
+        lump = amount("lump_sum_deposit_amount") or amount("lump_sum_debit_amount")
+        monthly = amount("monthly_debit_order_amount")
+        pieces = []
+        if lump:
+            pieces.append(_join(lump, fund))
+        if monthly:
+            pieces.append(_join(f"{monthly}/month debit order", "" if lump else fund))
+        if pieces:
+            description = "New business - " + " & ".join(pieces)
+
+    return description or _FORM_DESCRIPTION_FALLBACK.get(code, "Instruction")
+
+
+def _highest_risk(is_rejected: bool, flags: list[PreValidationFlag]) -> str:
+    """One risk rating for the row: a rejection or any High flag makes it
+    High; else Medium if any flag says so; else the first flag's own label."""
+    risks = [str(f.rejection_risk) for f in flags]
+    if is_rejected or any(r.lower().startswith("high") for r in risks):
+        return "High"
+    if any(r.lower().startswith("medium") for r in risks):
+        return "Medium"
+    return risks[0] if risks else ""
+
+
 class QueryRegisterBuilder:
     """
     Accumulates queried/rejected/incomplete instructions across a batch
@@ -309,35 +445,37 @@ class QueryRegisterBuilder:
             or extraction.field_value("entity_number")
             or "Unknown"
         )
-        today = date.today().isoformat()
-        enquiry_type = _map_enquiry_type(extraction.form_code)
 
+        # ONE row per queried instruction, exactly like BIFM's register
+        # (their No. column counts instructions, not problems). The Query
+        # Description column describes the instruction the way their own
+        # entries do - "P25,000 MMF", "Debit order cancellation" - and
+        # every issue (the rejection reason plus each triggered flag) is
+        # collected into Sales Comments To Ops.
+        issues: list[str] = []
         if is_rejected:
-            self._add_row(
-                enquiry_type=enquiry_type,
-                client_name=str(full_name),
-                description=log_entry.rejection_reason or "Validation failed",
-                resolution_progress="Pending correction from client",
-                rejection_risk="High",
-                today=today,
-                log_entry=log_entry,
-            )
-
+            issues.append(log_entry.rejection_reason or "Validation failed")
         for flag in triggered:
-            self._add_row(
-                enquiry_type=enquiry_type,
-                client_name=str(full_name),
-                description=f"{flag.label}: {flag.reason}" if flag.reason else flag.label,
-                resolution_progress="Pending follow-up with client",
-                rejection_risk=flag.rejection_risk,
-                today=today,
-                log_entry=log_entry,
-            )
+            issues.append(f"{flag.label}: {flag.reason}" if flag.reason else flag.label)
+
+        self._add_row(
+            enquiry_type=_map_enquiry_type(extraction.form_code),
+            client_name=str(full_name),
+            description=_build_instruction_description(extraction),
+            sales_comments="; ".join(issues),
+            resolution_progress=(
+                "Pending correction from client" if is_rejected
+                else "Pending follow-up with client"
+            ),
+            rejection_risk=_highest_risk(is_rejected, triggered),
+            today=date.today().isoformat(),
+            log_entry=log_entry,
+        )
 
     def _add_row(
         self, *, enquiry_type: str, client_name: str, description: str,
-        resolution_progress: str, rejection_risk: str, today: str,
-        log_entry: ProcessingLogEntry,
+        sales_comments: str, resolution_progress: str, rejection_risk: str,
+        today: str, log_entry: ProcessingLogEntry,
     ) -> None:
         self._counter += 1
         row = {
@@ -354,7 +492,7 @@ class QueryRegisterBuilder:
             "Date Submitted to Ops / Resolved": "",
             "Date Captured": log_entry.upload_date,
             "Status": "Open",
-            "Sales Comments To Ops": "",
+            "Sales Comments To Ops": sales_comments,
             "Ops Resolution": "",
             "Ops Resolution Date": "",
         }
