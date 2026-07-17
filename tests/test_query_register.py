@@ -73,7 +73,11 @@ def test_rejected_instruction_logged():
     # Enquiry type now comes from the form code (DIS -> Withdrawal instruction),
     # matching the updated template's instruction-oriented picklist.
     assert row["Type of Enquiry"] == "Instruction-Withdrawal"
-    assert "wrong banking details" in row["Query Description"]
+    # The problem goes to Sales Comments To Ops; Query Description describes
+    # the instruction itself (falls back to a plain label here since no
+    # amount/fund was extracted).
+    assert "wrong banking details" in row["Sales Comments To Ops"]
+    assert row["Query Description"] == "Withdrawal"
     assert risk == "High"
     assert qr._recon_counts["Withdrawals"]["Pending"] == 1
 
@@ -92,8 +96,9 @@ def test_triggered_flag_logged_even_when_captured():
     assert len(qr._query_rows) == 1
     row, risk = qr._query_rows[0]
     # STATIC form -> "Instruction-Static" enquiry tag; the flag detail lives
-    # in the free-text Query Description column, not the enquiry category.
+    # in Sales Comments To Ops, not the Query Description.
     assert row["Type of Enquiry"] == "Instruction-Static"
+    assert "KYC companion document missing" in row["Sales Comments To Ops"]
     assert risk == "Medium"
 
 
@@ -161,6 +166,77 @@ def test_dropdown_validations_are_stored_without_a_leading_equals(tmp_path: Path
         assert dv.type == "list"
         assert not str(dv.formula1).startswith("="), f"formula1 {dv.formula1!r} would risk Excel stripping it"
         assert str(dv.formula1).startswith("$")
+
+
+def _make_rich_extraction(form_code: str, **field_values) -> ExtractionResult:
+    fields = {
+        fid: FieldValue(field_id=fid, value=value, confidence=90.0)
+        for fid, value in field_values.items()
+    }
+    return ExtractionResult(source_file="test.pdf", form_code=form_code, fields=fields)
+
+
+def test_description_is_amount_plus_fund_in_bifm_style():
+    # BIFM's own register writes "P25,000 MMF" - amount + fund shorthand -
+    # in Query Description, not the validation problem.
+    qr = QueryRegisterBuilder()
+    extraction = _make_rich_extraction(
+        "ADD", full_name="Theo Mabe",
+        lump_sum_deposit_amount="25000",
+        fund_name="BIFM Pula Money Market Fund",
+    )
+    validation = ValidationReport(source_file="test.pdf", entity_number="E1", results=[])
+    log_entry = _make_log_entry("Rejected", rejection_reason="missing signature")
+    qr.add_form(extraction, validation, log_entry, prevalidation_flags=[])
+
+    row, _ = qr._query_rows[0]
+    assert row["Query Description"] == "P25,000 MMF"
+    assert "missing signature" in row["Sales Comments To Ops"]
+
+
+def test_withdrawal_and_debit_descriptions():
+    qr = QueryRegisterBuilder()
+    log_entry = _make_log_entry("Rejected", rejection_reason="x")
+
+    dis = _make_rich_extraction(
+        "DIS", full_name="Nnelo", disinvestment_amount="1200",
+        fund_name="BIFM Pula Money Market Fund",
+    )
+    qr.add_form(dis, ValidationReport(source_file="t", entity_number="E", results=[]), log_entry, [])
+
+    debit = _make_rich_extraction(
+        "DEBIT", full_name="Onalenna", sub_instruction_type="Cancel",
+        fund_name="BIFM Balanced Prudential Fund",
+    )
+    qr.add_form(debit, ValidationReport(source_file="t", entity_number="E", results=[]), log_entry, [])
+
+    assert qr._query_rows[0][0]["Query Description"] == "P1,200 MMF"
+    assert qr._query_rows[1][0]["Query Description"] == "Debit order cancellation BPF"
+
+
+def test_one_row_per_instruction_with_all_issues_combined():
+    # A rejected instruction that ALSO raised flags gets ONE register row
+    # (BIFM's No. column counts instructions), with every problem collected
+    # into Sales Comments To Ops and the highest risk used for colouring.
+    qr = QueryRegisterBuilder()
+    extraction = _make_rich_extraction(
+        "ADD", full_name="Theo Mabe",
+        lump_sum_deposit_amount="5000", fund_name="BIFM Balanced Prudential Fund",
+    )
+    validation = ValidationReport(source_file="test.pdf", entity_number="E1", results=[])
+    log_entry = _make_log_entry("Rejected", rejection_reason="wrong banking details")
+    flag = PreValidationFlag(
+        flag_id="kyc_missing", label="KYC companion document missing",
+        triggered=True, rejection_risk="Medium", reason="No KYC form found in batch",
+    )
+    qr.add_form(extraction, validation, log_entry, prevalidation_flags=[flag])
+
+    assert len(qr._query_rows) == 1
+    row, risk = qr._query_rows[0]
+    assert row["Query Description"] == "P5,000 BPF"
+    assert "wrong banking details" in row["Sales Comments To Ops"]
+    assert "KYC companion document missing" in row["Sales Comments To Ops"]
+    assert risk == "High"
 
 
 def test_add_form_is_thread_safe_under_concurrent_batches():
