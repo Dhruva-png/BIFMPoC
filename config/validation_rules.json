@@ -74,6 +74,19 @@
       "logic": {"type": "exact_digits", "length": 9, "only_if_present": true}
     },
     {
+      "id": "occupation_type_minor_if_acting_on_behalf",
+      "applies_to": "occupation_type",
+      "description": "When Investor Type = Acting on Behalf of, the underlying investor is a minor, so Occupation Type is expected to be Minor Scholar or Student. Flagged (not failed) when it is anything else. APPFORM only.",
+      "logic": {
+        "type": "conditional_expected_value",
+        "condition_field": "account_type",
+        "condition_equals": "Acting on Behalf of",
+        "field": "occupation_type",
+        "expected_values": ["Minor Scholar", "Student"],
+        "status_if_mismatch": "WARNING"
+      }
+    },
+    {
       "id": "pref_sms_default",
       "applies_to": "pref_sms",
       "description": "SMS notification preference defaults to YES if blank. APPFORM only.",

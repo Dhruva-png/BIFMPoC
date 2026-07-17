@@ -2,29 +2,29 @@
 Module 6: Query Register Automation (Section 4, Output 5 / Section 7 of the
 understanding document).
 
-Produces a workbook matching BIFM's own Query Register Excel file EXACTLY,
-including a structural quirk that isn't obvious from just looking at it:
-five of the visible columns (Type of Enquiry, Logged Via, Registered by,
-Status, Investor Portal Request) each have a second, header-less column
-sitting next to them (D, H, J, Q, S respectively) that is NOT a data field
-- it's the dropdown picklist source for the real column, referenced by
-Excel's own "list" data validation. This module writes those lists once
-near the top and wires up matching dropdowns, exactly like BIFM's file.
+Produces a workbook matching BIFM's own updated Query Register Excel file
+EXACTLY, including a structural quirk that isn't obvious from just looking
+at it: four of the visible columns (Type of Enquiry, Logged Via,
+Registered by, Status) each have a second, header-less column sitting next
+to them (D, H, J, Q respectively) that is NOT a data field - it's the
+dropdown picklist source for the real column, referenced by Excel's own
+"list" data validation. This module writes those lists once near the top
+and wires up matching dropdowns, exactly like BIFM's file.
 
-Sheet 1 - Query Log (23 physical columns):
-  A No.                                  N Date Submitted to Ops / Resolved
-  B Date                                 O Date Captured
-  C Type of Enquiry   (dropdown)         P Status              (dropdown)
-  D   [picklist: enquiry types]          Q   [picklist: Open/Resolved]
-  E Client Name                          R Investor Portal Req (dropdown)
-  F Query Description                    S   [picklist: Yes/No/Pending/N/A]
-  G Logged Via        (dropdown)         T No. of Days Open
-  H   [picklist: logged-via channels]    U Sales Comments to Ops  \
-  I Registered by      (dropdown)        V Ops Resolution          } merged
-  J   [picklist: staff names]            W Ops Resolution Date    / "Operations
+Sheet 1 - Query Log (21 physical columns):
+  A No.                                  L Checked by
+  B Date                                 M Resolution Progress
+  C Type of Enquiry   (dropdown)         N Date Submitted to Ops / Resolved
+  D   [picklist: enquiry types]          O Date Captured
+  E Client Name                          P Status              (dropdown)
+  F Query Description                    Q   [picklist: Open/Resolved]
+  G Logged Via        (dropdown)         R No. of Days Open
+  H   [picklist: logged-via channels]    S Sales Comments to Ops  \
+  I Registered by      (dropdown)        T Ops Resolution          } merged
+  J   [picklist: staff names]            U Ops Resolution Date    / "Operations
   K Assigned to                                                     Use ONLY"
-  L Checked by                                                      banner,
-  M Resolution Progress                                             row 1
+                                                                    banner,
+                                                                    row 1
 
 Sheet 2 - Recon: daily/periodic reconciliation tracker (Received /
 Processed / Pending) by instruction type, columns B-E to match BIFM's own
@@ -113,20 +113,18 @@ _COLUMNS: list[tuple[str, str | None]] = [
     ("Date Captured", "Date Captured"),
     ("Status", "Status"),
     ("_status_list", None),
-    ("Investor Portal Request", "Investor Portal Request"),
-    ("_portal_request_list", None),
     ("No. of Days Open", "No. of Days Open"),
     ("Sales Comments to Ops", "Sales Comments to Ops"),
     ("Ops Resolution", "Ops Resolution"),
     ("Ops Resolution Date", "Ops Resolution Date"),
 ]
-_COL_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVW"
+_COL_LETTERS = "ABCDEFGHIJKLMNOPQRSTU"
 _COL_INDEX = {key: i + 1 for i, (key, _) in enumerate(_COLUMNS)}  # 1-indexed
 
 _COLUMN_WIDTHS = {
     "A": 7, "B": 12, "C": 30, "D": 26, "E": 26, "F": 38, "G": 15, "H": 24,
     "I": 14, "J": 18, "K": 18, "L": 15, "M": 30, "N": 14, "O": 14, "P": 12,
-    "Q": 14, "R": 20, "S": 24, "T": 13, "U": 28, "V": 32, "W": 22,
+    "Q": 14, "R": 20, "S": 28, "T": 32, "U": 22,
 }
 
 # ---------------------------------------------------------------------------
@@ -134,20 +132,21 @@ _COLUMN_WIDTHS = {
 # their respective columns), exactly matching BIFM's own file. These are
 # NOT per-row data - they're what the dropdown on the real column offers.
 # ---------------------------------------------------------------------------
+# Dropdown picklist values, taken verbatim (trailing whitespace trimmed) from
+# BIFM's updated Query Register template's D/H/J/Q helper columns.
 ENQUIRY_TYPE_OPTIONS = [
-    "Transaction status", "Rejected instruction", "Delayed processing",
-    "Balance/valuation enquiry", "Statement request", "Account details change",
-    "KYC/FICA query", "Documentation request", "Fund performance query",
-    "Product/fee query", "Complaint", "Portal/access issue",
-    "Income distribution query", "General enquiry",
+    "Instruction-Additional", "Instruction-Withdrawal", "Instruction-Debit Order",
+    "Instruction-Static", "Instruction-Switch", "New Business - Original",
+    "New Business - Copy", "KYC Submission", "Product Enquiry", "General Enquiry",
+    "Investor Portal", "Statement/Balance request", "Complaint", "Smart Invest",
+    "Instruction-Update Investor details",
 ]
-LOGGED_VIA_OPTIONS = ["Email", "Telephone", "Walk-in", "Investor Portal", "Fax", "Letter"]
+LOGGED_VIA_OPTIONS = ["Email", "Walk-in", "Telephone", "Whatsapp", "Other"]
 REGISTERED_BY_OPTIONS = [
-    "Thato Kgasa", "Gorata Nkele", "Kesego", "Onkemetse",
-    "Contact Center Agent 1", "Contact Center Agent 2",
+    "Comfort", "Tefo", "Theo", "Onalenna", "Gaolatlhe", "Goiponyeone",
+    "Brian", "Naomi", "Amolemo", "Nnnelo", "Kago",
 ]
 STATUS_OPTIONS = ["Open", "Resolved"]
-PORTAL_REQUEST_OPTIONS = ["Yes", "No", "Pending", "N/A"]
 
 RECON_HEADERS = ["Instruction Type", "Received", "Processed", "Pending"]
 
@@ -184,25 +183,29 @@ def recon_type_for_form_code(form_code: str) -> str | None:
     return _FORM_CODE_TO_RECON_TYPE.get(form_code)
 
 
-def _map_enquiry_type(is_rejected: bool, flag_label: str = "", flag_reason: str = "") -> str:
-    """Maps our internal rejection/flag signal onto BIFM's actual 14-item
-    Type of Enquiry picklist, instead of inventing new category labels
-    that wouldn't appear in their dropdown. Falls back to "General
-    enquiry" (itself a valid list option) when nothing more specific
-    matches - the free-text Query Description column still carries the
-    full detail regardless of which category tag is picked here."""
-    if is_rejected:
-        return "Rejected instruction"
-    text = f"{flag_label} {flag_reason}".lower()
-    if "kyc" in text or "fica" in text:
-        return "KYC/FICA query"
-    if "missing" in text or "companion" in text or "document" in text:
-        return "Documentation request"
-    return "General enquiry"
+# The updated Query Register's "Type of Enquiry" picklist is
+# instruction-oriented (Instruction-Additional, New Business - Original,
+# KYC Submission, ...) rather than the old rejection/query-category list, so
+# the enquiry tag is chosen from the document's form type. The free-text
+# Query Description column still carries the full rejection/flag detail
+# regardless of which category tag is picked here.
+_FORM_CODE_TO_ENQUIRY_TYPE: dict[str, str] = {
+    "APPFORM": "New Business - Original",
+    "ADD": "Instruction-Additional",
+    "DIS": "Instruction-Withdrawal",
+    "DIS_GSG": "Instruction-Withdrawal",
+    "DEBIT": "Instruction-Debit Order",
+    "STATIC": "Instruction-Static",
+    "SWITCH": "Instruction-Switch",
+    "KYC": "KYC Submission",
+}
 
 
-def _portal_request_value(channel: str) -> str:
-    return "Yes" if str(channel).strip().lower() == "investor portal" else "No"
+def _map_enquiry_type(form_code: str) -> str:
+    """Maps the document's form code onto BIFM's updated Type of Enquiry
+    picklist. Falls back to "General Enquiry" (itself a valid list option)
+    for any code without a specific instruction category."""
+    return _FORM_CODE_TO_ENQUIRY_TYPE.get(form_code, "General Enquiry")
 
 
 class QueryRegisterBuilder:
@@ -272,36 +275,34 @@ class QueryRegisterBuilder:
             or "Unknown"
         )
         today = date.today().isoformat()
-        portal_request = _portal_request_value(log_entry.channel)
+        enquiry_type = _map_enquiry_type(extraction.form_code)
 
         if is_rejected:
             self._add_row(
-                enquiry_type=_map_enquiry_type(is_rejected=True),
+                enquiry_type=enquiry_type,
                 client_name=str(full_name),
                 description=log_entry.rejection_reason or "Validation failed",
                 resolution_progress="Pending correction from client",
                 rejection_risk="High",
                 today=today,
                 log_entry=log_entry,
-                portal_request=portal_request,
             )
 
         for flag in triggered:
             self._add_row(
-                enquiry_type=_map_enquiry_type(False, flag.label, flag.reason),
+                enquiry_type=enquiry_type,
                 client_name=str(full_name),
                 description=f"{flag.label}: {flag.reason}" if flag.reason else flag.label,
                 resolution_progress="Pending follow-up with client",
                 rejection_risk=flag.rejection_risk,
                 today=today,
                 log_entry=log_entry,
-                portal_request=portal_request,
             )
 
     def _add_row(
         self, *, enquiry_type: str, client_name: str, description: str,
         resolution_progress: str, rejection_risk: str, today: str,
-        log_entry: ProcessingLogEntry, portal_request: str,
+        log_entry: ProcessingLogEntry,
     ) -> None:
         self._counter += 1
         row = {
@@ -318,7 +319,6 @@ class QueryRegisterBuilder:
             "Date Submitted to Ops / Resolved": "",
             "Date Captured": log_entry.upload_date,
             "Status": "Open",
-            "Investor Portal Request": portal_request,
             "No. of Days Open": 0,
             "Sales Comments to Ops": "",
             "Ops Resolution": "",
@@ -373,7 +373,6 @@ class QueryRegisterBuilder:
         self._write_picklist(ws, "H", LOGGED_VIA_OPTIONS)
         self._write_picklist(ws, "J", REGISTERED_BY_OPTIONS)
         self._write_picklist(ws, "Q", STATUS_OPTIONS)
-        self._write_picklist(ws, "S", PORTAL_REQUEST_OPTIONS)
 
         # Data rows, starting row 3.
         row_idx = 3
@@ -405,15 +404,14 @@ class QueryRegisterBuilder:
         self._add_dropdown(ws, "G", f"$H$3:$H${2 + len(LOGGED_VIA_OPTIONS)}", 3, validation_last_row)
         self._add_dropdown(ws, "I", f"$J$3:$J${2 + len(REGISTERED_BY_OPTIONS)}", 3, validation_last_row)
         self._add_dropdown(ws, "P", f"$Q$3:$Q${2 + len(STATUS_OPTIONS)}", 3, validation_last_row)
-        self._add_dropdown(ws, "R", f"$S$3:$S${2 + len(PORTAL_REQUEST_OPTIONS)}", 3, validation_last_row)
 
         for letter, width in _COLUMN_WIDTHS.items():
             ws.column_dimensions[letter].width = width
 
-        # Matches BIFM's own file: header rows + the first 20 columns
-        # (No. through No. of Days Open) stay visible while scrolling
-        # into the "Operations Use ONLY" section.
-        ws.freeze_panes = "U3"
+        # Matches BIFM's updated file: the header rows plus the first few
+        # identifying columns (No. through Client Name) stay visible while
+        # scrolling right into the "Operations Use ONLY" section.
+        ws.freeze_panes = "F3"
 
         if not self._query_rows:
             logger.info("Query Log: no queries, rejections, or missing-documentation flags this run.")

@@ -69,7 +69,9 @@ def test_rejected_instruction_logged():
 
     assert len(qr._query_rows) == 1
     row, risk = qr._query_rows[0]
-    assert row["Type of Enquiry"] == "Rejected Instruction"
+    # Enquiry type now comes from the form code (DIS -> Withdrawal instruction),
+    # matching the updated template's instruction-oriented picklist.
+    assert row["Type of Enquiry"] == "Instruction-Withdrawal"
     assert "wrong banking details" in row["Query Description"]
     assert risk == "High"
     assert qr._recon_counts["Withdrawals"]["Pending"] == 1
@@ -88,7 +90,9 @@ def test_triggered_flag_logged_even_when_captured():
 
     assert len(qr._query_rows) == 1
     row, risk = qr._query_rows[0]
-    assert row["Type of Enquiry"] == "Incomplete / Missing Documentation"
+    # STATIC form -> "Instruction-Static" enquiry tag; the flag detail lives
+    # in the free-text Query Description column, not the enquiry category.
+    assert row["Type of Enquiry"] == "Instruction-Static"
     assert risk == "Medium"
 
 
@@ -106,17 +110,21 @@ def test_save_produces_two_sheets(tmp_path: Path):
     assert wb.sheetnames == ["Query Log", "Recon"]
 
     query_log = wb["Query Log"]
-    assert query_log.cell(row=1, column=1).value == "No."
-    assert query_log.cell(row=2, column=3).value == "Rejected Instruction"
+    # Row 1 is the merged "Operations Use ONLY" banner; column headers are
+    # on row 2, matching BIFM's own file.
+    assert query_log.cell(row=2, column=1).value == "No."
+    assert query_log.cell(row=2, column=3).value == "Type of Enquiry"
+    # The single rejected ADD row carries the form-code enquiry tag.
+    assert query_log.cell(row=3, column=3).value == "Instruction-Additional"
 
     recon = wb["Recon"]
-    assert recon.cell(row=1, column=1).value == "Instruction Type"
-    # Additional Investments row should show 1 Received / 1 Pending.
-    header = [recon.cell(row=1, column=c).value for c in range(1, 5)]
+    # Recon starts one column in (B), with headers on row 2.
+    assert recon.cell(row=2, column=2).value == "Instruction Type"
+    header = [recon.cell(row=2, column=c).value for c in range(2, 6)]
     idx = header.index("Received")
-    for r in range(2, recon.max_row):
-        if recon.cell(row=r, column=1).value == "Additional Investments":
-            assert recon.cell(row=r, column=idx + 1).value == 1
+    for r in range(3, recon.max_row + 1):
+        if recon.cell(row=r, column=2).value == "Additional Investments":
+            assert recon.cell(row=r, column=2 + idx).value == 1
 
 
 def test_add_form_is_thread_safe_under_concurrent_batches():

@@ -141,13 +141,13 @@
     {
       "id": "acting_on_behalf_form_c_absent",
       "label": "Acting on Behalf \u2014 Form C absent",
-      "trigger_condition": "Account type 'Acting on Behalf' or 'Joint' but Form C (minor/joint annex) not present",
+      "trigger_condition": "Investor type 'Acting on Behalf', 'Joint' or 'Motshelo' but Form C (act-on-behalf / joint / motshelo annex) not present. Joint and Motshelo accounts expect more than one Form C.",
       "rejection_risk": "High",
       "applies_to": ["APPFORM"],
       "logic": {
         "type": "conditional_companion_form",
         "condition_field": "account_type",
-        "condition_equals": ["Acting on Behalf of", "Joint"],
+        "condition_equals": ["Acting on Behalf of", "Joint", "Motshelo"],
         "companion_marker_fields": ["minor_full_name", "guardian_name", "guardian_id_number"]
       }
     },

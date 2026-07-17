@@ -46,7 +46,12 @@ from app.ocr.pdf_utils import render_pdf_to_images
 from app.services import classifier, filer
 from app.services.filer import flag_missing_documents
 from app.services.consolidator import backfill_from_profile, build_person_profile
-from app.services.extractor import GUARDIAN_PAGE_NUMBER, extract_form
+from app.services.extractor import (
+    BANKING_PAGE_NUMBER,
+    GUARDIAN_PAGE_NUMBER,
+    INVESTMENT_PAGE_NUMBER,
+    extract_form,
+)
 from app.services.report_generator import ExcelReportBuilder, build_single_document_workbook
 from app.services.query_register import QueryRegisterBuilder
 from app.utils.config_loader import load_validation_rules
@@ -222,14 +227,15 @@ def _extract_only(
 
         # Now that the form type is known, render exactly whatever else it
         # needs - page 2 for the standard forms (their cover page is page
-        # 1), page 10 for APPFORM's guardian/minor section, nothing more
-        # for KYC (its page 1 already IS the form). See extract_form's
-        # docstring for why over-rendering the rest of the document (e.g.
-        # pages 2-9 of a 10-page APPFORM) was wasted work.
+        # 1), page 3 (Investment Fund details) and page 10 (guardian/minor
+        # section) for APPFORM, nothing more for KYC (its page 1 already IS
+        # the form). See extract_form's docstring for why over-rendering the
+        # rest of the document (e.g. every page of a 16-page APPFORM) was
+        # wasted work.
         if form_code == "KYC":
             more_pages: list[int] = []
         elif form_code == "APPFORM":
-            more_pages = [GUARDIAN_PAGE_NUMBER]
+            more_pages = [INVESTMENT_PAGE_NUMBER, BANKING_PAGE_NUMBER, GUARDIAN_PAGE_NUMBER]
         else:
             more_pages = [2]
         if more_pages:

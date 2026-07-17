@@ -9,10 +9,10 @@ below which a human should double-check the field before it's relied on.
 
 Both numbers live here, in one place, so extraction, classification, and
 the report/UI layers all agree on what "confident" and "needs a recheck"
-mean. The multi-pass calibration constants below live here too for the
-same reason - app.services.extractor and app.utils.field_validators both
-need to agree on what "two reads agreed" or "only one pass saw this
-field" are actually worth.
+mean. The domain-constraint calibration constants below live here for the
+same reason - app.utils.field_repair decides WHETHER a value satisfies its
+known domain, and app.utils.field_validators needs to agree on what that
+verdict is worth.
 """
 
 from __future__ import annotations
@@ -20,14 +20,14 @@ from __future__ import annotations
 CONFIDENCE_CEILING = 98.0   # never display/report a value above this
 RECHECK_THRESHOLD = 90.0    # strictly below this -> recommend a manual recheck
 
-# --- Multi-pass self-consistency calibration (app.services.extractor) ---
-# Two independent reads agreeing is real evidence the value is right;
-# disagreeing is real evidence it might not be. These push the *reported*
-# confidence toward what was actually verified across passes, rather than
-# trusting whatever number the model itself printed for a single read.
-AGREEMENT_CONFIDENCE_BONUS = 12.0     # added when pass 1 & 2 agree
-DISAGREEMENT_CONFIDENCE_CAP = 55.0    # ceiling applied when they don't, pending tie-break pass
-SINGLE_PASS_CONFIDENCE_FACTOR = 0.9   # applied when only one pass extracted a value at all
+# --- Domain-constraint calibration (app.utils.field_repair) ---
+# A value checked against something we know for certain (an Omang is 9
+# digits; occupation is one of 6 listed options; the fund is one of 6 real
+# BIFM funds) is far stronger evidence than the model's opinion of its own
+# read. These push the *reported* confidence toward what was actually
+# verified against that domain.
+DOMAIN_REPAIRED_BONUS = 3.0      # was wrong but unambiguously fixable -> now provably legal
+DOMAIN_VIOLATION_PENALTY = 30.0  # violates a known constraint and couldn't be safely fixed
 
 
 def cap_confidence(raw: float) -> float:

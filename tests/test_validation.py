@@ -1,5 +1,5 @@
 """
-Tests for app.validation.engine - these run with zero Ollama dependency,
+Tests for app.validation.engine - these run with zero LLM dependency,
 since the validation engine is pure Python.
 """
 import sys

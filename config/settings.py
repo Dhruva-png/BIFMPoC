@@ -31,30 +31,11 @@ except ImportError:
 
 
 @dataclass
-class GeminiSettings:
-    """
-    Google Gemini free tier - the recommended default for laptops that can't
-    run an 8B vision model locally. gemini-2.0-flash's free tier (as of this
-    writing) is generous enough for POC-scale batches: ~15 requests/minute,
-    1,500 requests/day, no cost. Get a key at https://aistudio.google.com/apikey
-    (Google account, no card required) and set it as GEMINI_API_KEY.
-    """
-    api_key: str = os.environ.get("GEMINI_API_KEY", "")
-    text_model: str = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.0-flash")
-    vision_model: str = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.0-flash")
-    request_timeout_seconds: int = int(os.environ.get("GEMINI_REQUEST_TIMEOUT", "60"))
-    max_retries: int = 2
-    num_predict: int = int(os.environ.get("GEMINI_NUM_PREDICT", "800"))
-
-
-@dataclass
 class GroqSettings:
     """
-    Groq's free, no-credit-card cloud API - recommended fallback when
-    Google's Gemini free tier is unavailable for your account/region and
-    your machine can't run an 8B local vision model via Ollama at a
-    reasonable speed. Get a key at https://console.groq.com/keys (email or
-    Google sign-in, no card) and set it as GROQ_API_KEY.
+    Groq's free, no-credit-card cloud API - the LLM backend this app runs
+    on. Get a key at https://console.groq.com/keys (email or Google
+    sign-in, no card) and set it as GROQ_API_KEY.
     """
     api_key: str = os.environ.get("GROQ_API_KEY", "")
     text_model: str = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
@@ -75,34 +56,6 @@ class GroqSettings:
     # window and pushing 29,321 -> 32,575 used against a 30,000 limit.
     # Override with GROQ_TPM_LIMIT if your account has a different tier.
     tpm_limit: int = int(os.environ.get("GROQ_TPM_LIMIT", "27000"))
-
-
-@dataclass
-class OllamaSettings:
-    host: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    text_model: str = os.environ.get("OLLAMA_TEXT_MODEL", "llama3.2")
-    vision_model: str = os.environ.get("OLLAMA_VISION_MODEL", "qwen3-vl:8b-instruct")
-
-    # Raised from 180s — the 8B vision model can take 3-5 min on first call
-    # (cold model load) or on CPU-only hardware. 600s (10 min) ensures a slow
-    # machine doesn't fail a valid job; fast hardware finishes well under 60s.
-    # Override with: OLLAMA_REQUEST_TIMEOUT=300
-    request_timeout_seconds: int = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "600"))
-
-    # Retry once on transient failures (connection blip, brief overload).
-    # Don't retry more — a genuine timeout means the model is genuinely slow;
-    # retrying wastes time rather than fixing anything.
-    max_retries: int = 1
-
-    # Keep the model hot in VRAM/RAM for the whole batch + a generous buffer.
-    # Without this Ollama unloads after 5 min of idle, forcing a full reload
-    # on the next document — the single biggest source of per-doc slowness.
-    keep_alive: str = os.environ.get("OLLAMA_KEEP_ALIVE", "60m")
-
-    # Caps generated tokens per call. Field-extraction JSON is small (~300
-    # tokens); 800 gives headroom for verbose models without letting them
-    # "run on" for minutes producing unwanted prose.
-    num_predict: int = int(os.environ.get("OLLAMA_NUM_PREDICT", "800"))
 
 
 @dataclass
@@ -187,25 +140,13 @@ class PathSettings:
 
 @dataclass
 class AppSettings:
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "groq").lower()
-    gemini: GeminiSettings = field(default_factory=GeminiSettings)
     groq: GroqSettings = field(default_factory=GroqSettings)
-    ollama: OllamaSettings = field(default_factory=OllamaSettings)
     sharepoint: SharePointSettings = field(default_factory=SharePointSettings)
     imap: ImapSettings = field(default_factory=ImapSettings)
     paths: PathSettings = field(default_factory=PathSettings)
     pdf_render_dpi: int = int(os.environ.get("PDF_RENDER_DPI", "220"))
     ocr_enhance_images: bool = os.environ.get("OCR_ENHANCE_IMAGES", "true").lower() != "false"
     ocr_min_long_edge_px: int = int(os.environ.get("OCR_MIN_LONG_EDGE_PX", "1600"))
-    # Runs every page through 2 independent vision reads (enhanced + raw
-    # image) and cross-checks them, firing a focused 3rd tie-break pass
-    # only on fields where they disagree - see app.services.extractor's
-    # module docstring. Roughly doubles Groq API calls per document
-    # (triples only for disputed fields). Turn off with
-    # MULTI_PASS_EXTRACTION=false if you need to conserve TPM budget on
-    # a large batch, at the cost of the confidence-calibration accuracy
-    # improvement.
-    multi_pass_extraction: bool = os.environ.get("MULTI_PASS_EXTRACTION", "true").lower() != "false"
     # Used at TWO levels in app.core.pipeline.run_batch: up to this many
     # different PEOPLE's batches run concurrently, and within each of
     # those, up to this many of that person's own documents run

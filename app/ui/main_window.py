@@ -34,7 +34,7 @@ class BifmApp(tk.Tk):
         self.last_report_path: Path | None = None
 
         self._build_layout()
-        self._check_ollama_async()
+        self._check_llm_async()
 
     # ------------------------------------------------------------------ UI
     def _build_layout(self) -> None:
@@ -64,8 +64,8 @@ class BifmApp(tk.Tk):
         self.open_report_button = ttk.Button(actions, text="Open Last Report", command=self._open_report, state="disabled")
         self.open_report_button.pack(side="left", padx=8)
 
-        self.ollama_status_label = ttk.Label(actions, text=f"Checking {active_provider()} connection...", foreground="gray")
-        self.ollama_status_label.pack(side="right")
+        self.llm_status_label = ttk.Label(actions, text=f"Checking {active_provider()} connection...", foreground="gray")
+        self.llm_status_label.pack(side="right")
 
         ttk.Label(self, textvariable=self.status_var, foreground="blue").pack(fill="x", padx=10)
 
@@ -80,13 +80,13 @@ class BifmApp(tk.Tk):
         if chosen:
             self.intake_var.set(chosen)
 
-    def _check_ollama_async(self) -> None:
+    def _check_llm_async(self) -> None:
         def worker():
             ok = check_connection()
             provider = active_provider()
             text = f"{provider}: connected" if ok else f"{provider}: NOT reachable - see README setup"
             color = "green" if ok else "red"
-            self.ollama_status_label.config(text=text, foreground=color)
+            self.llm_status_label.config(text=text, foreground=color)
         threading.Thread(target=worker, daemon=True).start()
 
     def _append_log(self, message: str) -> None:
