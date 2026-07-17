@@ -137,7 +137,6 @@ def _estimate_tokens(body: dict) -> int:
                     total += 2000  # conservative flat estimate per image tile
     return total
 
-
 @dataclass
 class LLMResponse:
     text: str

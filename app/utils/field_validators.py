@@ -1,27 +1,3 @@
-"""
-Post-extraction field validation & normalization.
-
-Vision-model confidence scores reflect the model's own certainty about
-what it read, not whether the value is actually well-formed. This module
-is a second, independent check: for fields with a known expected shape
-(email, phone, numeric IDs, percentages, currency), validate the
-extracted value against that shape and adjust confidence accordingly -
-up a little when the value is well-formed and needed no correction, up
-more when a safe, unambiguous correction was applied (e.g. a well-known
-email domain typo), and DOWN when the value doesn't match its expected
-shape at all, regardless of what confidence the model itself reported.
-A model can be "confident" about a misread digit; this catches what the
-model can't catch about itself.
-
-Deliberately conservative: it normalizes formatting (whitespace, casing,
-stray symbols) and fixes a short list of well-known typos, but it never
-invents or guesses at content it can't verify - e.g. a negative currency
-amount is flagged for review, not silently flipped positive.
-
-Runs after multi-pass extraction/merging (app.services.extractor), before
-derived-metadata computation, since some derived fields (fund_category)
-depend on a clean fund_name.
-"""
 from __future__ import annotations
 
 import re
@@ -168,19 +144,6 @@ def _validator_for(field_id: str, declared_type: str) -> Callable:
 
 
 def apply_field_validation(form_code: str, fields: dict[str, FieldValue]) -> list[str]:
-    """
-    In-place: normalizes and confidence-adjusts every field in `fields`
-    against its declared type. Returns the list of field_ids that failed
-    validation (malformed shape) for logging/audit - these are exactly
-    the fields most worth a human glancing at, regardless of what
-    confidence the model itself reported.
-
-    NOTE: assumes field_definitions.json uses "email" / "phone" /
-    "percentage" / "currency" as the "type" values for those field
-    shapes. If your config uses different type strings, update
-    _VALIDATORS' keys to match - anything not matched falls back to
-    harmless whitespace cleanup only, it doesn't error.
-    """
     field_defs = {f["id"]: f for f in get_fields_for_form(form_code)}
     malformed: list[str] = []
     repaired: list[str] = []
