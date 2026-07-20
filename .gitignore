@@ -9,5 +9,6 @@ __pycache__/
 # App runtime output/local state
 logs/*.log
 output/
+ops_output/
 intake/*.pdf
 config/gmail_token.json

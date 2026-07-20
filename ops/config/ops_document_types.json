@@ -1,0 +1,81 @@
+{
+  "_comment": "Use Case 2 (BIFM Ops: Withdrawal & Contribution Audit Document Automation). Document types the Ops pipeline classifies incoming documents into, plus the audit-pack composition per transaction type - both taken directly from the proposal's 'Audit Document Compilation' section. 'required: false' = the proposal's 'where applicable' items: their absence is noted on the pack manifest but does not mark the pack incomplete.",
+  "document_types": [
+    {
+      "code": "WITHDRAWAL_INSTRUCTION",
+      "name": "Client Withdrawal Instruction",
+      "transaction_type": "Withdrawal",
+      "classification_hints": ["withdrawal instruction", "redemption request", "disinvestment letter", "please process the withdrawal", "withdraw from portfolio"]
+    },
+    {
+      "code": "APPROVAL_EMAIL",
+      "name": "Investment Team Approval / Instruction Email",
+      "transaction_type": "Withdrawal",
+      "classification_hints": ["approved for processing", "investment team approval", "proceed with the trade", "authorised to execute", "approval granted"]
+    },
+    {
+      "code": "TRADE_ORDER",
+      "name": "Trade Order Document (Trading Tool)",
+      "transaction_type": "Any",
+      "classification_hints": ["trade order", "order ticket", "deal ticket", "trade confirmation", "order id", "execution details"]
+    },
+    {
+      "code": "CASH_FLOW_STATEMENT",
+      "name": "Cash Flow Statement",
+      "transaction_type": "Any",
+      "classification_hints": ["cash flow statement", "cash flow report", "cashflow", "inflow outflow summary"]
+    },
+    {
+      "code": "BANK_STATEMENT",
+      "name": "Bank Statement",
+      "transaction_type": "Any",
+      "classification_hints": ["bank statement", "statement of account", "account statement", "opening balance", "closing balance", "bank logo"]
+    },
+    {
+      "code": "PROOF_OF_PAYMENT",
+      "name": "Proof of Payment",
+      "transaction_type": "Any",
+      "classification_hints": ["proof of payment", "payment confirmation", "transfer receipt", "eft confirmation", "payment reference"]
+    },
+    {
+      "code": "DEPOSIT_CONFIRMATION",
+      "name": "Deposit Confirmation Letter",
+      "transaction_type": "Contribution",
+      "classification_hints": ["deposit confirmation", "confirmation of deposit", "funds deposited", "we confirm receipt of"]
+    },
+    {
+      "code": "PROOF_OF_TRANSFER",
+      "name": "Proof of Transfer (BIFM to investment inflow account)",
+      "transaction_type": "Contribution",
+      "classification_hints": ["proof of transfer", "inter-account transfer", "transfer to inflow account", "internal transfer confirmation"]
+    },
+    {
+      "code": "CASH_TEMPLATE",
+      "name": "Cash Template",
+      "transaction_type": "Contribution",
+      "classification_hints": ["cash template", "cash allocation template", "cash instruction template"]
+    },
+    {
+      "code": "TRADE_TEMPLATE",
+      "name": "Trade Template",
+      "transaction_type": "Contribution",
+      "classification_hints": ["trade template", "trade allocation template", "trade instruction template"]
+    }
+  ],
+  "audit_packs": {
+    "Withdrawal": [
+      {"code": "WITHDRAWAL_INSTRUCTION", "required": true},
+      {"code": "APPROVAL_EMAIL", "required": true},
+      {"code": "TRADE_ORDER", "required": true},
+      {"code": "CASH_FLOW_STATEMENT", "required": true},
+      {"code": "BANK_STATEMENT", "required": false, "satisfied_by": ["BANK_STATEMENT", "PROOF_OF_PAYMENT"], "note": "Bank Statement / Proof of Payment - where applicable"}
+    ],
+    "Contribution": [
+      {"code": "PROOF_OF_PAYMENT", "required": true, "satisfied_by": ["PROOF_OF_PAYMENT", "DEPOSIT_CONFIRMATION"], "note": "Client Proof of Payment / Deposit Confirmation Letter"},
+      {"code": "BANK_STATEMENT", "required": true, "note": "Bank Statement confirming receipt"},
+      {"code": "PROOF_OF_TRANSFER", "required": true, "note": "Proof of Transfer from the BIFM account to the investment inflow account"},
+      {"code": "CASH_TEMPLATE", "required": false, "note": "Cash Template - where applicable based on client type"},
+      {"code": "TRADE_TEMPLATE", "required": false, "note": "Trade Template - where applicable based on client type"}
+    ]
+  }
+}

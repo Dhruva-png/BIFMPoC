@@ -38,7 +38,51 @@ so concurrent workers queue instead of tripping 429s.
 business logic never calls the backend directly.
 
 
-## What it does
+## Two applications, one platform
+
+This repo contains **two separate applications** sharing one LLM/OCR
+foundation (`app/llm`, `app/ocr`, the IMAP connector, settings):
+
+| Use case | App | Entry points |
+|---|---|---|
+| **UC1 — BIFM UT**: Instruction form processing & workflow automation | `app/` | `streamlit run streamlit_app.py` · `python main.py` |
+| **UC2 — BIFM Ops**: Withdrawal & Contribution audit document automation | `ops/` | `streamlit run ops_app.py` · `python ops_main.py` |
+
+## Use Case 2 — BIFM Ops: Audit Document Automation
+
+Automates intake, correlation, and audit compilation for the Ops /
+Investment team's Withdrawal and Contribution transactions:
+
+1. **Intake** — the configured email mailbox (same `IMAP_*` settings),
+   exported `.eml` emails, or a drop folder. Email bodies are themselves
+   audit documents (the Investment Team Approval Email) and are captured
+   alongside PDF attachments.
+2. **Classification & metadata extraction** — one combined LLM call per
+   document classifies it (Withdrawal Instruction, Deposit Confirmation,
+   Proof of Payment, Trade Order, Bank Statement, …) and extracts the
+   metadata table: Portfolio Code/Name, Client Name, Transaction &
+   Instruction Type, Transaction/Trade/Email dates, Amount, Security
+   Name/Code, Trade ID, Document Type/Source. The client-provided
+   **Portfolio Name→Code mapping** (`ops/config/portfolio_mapping.json`,
+   or `OPS_PORTFOLIO_MAPPING=<client csv>`) resolves loosely-written
+   portfolio names to standardized codes — unambiguous matches only.
+3. **Routing** — instructions are routed to the Investment or Operations
+   team per `ops/config/ops_workflow.json`.
+4. **Correlation** — deterministic grouping into transactions: Trade ID
+   first, then portfolio+amount within a date window; uncorrelatable
+   documents are flagged for review, never force-merged.
+5. **Filing** — `ops_output/filed/<Year>/<Month>/<Date>/<Transaction>/`.
+6. **Audit packs** — evaluated against the proposal's pack composition
+   (withdrawals: instruction, approval email, trade order, cash flow,
+   bank statement/POP; contributions: POP/deposit confirmation, bank
+   statement, proof of transfer, cash & trade templates) and compiled
+   into `ops_output/audit_repository/<PortfolioCode>/<configurable name>/`
+   with a MANIFEST.txt stating exactly what is present and missing.
+7. **Search** — a persistent SQLite metadata repository; search any
+   extracted field from the UI (`ops_app.py` → Search tab) or CLI
+   (`python ops_main.py search "TRD-2026-001"`).
+
+## Use Case 1 — What it does
 
 Processes scanned PDF instruction forms through 5 stages:
 

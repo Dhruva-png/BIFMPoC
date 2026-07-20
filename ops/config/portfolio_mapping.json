@@ -1,0 +1,11 @@
+{
+  "_comment": "Client-provided Portfolio Name-to-Portfolio Code mapping ('Utilize the client-provided Portfolio Name-to-Portfolio Code mapping to identify and correlate documents where standardized portfolio codes are not available in incoming instructions'). Replace these sample entries with BIFM's real mapping - or point OPS_PORTFOLIO_MAPPING at a client-supplied CSV with name,code columns. aliases: alternative spellings/short names clients actually write in emails.",
+  "portfolios": [
+    {"name": "BIFM Pula Money Market Fund", "code": "BPMMF01", "aliases": ["Pula Money Market", "MMF", "Money Market Fund"]},
+    {"name": "BIFM Balanced Prudential Fund", "code": "BBPF02", "aliases": ["Balanced Prudential", "BPF"]},
+    {"name": "BIFM Letlotlo Education Fund", "code": "BLEF03", "aliases": ["Letlotlo", "Education Fund"]},
+    {"name": "BIFM Ya Masa Junior Fund", "code": "BYMJF04", "aliases": ["Ya Masa", "Junior Fund"]},
+    {"name": "BIFM Local Equity Fund", "code": "BLEQ05", "aliases": ["Local Equity", "Equity Fund"]},
+    {"name": "BIFM Global Sustainable Growth Fund", "code": "BGSGF06", "aliases": ["GSGF", "Global Sustainable Growth"]}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "_comment": "Use Case 2 workflow configuration. routing: which team an incoming instruction is assigned to, per transaction type ('Automatically route incoming client instructions to the designated Investment or Operations Team per the configured workflow'). correlation_identifiers: the identifiers documents may be correlated on, in priority order, straight from the proposal ('Portfolio Code / Name, Client Name, Transaction Date, Trade ID / Transaction Reference, Transaction Amount, and Security Name / Code'). date_tolerance_days: how far apart transaction dates may be for two documents to still correlate on the composite key. audit_folder_name: configurable audit-folder naming convention using {portfolio_code}, {transaction_id}, {transaction_date} placeholders.",
+  "routing": {
+    "Withdrawal": "Investment Team",
+    "Contribution": "Operations Team",
+    "default": "Operations Team"
+  },
+  "correlation_identifiers": [
+    "trade_id",
+    "portfolio_code",
+    "client_name",
+    "transaction_date",
+    "transaction_amount",
+    "security_code"
+  ],
+  "date_tolerance_days": 5,
+  "audit_folder_name": "{portfolio_code}_{transaction_id}_{transaction_date}",
+  "review_confidence_threshold": 65
+}
