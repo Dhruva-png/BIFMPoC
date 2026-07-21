@@ -1,22 +1,36 @@
 """
-Single entry point business logic should import instead of talking to the
-LLM backend directly.
+Single entry point business logic should import instead of talking to a
+specific LLM backend directly.
 
-The app runs on Groq (app.llm.groq_client) - a free, no-credit-card cloud
-API with no local hardware requirement and no model download. It needs
-GROQ_API_KEY set; see app/llm/groq_client.py's docstring for the 2-minute
-setup.
+Picks the backend based on settings.llm_provider (env var LLM_PROVIDER,
+default "groq"):
 
-This stays a thin indirection layer (rather than importing groq_client
-everywhere) so classifier.py, extractor.py and the UI entry points depend
-on a stable interface - ask_text, ask_vision, parse_json_response,
-check_connection, LLMResponse - instead of a specific backend module.
+  groq    - Free, no-credit-card cloud API (app.llm.groq_client). Default.
+            Needs GROQ_API_KEY - see app/llm/groq_client.py's docstring
+            for the 2-minute setup.
+  gemini  - Google's free-tier cloud API (app.llm.gemini_client). Needs
+            GEMINI_API_KEY - see app/llm/gemini_client.py's docstring.
+
+Both backends expose the identical function signatures (ask_text,
+ask_vision, parse_json_response, check_connection, LLMResponse), so this
+module is a thin dispatch layer - classifier.py, extractor.py, the ops/
+package, and the UI entry points import from here and never need to know
+which backend is actually running.
+
+Switch providers with zero code changes:
+    export LLM_PROVIDER=gemini    # Google's free cloud API
+    export LLM_PROVIDER=groq      # Groq's free cloud API (default)
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from app.llm import groq_client as _backend
+from config.settings import settings
+
+if settings.llm_provider == "gemini":
+    from app.llm import gemini_client as _backend
+else:
+    from app.llm import groq_client as _backend
 
 LLMResponse = _backend.LLMResponse
 
@@ -39,4 +53,25 @@ def check_connection() -> bool:
 
 def active_provider() -> str:
     """Human-readable label for the UI."""
+    if settings.llm_provider == "gemini":
+        return "Gemini (cloud, free tier)"
     return "Groq (cloud, free tier)"
+
+
+def connection_error_message() -> str:
+    """Provider-aware setup instructions for check_connection() failures -
+    shared by every entry point (main.py, ops_main.py, ops_app.py) so the
+    message never drifts out of sync with whichever provider is active."""
+    if settings.llm_provider == "gemini":
+        return (
+            "Could not reach Gemini (missing/invalid GEMINI_API_KEY, or the "
+            "project's free-tier quota is 0). Get a free key at "
+            "https://aistudio.google.com/apikey and set it in your .env file "
+            "(see .env.example) or as an environment variable, or set "
+            "LLM_PROVIDER=groq to use Groq instead."
+        )
+    return (
+        "Could not reach Groq (missing or invalid GROQ_API_KEY). Get a free "
+        "key (no card) at https://console.groq.com/keys and set it in your "
+        ".env file (see .env.example) or as an environment variable."
+    )

@@ -56,11 +56,11 @@ with process_tab:
         log_area = st.empty()
 
     if run_clicked:
-        from app.llm.router import check_connection
+        from app.llm.router import check_connection, connection_error_message
         from ops.pipeline import run_ops_batch
 
         if not check_connection():
-            st.error("Could not reach Groq — set GROQ_API_KEY in your .env (see .env.example).")
+            st.error(connection_error_message())
             st.stop()
 
         ensure_output_dirs()
