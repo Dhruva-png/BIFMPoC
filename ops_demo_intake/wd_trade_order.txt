@@ -1,0 +1,11 @@
+TRADE ORDER DOCUMENT
+
+Order ID / Trade ID: TRD-2026-0714
+Portfolio: BPMMF01 - BIFM Pula Money Market Fund
+Security: BIFM Pula Money Market Fund
+Instruction: Redemption
+Amount: BWP 45,000.00
+Trade date: 14 July 2026
+Execution status: Filled
+
+Trading Tool - Order Confirmation

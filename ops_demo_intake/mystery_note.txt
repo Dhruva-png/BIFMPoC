@@ -1,0 +1,10 @@
+From: t.gaborone@example.com
+To: RetailServices@bifm.co.bw
+Subject: Withdrawal
+Date: 17 July 2026
+
+Please withdraw some funds from my Bifm Flexible Income Fund holding.
+Not sure of the exact amount, will confirm by phone.
+
+Thanks,
+Thato

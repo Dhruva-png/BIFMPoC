@@ -1,0 +1,13 @@
+STANDARD BANK BOTSWANA
+STATEMENT OF ACCOUNT
+
+Account holder: Kabo Modise
+Portfolio: BPMMF01 - BIFM Pula Money Market Fund
+Statement period: 01 July 2026 - 17 July 2026
+
+Date          Description                          Amount (BWP)     Balance
+14/07/2026    Opening balance                                       112,340.20
+16/07/2026    Credit - Redemption proceeds              45,000.00   157,340.20
+
+This statement confirms receipt of funds relating to the BIFM Pula Money
+Market Fund (BPMMF01) redemption referenced above.

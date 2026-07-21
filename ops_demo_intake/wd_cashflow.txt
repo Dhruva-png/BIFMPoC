@@ -1,0 +1,12 @@
+CASH FLOW STATEMENT
+
+Portfolio: BIFM Pula Money Market Fund (BPMMF01)
+Client: Kabo Modise
+Statement date: 15 July 2026
+
+Transaction detail:
+  Redemption / Withdrawal          BWP 45,000.00
+  Trade reference: TRD-2026-0714
+  Value date: 15 July 2026
+
+Closing cash balance reflects the above redemption.
