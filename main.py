@@ -17,13 +17,11 @@ logger = get_logger("main")
 
 
 def run_headless(intake: str | None, channel: str = "Unknown") -> int:
-    from app.llm.router import check_connection
+    from app.llm.router import check_connection, connection_error_message
     from app.core.pipeline import run_batch
 
     if not check_connection():
-        print("ERROR: Could not reach Groq (missing or invalid GROQ_API_KEY). "
-              "Get a free key (no card) at https://console.groq.com/keys and set it in "
-              "your .env file (see .env.example) or as an environment variable.")
+        print(f"ERROR: {connection_error_message()}")
         return 1
 
     intake_dir = Path(intake) if intake else None

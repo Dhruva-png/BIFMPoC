@@ -1,16 +1,19 @@
 # BIFM Unit Trusts — Document Processing (POC)
 
 AI-powered pipeline for BIFM UT instruction form processing. Runs against
-**Groq's free cloud vision model** — no local GPU, no model download, no
-credit card.
+a **free cloud vision model** — no local GPU, no model download, no
+credit card. Default backend is **Groq**; **Gemini** is a drop-in
+alternative (`LLM_PROVIDER=gemini`) if you'd rather try that instead.
 
-## Quick start: set your Groq API key
+## Quick start: set an API key
 
 > **Tip — don't re-enter the key every session:** copy `.env.example` to
 > `.env` and fill your key in there instead of `export`ing it each time.
 > `.env` is loaded automatically on startup and is gitignored, so real keys
 > never get committed. Environment variables still work too — `.env` is just
 > a persistent alternative.
+
+### Option A — Groq (default)
 
 1. Get a free API key: https://console.groq.com/keys (email or Google
    sign-in, no credit card, no charge on the free tier).
@@ -27,6 +30,7 @@ credit card.
    $env:GROQ_API_KEY="your-key-here"
    ```
 3. Run the app (`python main.py`, or `streamlit run streamlit_app.py`).
+   `LLM_PROVIDER` defaults to `groq`, so nothing else changes.
 
 Free-tier limits are generous for a POC (on the order of ~15-30 requests/
 minute and several thousand/day — check the Groq console dashboard for
@@ -34,8 +38,31 @@ current numbers). Rate limits apply at the organization level, not per key.
 The app self-throttles below your account's TPM ceiling (`GROQ_TPM_LIMIT`)
 so concurrent workers queue instead of tripping 429s.
 
-`app/llm/router.py` is the single point the rest of the app talks to, so
-business logic never calls the backend directly.
+### Option B — Gemini (alternative, to try something different)
+
+1. Get a free API key: https://aistudio.google.com/apikey (any Google
+   account, no card required).
+2. Set `GEMINI_API_KEY` **and** `LLM_PROVIDER=gemini`:
+   ```bash
+   # macOS/Linux
+   export GEMINI_API_KEY="your-key-here"
+   export LLM_PROVIDER=gemini
+
+   # Windows (PowerShell)
+   $env:GEMINI_API_KEY="your-key-here"
+   $env:LLM_PROVIDER="gemini"
+   ```
+   (or set both in `.env` — see `.env.example`'s Gemini section.)
+3. Run the app as normal.
+
+Note: some newer Google Cloud projects have a **0 free-tier quota** for
+Gemini (often region-restricted) — if `check_connection()` fails with a
+quota error, that project needs billing enabled or you're back to Groq.
+Both providers implement the exact same interface
+(`ask_text`/`ask_vision`/`check_connection`/`LLMResponse`), so switching is
+a `.env` change, not a code change — `app/llm/router.py` is the single
+point the rest of the app talks to, and it never calls a specific backend
+directly.
 
 
 ## Two applications, one platform
@@ -89,7 +116,7 @@ Processes scanned PDF instruction forms through 5 stages:
 | Stage | Module | What happens |
 |-------|--------|-------------|
 | 1 | Classifier | Identifies the form type from page 1 image |
-| 2 | Extractor | Reads form fields using Groq's vision LLM |
+| 2 | Extractor | Reads form fields using the configured vision LLM (Groq by default, or Gemini) |
 | 3 | Validator | Checks mandatory fields, ID formats, dates, branch codes |
 | 3b | Pre-Validation Flags | Rejection-risk checklist per Section 8 of the understanding doc (see below) |
 | 4 | Report | Builds Excel workbook (7 sheets) |
@@ -167,9 +194,8 @@ The system generates these fields automatically (per requirements doc) — they 
 # 1. Install Python dependencies
 pip install -r requirements.txt
 
-# 2. Set your Groq API key (see "Quick start" above)
-#    Either copy .env.example to .env and fill in GROQ_API_KEY,
-#    or export it:
+# 2. Set your API key (see "Quick start" above - Groq default, Gemini alternative)
+#    Either copy .env.example to .env and fill in the key(s), or export:
 export GROQ_API_KEY="your-key-here"     # Windows PowerShell: $env:GROQ_API_KEY="..."
 ```
 
@@ -185,10 +211,14 @@ Open http://localhost:8501. Upload PDFs in the sidebar and click **Run Batch**.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GROQ_API_KEY` | (none) | **Required** — the app's LLM backend |
+| `LLM_PROVIDER` | `groq` | `groq` or `gemini` — which backend `app/llm/router.py` dispatches to |
+| `GROQ_API_KEY` | (none) | **Required if `LLM_PROVIDER=groq`** |
 | `GROQ_VISION_MODEL` | `meta-llama/llama-4-scout-17b-16e-instruct` | Vision model for classification & extraction |
 | `GROQ_TEXT_MODEL` | `llama-3.3-70b-versatile` | Text model |
 | `GROQ_TPM_LIMIT` | `27000` | Self-throttle budget, kept below your account's real TPM ceiling |
+| `GEMINI_API_KEY` | (none) | **Required if `LLM_PROVIDER=gemini`** |
+| `GEMINI_VISION_MODEL` | `gemini-2.5-flash` | Vision model for classification & extraction |
+| `GEMINI_TEXT_MODEL` | `gemini-2.5-flash` | Text model |
 | `PDF_RENDER_DPI` | `220` | DPI for PDF-to-image rendering |
 | `OCR_DESKEW` | `true` | Straighten tilted scans before reading (local, ~100ms/page) |
 | `RETRY_MISSING_MANDATORY` | `true` | One focused re-read when mandatory fields come back blank |
@@ -211,8 +241,9 @@ bifm_ocr_app/
 │   └── prevalidation_flags.json  # Section 8: rejection-risk flag definitions
 ├── app/
 │   ├── core/pipeline.py          # Main orchestration (Module 1-5)
-│   ├── llm/groq_client.py        # LLM calls (ask_text, ask_vision)
-│   ├── llm/router.py             # Single entry point the app imports
+│   ├── llm/groq_client.py        # LLM calls (ask_text, ask_vision) - default backend
+│   ├── llm/gemini_client.py      # Same interface, alternative backend
+│   ├── llm/router.py             # Single entry point the app imports (dispatches on LLM_PROVIDER)
 │   ├── ocr/pdf_utils.py          # PDF → image rendering (pypdfium2)
 │   ├── services/
 │   │   ├── classifier.py         # Module 1: form type classification

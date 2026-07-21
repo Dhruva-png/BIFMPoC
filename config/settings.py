@@ -31,11 +31,27 @@ except ImportError:
 
 
 @dataclass
+class GeminiSettings:
+    """
+    Google Gemini free tier - an alternative cloud backend to Groq. No
+    local download, no model warm-up. Get a key at
+    https://aistudio.google.com/apikey (any Google account, no card) and
+    set it as GEMINI_API_KEY, then set LLM_PROVIDER=gemini.
+    """
+    api_key: str = os.environ.get("GEMINI_API_KEY", "")
+    text_model: str = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+    vision_model: str = os.environ.get("GEMINI_VISION_MODEL", "gemini-2.5-flash")
+    request_timeout_seconds: int = int(os.environ.get("GEMINI_REQUEST_TIMEOUT", "60"))
+    max_retries: int = int(os.environ.get("GEMINI_MAX_RETRIES", "3"))
+    num_predict: int = int(os.environ.get("GEMINI_NUM_PREDICT", "800"))
+
+
+@dataclass
 class GroqSettings:
     """
-    Groq's free, no-credit-card cloud API - the LLM backend this app runs
-    on. Get a key at https://console.groq.com/keys (email or Google
-    sign-in, no card) and set it as GROQ_API_KEY.
+    Groq's free, no-credit-card cloud API - the DEFAULT LLM backend this
+    app runs on. Get a key at https://console.groq.com/keys (email or
+    Google sign-in, no card) and set it as GROQ_API_KEY.
     """
     api_key: str = os.environ.get("GROQ_API_KEY", "")
     text_model: str = os.environ.get("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
@@ -140,6 +156,12 @@ class PathSettings:
 
 @dataclass
 class AppSettings:
+    # Which LLM backend app.llm.router dispatches to: "groq" (default) or
+    # "gemini". Switching providers is a .env change, not a code change -
+    # both backends implement the same ask_text/ask_vision/check_connection
+    # interface, so nothing downstream needs to know which is active.
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "groq").lower()
+    gemini: GeminiSettings = field(default_factory=GeminiSettings)
     groq: GroqSettings = field(default_factory=GroqSettings)
     sharepoint: SharePointSettings = field(default_factory=SharePointSettings)
     imap: ImapSettings = field(default_factory=ImapSettings)
