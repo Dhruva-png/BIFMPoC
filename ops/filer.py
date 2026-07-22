@@ -10,6 +10,12 @@ put as the source of record) into:
 The date used is the transaction date where one was extracted, falling
 back to the email-received date, then today - so undated documents still
 land in a deterministic place instead of erroring.
+
+When settings.sharepoint.ops_write_back_enabled is set, the same file is
+also pushed to SharePoint at the identical relative path under
+settings.sharepoint.ops_filed_folder - mirroring Use Case 1's
+app.services.filer.file_document exactly (local structure computed once,
+then mirrored, not recomputed, on SharePoint).
 """
 from __future__ import annotations
 
@@ -19,6 +25,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from app.utils.logger import get_logger
+from config.settings import settings
 from ops.models import OpsDocument
 from ops.ops_config import OPS_FILED_DIR, ensure_output_dirs
 
@@ -63,4 +70,10 @@ def file_document(doc: OpsDocument) -> Path:
         shutil.copy2(doc.source_path, dest)
     doc.filed_path = str(dest)
     logger.info("Filed %s -> %s", doc.source_file, dest)
+
+    if settings.sharepoint.ops_write_back_enabled:
+        from app.connectors import sharepoint_client
+        remote_folder = f"{settings.sharepoint.ops_filed_folder}/{dest.relative_to(OPS_FILED_DIR).parent}".replace("\\", "/")
+        sharepoint_client.upload_file(dest, remote_folder)
+
     return dest

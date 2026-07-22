@@ -78,19 +78,68 @@ class GroqSettings:
 class SharePointSettings:
     """
     Microsoft Graph app-only (client credentials) connection details for the
-    SharePoint document library the UT team currently uses for the manual
-    Submission -> Captured -> Approved/Rejected folder workflow (Section 3).
+    SharePoint document library both use cases run against - one tenant/app
+    registration/site, per the proposal's "Single Marvel.ai Platform" shared
+    infrastructure ("Both use cases run on one Marvel.ai instance - shared
+    infrastructure, administration, licensing model, and user management").
     All optional — leave unset to keep using local-disk intake/filing only.
+
+    UT (Use Case 1) fields (tenant/client/secret/site/drive are shared with
+    Ops below - only the folder paths and write-back flag differ per use
+    case, since Section 6 (UT) and the Ops audit-pack tree are genuinely
+    different folder structures on the same site):
+      submission_folder    - Section 3's manual Submission -> Captured ->
+                              Approved/Rejected input folder.
+      write_back_enabled   - push filed UT documents back to SharePoint,
+                              mirroring the exact per-form-type Section 6
+                              tree filer.py already builds locally.
+
+    Ops (Use Case 2) fields:
+      ops_submission_folder - the Ops team's input folder for incoming
+                               Withdrawal/Contribution instruction documents
+                               (PDF, and exported .eml/.txt), read the same
+                               way the UT submission folder is.
+      ops_filed_folder       - SharePoint root filed documents mirror to,
+                               at the same Year/Month/Date/Transaction
+                               relative path ops/filer.py builds locally.
+      ops_audit_folder        - SharePoint root the compiled audit-pack
+                               folders (documents + MANIFEST.txt) mirror
+                               to, at the same PortfolioCode/... relative
+                               path ops/audit_pack.py builds locally - this
+                               is the actual audit-evidence deliverable, so
+                               it's the one most worth having live on
+                               SharePoint for "rapid retrieval of complete
+                               audit evidence for internal and external
+                               audit requests".
+      ops_write_back_enabled - push both of the above to SharePoint.
+                               Separate from UT's write_back_enabled so
+                               each use case's write-back can be turned on
+                               independently while testing.
     """
     tenant_id: str = os.environ.get("SHAREPOINT_TENANT_ID", "")
     client_id: str = os.environ.get("SHAREPOINT_CLIENT_ID", "")
     client_secret: str = os.environ.get("SHAREPOINT_CLIENT_SECRET", "")
     site_id: str = os.environ.get("SHAREPOINT_SITE_ID", "")
     drive_id: str = os.environ.get("SHAREPOINT_DRIVE_ID", "")
+
     submission_folder: str = os.environ.get("SHAREPOINT_SUBMISSION_FOLDER", "UT Instructions/Submissions")
     # When true, filed documents are also pushed to the matching folder on
     # real SharePoint (in addition to the local filing simulation).
     write_back_enabled: bool = os.environ.get("SHAREPOINT_WRITE_BACK", "false").lower() == "true"
+
+    ops_submission_folder: str = os.environ.get("SHAREPOINT_OPS_SUBMISSION_FOLDER", "Ops Instructions/Submissions")
+    # A submission-folder item is moved here (not deleted) right after a
+    # successful download, so re-running the batch (or a scheduled poll)
+    # doesn't see it again and process it a second time into a duplicate
+    # transaction - the SharePoint-side equivalent of IMAP marking a
+    # message \Seen. Set SHAREPOINT_OPS_MARK_PROCESSED=false to leave
+    # items in place instead (e.g. while repeatedly testing one file).
+    ops_processed_folder: str = os.environ.get(
+        "SHAREPOINT_OPS_PROCESSED_FOLDER", "Ops Instructions/Submissions/Processed")
+    ops_mark_processed: bool = os.environ.get("SHAREPOINT_OPS_MARK_PROCESSED", "true").lower() != "false"
+    ops_filed_folder: str = os.environ.get("SHAREPOINT_OPS_FILED_FOLDER", "Ops Filed Documents")
+    ops_audit_folder: str = os.environ.get("SHAREPOINT_OPS_AUDIT_FOLDER", "Ops Audit Repository")
+    ops_write_back_enabled: bool = os.environ.get("SHAREPOINT_OPS_WRITE_BACK", "false").lower() == "true"
 
 
 @dataclass

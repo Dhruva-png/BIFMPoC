@@ -67,21 +67,25 @@ def check_connection() -> bool:
         return False
 
 
-def list_new_pdfs(folder_path: str | None = None) -> list[dict[str, Any]]:
+def list_new_files(folder_path: str, extensions: tuple[str, ...] = (".pdf",)) -> list[dict[str, Any]]:
     """
-    Lists PDF files sitting directly in the configured submission folder.
-    Returns a list of {"id", "name", "download_url", "size"} dicts.
+    Lists files sitting directly in the given SharePoint folder whose name
+    ends in one of `extensions` (case-insensitive). Returns a list of
+    {"id", "name", "download_url", "size"} dicts. General-purpose version
+    of list_new_pdfs - Use Case 2's intake also needs .eml/.txt, not just
+    .pdf, so this takes the extension set as a parameter instead of
+    hard-coding ".pdf".
     """
-    folder_path = folder_path or settings.sharepoint.submission_folder
     url = f"{_drive_root()}/root:/{folder_path}:/children"
     items: list[dict[str, Any]] = []
+    exts = tuple(e.lower() for e in extensions)
     while url:
         resp = requests.get(url, headers=_headers(), timeout=30)
         resp.raise_for_status()
         payload = resp.json()
         for entry in payload.get("value", []):
             name = entry.get("name", "")
-            if "file" in entry and name.lower().endswith(".pdf"):
+            if "file" in entry and name.lower().endswith(exts):
                 items.append({
                     "id": entry["id"],
                     "name": name,
@@ -90,6 +94,13 @@ def list_new_pdfs(folder_path: str | None = None) -> list[dict[str, Any]]:
                 })
         url = payload.get("@odata.nextLink")
     return items
+
+
+def list_new_pdfs(folder_path: str | None = None) -> list[dict[str, Any]]:
+    """Lists PDF files sitting directly in the configured UT submission
+    folder. Thin wrapper over list_new_files for UT's existing call sites -
+    behaviour is unchanged from before list_new_files existed."""
+    return list_new_files(folder_path or settings.sharepoint.submission_folder, (".pdf",))
 
 
 def download_file(item: dict[str, Any], dest_dir: Path) -> Path:
@@ -107,11 +118,36 @@ def download_file(item: dict[str, Any], dest_dir: Path) -> Path:
     return dest_path
 
 
-def fetch_submission_folder(dest_dir: Path) -> list[Path]:
+def fetch_folder(
+    dest_dir: Path, folder_path: str, extensions: tuple[str, ...] = (".pdf",),
+    move_processed_to: str | None = None,
+) -> list[Path]:
+    """
+    Downloads every file matching `extensions` from `folder_path` into
+    dest_dir. General-purpose version of fetch_submission_folder.
+
+    move_processed_to: if given, each successfully-downloaded item is
+    moved (not deleted - nothing is destroyed, just relocated within the
+    same site) from `folder_path` to this folder afterward, so a repeat
+    run doesn't see it again and re-process it into a duplicate
+    transaction. None (the default, and what fetch_submission_folder
+    below uses) leaves items in place, matching this function's original
+    behaviour before this parameter existed.
+    """
     if not is_configured():
         return []
-    items = list_new_pdfs()
-    return [download_file(item, dest_dir) for item in items]
+    items = list_new_files(folder_path, extensions)
+    downloaded = [download_file(item, dest_dir) for item in items]
+    if move_processed_to:
+        for item in items:
+            delete_or_move_source(item["id"], move_processed_to)
+    return downloaded
+
+
+def fetch_submission_folder(dest_dir: Path) -> list[Path]:
+    """UT's PDF-only submission folder fetch. Thin wrapper over
+    fetch_folder - behaviour is unchanged from before fetch_folder existed."""
+    return fetch_folder(dest_dir, settings.sharepoint.submission_folder, (".pdf",))
 
 
 def upload_file(local_path: Path, folder_path: str) -> bool:

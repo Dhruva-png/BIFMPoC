@@ -27,7 +27,7 @@ from ops.analyzer import analyze_item
 from ops.audit_pack import compile_pack, evaluate_pack
 from ops.correlator import correlate
 from ops.filer import file_document
-from ops.intake import IntakeItem, gather_from_folder, gather_from_mailbox
+from ops.intake import IntakeItem, gather_from_folder, gather_from_mailbox, gather_from_sharepoint
 from ops.models import AuditPack, OpsDocument
 from ops.ops_config import load_workflow
 from ops.report import build_ops_report
@@ -56,12 +56,14 @@ def run_ops_batch(
     intake_dir: Path | None = None,
     items: list[IntakeItem] | None = None,
     use_mailbox: bool = False,
+    use_sharepoint: bool = False,
     progress_cb: ProgressCallback = None,
 ) -> tuple[list[OpsDocument], list[AuditPack], Path]:
     """
     Processes one intake batch through the full Use Case 2 flow. Returns
     (documents, audit packs, Excel report path). Sources combine: an
-    explicit item list, a folder, and/or the configured IMAP mailbox.
+    explicit item list, a folder, the configured IMAP mailbox, and/or the
+    configured SharePoint input folder.
     """
     gathered: list[IntakeItem] = list(items or [])
     if intake_dir is not None:
@@ -69,6 +71,9 @@ def run_ops_batch(
     if use_mailbox:
         _emit(progress_cb, "Checking the configured mailbox for new instructions...")
         gathered.extend(gather_from_mailbox())
+    if use_sharepoint:
+        _emit(progress_cb, "Checking the configured SharePoint input folder for new instructions...")
+        gathered.extend(gather_from_sharepoint())
 
     if not gathered:
         _emit(progress_cb, "No documents to process.")

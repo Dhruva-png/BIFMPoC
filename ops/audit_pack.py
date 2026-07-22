@@ -20,6 +20,14 @@ Each compiled pack gets a MANIFEST.txt listing what's present, what
 satisfied each requirement, and exactly what's missing - so an auditor
 opening the folder sees the pack's completeness at a glance without
 opening the app.
+
+When settings.sharepoint.ops_write_back_enabled is set, each compiled
+pack folder (documents + MANIFEST.txt) is also pushed to SharePoint under
+settings.sharepoint.ops_audit_folder, at the same PortfolioCode/... path
+computed locally - this is the actual audit-evidence deliverable the
+proposal describes ("enabling rapid retrieval of complete audit evidence
+for internal and external audit requests"), so it's the one most worth
+having live on a real SharePoint site.
 """
 from __future__ import annotations
 
@@ -30,6 +38,7 @@ import zipfile
 from pathlib import Path
 
 from app.utils.logger import get_logger
+from config.settings import settings
 from ops.models import AuditPack, PackItem, TransactionGroup
 from ops.ops_config import (
     OPS_AUDIT_DIR,
@@ -117,6 +126,14 @@ def compile_pack(pack: AuditPack) -> Path:
     (dest_dir / "MANIFEST.txt").write_text("\n".join(manifest_lines), encoding="utf-8")
     pack.audit_folder = str(dest_dir)
     logger.info("Compiled audit pack %s (%s)", dest_dir.name, pack.status)
+
+    if settings.sharepoint.ops_write_back_enabled:
+        from app.connectors import sharepoint_client
+        remote_folder = f"{settings.sharepoint.ops_audit_folder}/{dest_dir.relative_to(OPS_AUDIT_DIR)}".replace("\\", "/")
+        for local_file in dest_dir.iterdir():
+            if local_file.is_file():
+                sharepoint_client.upload_file(local_file, remote_folder)
+
     return dest_dir
 
 

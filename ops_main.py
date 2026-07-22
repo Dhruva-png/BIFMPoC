@@ -5,6 +5,7 @@ Audit Document Automation.
 Usage:
     python ops_main.py run --intake ./ops_intake          # process a folder
     python ops_main.py run --mailbox                      # pull the IMAP mailbox
+    python ops_main.py run --sharepoint                   # pull the SharePoint input folder
     python ops_main.py search "BPMMF01"                   # free-text metadata search
     python ops_main.py search "Theo" --field client_name  # field-scoped search
     python ops_main.py transactions                       # list known transactions
@@ -33,12 +34,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return 1
 
     intake = Path(args.intake) if args.intake else None
-    if intake is None and not args.mailbox:
-        print("Nothing to do: pass --intake <folder> and/or --mailbox")
+    if intake is None and not args.mailbox and not args.sharepoint:
+        print("Nothing to do: pass --intake <folder>, --mailbox, and/or --sharepoint")
         return 1
 
     documents, packs, report_path = run_ops_batch(
-        intake_dir=intake, use_mailbox=args.mailbox, progress_cb=print,
+        intake_dir=intake, use_mailbox=args.mailbox, use_sharepoint=args.sharepoint, progress_cb=print,
     )
 
     print("\n--- Ops Batch Summary ---")
@@ -123,6 +124,7 @@ def main() -> int:
     run_p = sub.add_parser("run", help="Process an intake batch")
     run_p.add_argument("--intake", type=str, default=None, help="Folder of PDFs / EMLs / TXTs")
     run_p.add_argument("--mailbox", action="store_true", help="Also pull the configured IMAP mailbox")
+    run_p.add_argument("--sharepoint", action="store_true", help="Also pull the configured SharePoint input folder")
     run_p.set_defaults(func=_cmd_run)
 
     search_p = sub.add_parser("search", help="Search the metadata repository")

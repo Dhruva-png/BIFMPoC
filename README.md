@@ -80,10 +80,12 @@ foundation (`app/llm`, `app/ocr`, the IMAP connector, settings):
 Automates intake, correlation, and audit compilation for the Ops /
 Investment team's Withdrawal and Contribution transactions:
 
-1. **Intake** — the configured email mailbox (same `IMAP_*` settings),
-   exported `.eml` emails, or a drop folder. Email bodies are themselves
-   audit documents (the Investment Team Approval Email) and are captured
-   alongside PDF attachments.
+1. **Intake** — the configured email mailbox (same `IMAP_*` settings), a
+   SharePoint input folder (`SHAREPOINT_OPS_*` settings — see "SharePoint
+   Folder Structure — Use Case 2" below), exported `.eml` emails, or a
+   drop folder. Email bodies are themselves audit documents (the
+   Investment Team Approval Email) and are captured alongside PDF
+   attachments.
 2. **Classification & metadata extraction** — one combined LLM call per
    document classifies it (Withdrawal Instruction, Deposit Confirmation,
    Proof of Payment, Trade Order, Bank Statement, …) and extracts the
@@ -170,6 +172,29 @@ instruction types do not share one generic folder tree:
 | Debit Order | `<Year>/<Month>` (dump) → `Send to AWD/<Day>` \| `Rejected/<Day>` |
 | Static (Change of Details) | `<Year>/<Month>` (dump) → `Send to AWD/<Day>` \| `Rejected/<Day>` |
 | KYC | `<Year>/<Month>/<Day>` (companion document, not a standalone instruction) \| `Rejected` |
+
+## SharePoint Folder Structure — Use Case 2 (Ops)
+
+UC2 shares its SharePoint connection (`app/connectors/sharepoint_client.py`,
+Microsoft Graph app-only auth) with UC1, but reads and writes a **separate**
+set of folders — configure both sections' `SHAREPOINT_*` variables (see
+`.env.example`) even though they point at the same tenant/site/drive.
+Create these folders on the real SharePoint document library before
+pointing the app at it (the app does not create folders itself — only
+files inside them):
+
+| Purpose | Env var | Default path | What goes here |
+|---|---|---|---|
+| **Input** (submissions) | `SHAREPOINT_OPS_SUBMISSION_FOLDER` | `Ops Instructions/Submissions` | Where Ops/clients drop incoming Withdrawal & Contribution documents — PDFs, and exported `.eml`/`.txt` files. This is the folder UC2 polls when you pick **SharePoint folder** as the source (UI) or pass `--sharepoint` (CLI). |
+| **Processed** | `SHAREPOINT_OPS_PROCESSED_FOLDER` | `Ops Instructions/Submissions/Processed` | Each submission item is **moved** here immediately after download (not deleted), so a repeat run never reprocesses it into a duplicate transaction — the SharePoint equivalent of IMAP marking a message `\Seen`. Set `SHAREPOINT_OPS_MARK_PROCESSED=false` to leave items in place instead (useful while repeatedly testing against the same file). |
+| **Filed documents** | `SHAREPOINT_OPS_FILED_FOLDER` | `Ops Filed Documents` | Mirrors the local `ops_output/filed/<Year>/<Month>/<Day>/<Transaction>/` structure at the identical relative path, one file at a time as each document is filed. Only written when `SHAREPOINT_OPS_WRITE_BACK=true`. |
+| **Audit repository** | `SHAREPOINT_OPS_AUDIT_FOLDER` | `Ops Audit Repository` | Mirrors the local `ops_output/audit_repository/<PortfolioCode>/<Transaction folder>/` structure (documents + `MANIFEST.txt`), one compiled pack at a time. Only written when `SHAREPOINT_OPS_WRITE_BACK=true`. |
+
+Only the **Input** folder needs to exist up front. **Filed documents**
+and **Audit repository** are only touched once
+`SHAREPOINT_OPS_WRITE_BACK=true` is set — until then, filing and audit
+compilation stay local-only (`ops_output/`), same as the demo has been
+running so far.
 
 ## Supported Form Types
 
@@ -308,11 +333,14 @@ All form types, field lists, and validation rules are JSON — no code changes n
 
 ## What This POC Does NOT Include
 
-- Live SharePoint read/write (Graph API integration)
 - AWD system integration
 - Multi-user access control
-- Document ingestion from email (mailbox polling)
 
-These are production-phase additions. The naming convention, metadata structure,
-and Excel output format are designed for direct handoff to a SharePoint/Graph API
-integration layer.
+SharePoint read/write (`app/connectors/sharepoint_client.py`, Microsoft
+Graph app-only auth) and email mailbox polling (IMAP) are both implemented
+as optional connectors for both use cases — see "SharePoint Folder
+Structure" above and `.env.example` for the `SHAREPOINT_*` / `IMAP_*`
+settings that turn them on. AWD integration and multi-user access control
+remain production-phase additions. The naming convention, metadata
+structure, and Excel output format were designed from the start for direct
+handoff to a SharePoint/Graph API integration layer.

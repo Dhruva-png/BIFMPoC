@@ -249,15 +249,18 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📂 Intake")
     imap_ok = uc1_intake.imap_available()
+    sharepoint_ok = uc1_intake.sharepoint_available()
     source_options = [
         "Upload files",
         "Use intake folder",
         "Email mailbox (IMAP)" + ("" if imap_ok else " (not configured)"),
+        "SharePoint folder" + ("" if sharepoint_ok else " (not configured)"),
     ]
     mode = st.radio("Source", source_options, label_visibility="collapsed")
 
     uploaded_files = None
     use_mailbox = False
+    use_sharepoint = False
     intake_dir = OPS_INTAKE_DIR
     if mode == "Upload files":
         uploaded_files = st.file_uploader(
@@ -276,7 +279,7 @@ with st.sidebar:
             if intake_dir.exists() else []
         )
         st.caption(f"{len(existing)} document(s) found in folder.")
-    else:
+    elif mode.startswith("Email mailbox"):
         use_mailbox = True
         if imap_ok:
             st.caption(f"Mailbox folder: `{settings.imap.folder}`  ·  Search: `{settings.imap.search_criteria}`")
@@ -284,6 +287,19 @@ with st.sidebar:
             st.caption(
                 "Set IMAP_HOST / IMAP_USERNAME / IMAP_PASSWORD as environment variables to enable "
                 "this source (same mailbox settings as the UT app)."
+            )
+    else:
+        use_sharepoint = True
+        if sharepoint_ok:
+            st.caption(f"Input folder: `{settings.sharepoint.ops_submission_folder}`")
+            if settings.sharepoint.ops_mark_processed:
+                st.caption(f"Processed items move to: `{settings.sharepoint.ops_processed_folder}`")
+            if settings.sharepoint.ops_write_back_enabled:
+                st.caption("Write-back is ON — filed documents and audit packs are also pushed to SharePoint.")
+        else:
+            st.caption(
+                "Set SHAREPOINT_TENANT_ID / CLIENT_ID / CLIENT_SECRET / SITE_ID as environment "
+                "variables to enable this source (same credentials as the UT app — see README)."
             )
 
     st.markdown("---")
@@ -334,16 +350,19 @@ process_tab, search_tab = st.tabs(["📥 Process a batch", "🔎 Search the repo
 # --------------------------------------------------------------------------- #
 with process_tab:
     def _resolve_items():
+        """Returns (intake_dir, use_mailbox, use_sharepoint)."""
         if mode == "Upload files":
             if not uploaded_files:
-                return None, False
+                return None, False, False
             ensure_output_dirs()
             for f in uploaded_files:
                 (OPS_INTAKE_DIR / f.name).write_bytes(f.getbuffer())
-            return OPS_INTAKE_DIR, False
+            return OPS_INTAKE_DIR, False, False
         if mode == "Use intake folder":
-            return intake_dir, False
-        return None, True  # mailbox
+            return intake_dir, False, False
+        if mode.startswith("Email mailbox"):
+            return None, True, False
+        return None, False, True  # SharePoint
 
     if run_clicked:
         from app.llm.router import check_connection, connection_error_message
@@ -353,9 +372,12 @@ with process_tab:
             st.error(connection_error_message())
             st.stop()
 
-        run_intake_dir, run_use_mailbox = _resolve_items()
-        if run_intake_dir is None and not run_use_mailbox:
-            st.warning("Upload documents, point at a non-empty intake folder, or select the mailbox source first.")
+        run_intake_dir, run_use_mailbox, run_use_sharepoint = _resolve_items()
+        if run_intake_dir is None and not run_use_mailbox and not run_use_sharepoint:
+            st.warning(
+                "Upload documents, point at a non-empty intake folder, or select the "
+                "mailbox / SharePoint source first."
+            )
             st.stop()
 
         progress_box = st.empty()
@@ -392,7 +414,8 @@ with process_tab:
 
         def _run() -> None:
             documents, packs, report_path = run_ops_batch(
-                intake_dir=run_intake_dir, use_mailbox=run_use_mailbox, progress_cb=progress_cb,
+                intake_dir=run_intake_dir, use_mailbox=run_use_mailbox,
+                use_sharepoint=run_use_sharepoint, progress_cb=progress_cb,
             )
             _batch_result["documents"] = documents
             _batch_result["packs"] = packs

@@ -95,10 +95,16 @@ def _parse_eml(eml_path: Path, dest_dir: Path) -> list[IntakeItem]:
     return items
 
 
-def gather_from_folder(folder: Path) -> list[IntakeItem]:
+def gather_from_folder(folder: Path, source_label: str = "Folder drop") -> list[IntakeItem]:
     """Collects every PDF / EML / TXT in `folder` (non-recursive) into
-    intake items. EMLs are unpacked (body + attachments); TXT files are
-    treated as email-body-like text documents."""
+    intake items. EMLs are unpacked (body + attachments, always labeled
+    "Email" - that's what they are regardless of transport); TXT files are
+    treated as email-body-like text documents. source_label tags the
+    non-.eml items with where this folder's contents actually came from -
+    a plain local drop ("Folder drop") vs. files downloaded from a
+    SharePoint staging folder ("SharePoint"), matching the metadata
+    table's "source_document" field (Email / Banking Platform / Internal
+    System / ...)."""
     ensure_output_dirs()
     items: list[IntakeItem] = []
     for path in sorted(folder.iterdir()):
@@ -106,12 +112,12 @@ def gather_from_folder(folder: Path) -> list[IntakeItem]:
             continue
         suffix = path.suffix.lower()
         if suffix == ".pdf":
-            items.append(IntakeItem(path=path, kind="pdf", source_label="Folder drop"))
+            items.append(IntakeItem(path=path, kind="pdf", source_label=source_label))
         elif suffix == ".eml":
             items.extend(_parse_eml(path, OPS_INTAKE_DIR))
         elif suffix == ".txt":
             items.append(IntakeItem(
-                path=path, kind="text", source_label="Folder drop",
+                path=path, kind="text", source_label=source_label,
                 body_text=path.read_text(encoding="utf-8", errors="replace"),
             ))
     logger.info("Ops intake: %d item(s) from %s", len(items), folder)
@@ -136,3 +142,34 @@ def gather_from_mailbox() -> list[IntakeItem]:
         )
         for d in downloads
     ]
+
+
+def gather_from_sharepoint() -> list[IntakeItem]:
+    """
+    Pulls incoming Withdrawal/Contribution documents from the Ops team's
+    SharePoint input folder (settings.sharepoint.ops_submission_folder) via
+    Use Case 1's Graph API connector (same tenant/site, separate folder
+    path and write-back flag - see config/settings.py's SharePointSettings
+    docstring). PDFs, exported .eml emails, and .txt notes are all fetched
+    (unlike UT's PDF-only submission folder), then handed to
+    gather_from_folder so the .eml-unpacking and text-handling logic isn't
+    duplicated - a SharePoint pull is just "download into a staging folder,
+    then process that folder like any other". Returns [] when SharePoint
+    isn't configured.
+    """
+    from app.connectors import sharepoint_client  # deferred: not needed for folder/mailbox-only runs
+
+    if not sharepoint_client.is_configured():
+        logger.info("SharePoint not configured - SharePoint intake skipped")
+        return []
+    ensure_output_dirs()
+    staging = OPS_INTAKE_DIR / "_sharepoint"
+    from config.settings import settings
+    sp = settings.sharepoint
+    paths = sharepoint_client.fetch_folder(
+        staging, sp.ops_submission_folder, extensions=(".pdf", ".eml", ".txt"),
+        move_processed_to=sp.ops_processed_folder if sp.ops_mark_processed else None,
+    )
+    if not paths:
+        return []
+    return gather_from_folder(staging, source_label="SharePoint")
