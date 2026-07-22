@@ -12,3 +12,10 @@ watchdog
 # (auth only needs `requests`, already listed above)
 # Email intake connector uses Python's built-in imaplib/email modules —
 # no extra dependency needed.
+# Gemini backend (app/llm/gemini_client.py): Google's own SDK is required
+# here (not a plain `requests` call like the other backends) because
+# Google's newer "auth key" API keys don't authenticate against the raw
+# generateContent REST endpoint the same way the old standard keys did -
+# the SDK is the only path confirmed to work with them. See that
+# module's docstring.
+google-genai>=2.13.0
