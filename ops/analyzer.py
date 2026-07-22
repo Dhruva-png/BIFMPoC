@@ -22,6 +22,15 @@ if it states one, else DEMO-assigned via the portfolio - see
 ops/salesperson.py), normalises dates/amounts, and raises review flags for
 the human-in-the-loop queue ("Low-confidence extractions, discrepancies,
 and incomplete document sets are flagged for user review").
+
+A third, optional extraction task handles BIFM's real SHARED LEDGER
+documents - the daily Cash and Trade Order batch reports, and
+multi-portfolio withdrawal letters, all confirmed against BIFM's actual
+sample documents - which cover several portfolios/transactions in one
+file rather than the usual one-document-one-transaction case. Each
+resolved row is stored on OpsDocument.line_items; ops/correlator.py
+attaches a per-transaction copy of the same physical document to every
+transaction one of its rows actually matches.
 """
 from __future__ import annotations
 
@@ -75,10 +84,40 @@ def _build_prompt(is_text: bool) -> str:
         "TASK 2 - extract this metadata (null for anything not present; "
         "never invent values):\n"
         f"{field_list}\n\n"
+        "TASK 3 - some BIFM documents genuinely cover SEVERAL SEPARATE "
+        "PORTFOLIO-LEVEL TRANSACTIONS in one file: either an operational "
+        "ledger whose rows are different clients' own withdrawals/"
+        "contributions/orders (e.g. a daily cash movement report, or a "
+        "trade order batch), or a single letter/email in which ONE client "
+        "instructs on SEVERAL of their own portfolios at once (e.g. a "
+        "table listing 2+ portfolio codes, each with its own amount). "
+        "This is different from a normal single-transaction document, "
+        "and different from a fund's investment/holdings schedule, which "
+        "lists many underlying securities/bonds as supporting detail but "
+        "is still evidence for only ONE portfolio's transaction - use "
+        "TASK 2 for that, not this. Only if THIS SPECIFIC document "
+        'actually covers multiple portfolios, list each one as '
+        '"line_items": one entry per portfolio/transaction, each with '
+        '"portfolio" (name or code), "transaction_amount", '
+        '"transaction_date" (that row\'s own stated transaction/value '
+        "date - never an unrelated per-instrument date like a settlement, "
+        'maturity, or order-validity date), and "trade_id" - ONLY if it '
+        "looks like a reference likely to also appear on OTHER documents "
+        "for the same transaction (e.g. a bank payment reference); leave "
+        "it null for a purely internal per-row ledger ID that exists "
+        "only in this table, since using that would stop this row from "
+        "ever matching those other documents. List at most 15 rows (the "
+        "ones with the clearest portfolio identifiers); if there are "
+        "more, this is almost certainly not what TASK 3 is for after all "
+        '- leave "line_items" empty and use TASK 2\'s single-transaction '
+        "fields instead, which is also correct for "
+        "the common case of a normal document.\n\n"
         "Respond ONLY with this JSON shape:\n"
         "{\n"
         '  "doc_type": "<code>", "confidence": <0-100>,\n'
-        '  "metadata": {"<field>": {"value": <value or null>, "confidence": <0-100>}, ...}\n'
+        '  "metadata": {"<field>": {"value": <value or null>, "confidence": <0-100>}, ...},\n'
+        '  "line_items": [{"portfolio": <value or null>, "transaction_amount": <value or null>, '
+        '"transaction_date": <value or null>, "trade_id": <value or null>}, ...]\n'
         "}"
     )
 
@@ -196,17 +235,63 @@ def analyze_item(item: IntakeItem) -> OpsDocument:
         if implied in ("Withdrawal", "Contribution"):
             doc.metadata["transaction_type"] = implied
 
-    # Human-in-the-loop flags.
+    # TASK 3: shared-ledger rows (BIFM's real daily Cash and Trade Order
+    # batch reports, and multi-portfolio withdrawal letters, cover several
+    # portfolios/transactions in one document - see this module's
+    # docstring and ops/correlator.py). Each resolved row lets the
+    # correlator attach a per-transaction copy of this same physical
+    # document to every transaction it's actually evidence for, instead of
+    # this one document only ever being able to belong to a single
+    # transaction. Rows whose portfolio can't be resolved are dropped
+    # (they can never correlate anyway) but counted, so a human still
+    # knows this ledger has other rows not yet accounted for.
+    raw_line_items = parsed.get("line_items")
+    unresolved_rows = 0
+    if isinstance(raw_line_items, list):
+        # Hard cap regardless of what the model returned - the prompt asks
+        # for at most 15, but a document it misjudged as a multi-client
+        # ledger (e.g. a fund's holdings schedule, dozens of securities)
+        # shouldn't be allowed to balloon processing here even if it
+        # ignored that instruction.
+        for raw_item in raw_line_items[:20]:
+            if not isinstance(raw_item, dict):
+                continue
+            item_portfolio_raw = str(raw_item.get("portfolio") or "").strip()
+            item_code, item_name = resolve_portfolio(item_portfolio_raw)
+            item_amount = _normalize_amount(raw_item.get("transaction_amount"))
+            item_date = _normalize_date(raw_item.get("transaction_date")) or doc.metadata.get("transaction_date", "")
+            item_trade_id = str(raw_item.get("trade_id") or "").strip()
+            if not item_code or not item_amount:
+                unresolved_rows += 1
+                continue
+            doc.line_items.append({
+                "portfolio_code": item_code,
+                "portfolio_name": item_name,
+                "transaction_amount": item_amount,
+                "transaction_date": item_date,
+                "trade_id": item_trade_id,
+            })
+    if unresolved_rows:
+        doc.review_flags.append(
+            f"{unresolved_rows} row(s) of this shared document couldn't be resolved to a known "
+            "portfolio and were skipped - extend the Portfolio Name-to-Code mapping to pick them up")
+
+    # Human-in-the-loop flags. Skipped for the portfolio/trade-id/amount
+    # checks when line_items resolved something - a shared ledger's own
+    # top-level metadata is expected to be blank (there's no single
+    # "the" portfolio for a document covering several), so those flags
+    # would just be noise once at least one row correlated successfully.
     threshold = float(load_workflow().get("review_confidence_threshold", 65))
     if doc.classification_confidence < threshold:
         doc.review_flags.append(
             f"Low classification confidence ({doc.classification_confidence:.0f}%)")
-    if portfolio_raw and not code_resolved:
-        doc.review_flags.append(
-            f"Portfolio '{portfolio_raw}' not found in the Portfolio Name-to-Code mapping")
-    if not portfolio_raw:
-        doc.review_flags.append("No portfolio stated on the document")
-    if not doc.metadata.get("trade_id") and not doc.metadata.get("transaction_amount"):
-        doc.review_flags.append("No Trade ID and no amount - correlation will need manual review")
+    if not doc.line_items:
+        if portfolio_raw and not code_resolved:
+            doc.review_flags.append(
+                f"Portfolio '{portfolio_raw}' not found in the Portfolio Name-to-Code mapping")
+        if not portfolio_raw:
+            doc.review_flags.append("No portfolio stated on the document")
+        if not doc.metadata.get("trade_id") and not doc.metadata.get("transaction_amount"):
+            doc.review_flags.append("No Trade ID and no amount - correlation will need manual review")
 
     return doc

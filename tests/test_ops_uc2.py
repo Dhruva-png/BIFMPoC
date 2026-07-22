@@ -33,6 +33,16 @@ def _doc(name, doc_type="TRADE_ORDER", **meta) -> OpsDocument:
     return d
 
 
+def _shared_doc(name, doc_type, line_items) -> OpsDocument:
+    """A shared-ledger document (BIFM's real daily Cash/Trade Order batch
+    reports) - line_items is a list of row dicts, each already resolved
+    the way ops.analyzer.analyze_item would leave them."""
+    d = OpsDocument(source_file=name, source_path=f"/tmp/{name}", doc_type_code=doc_type,
+                    doc_type_name=doc_type.replace("_", " ").title())
+    d.line_items = [{k: str(v) for k, v in item.items()} for item in line_items]
+    return d
+
+
 # ------------------------------------------------------------- portfolio
 
 def test_portfolio_resolves_exact_code_name_and_alias():
@@ -104,6 +114,111 @@ def test_uncorrelatable_document_is_flagged_not_forced():
     assert len(groups) == 1
     assert groups[0].transaction_key.startswith("UNMATCHED")
     assert any("correlated" in f for f in docs[0].review_flags)
+
+
+# ---------------------------------------------- shared-ledger multi-row correlation
+# BIFM's real daily Cash and Trade Order batch reports cover several
+# portfolios/transactions in one document (confirmed against BIFM's
+# actual sample documents), unlike the usual one-document-one-transaction
+# case these tests otherwise exercise.
+
+def test_shared_ledger_row_attaches_to_matching_single_row_transaction():
+    instruction = _doc("instr.pdf", "WITHDRAWAL_INSTRUCTION",
+                        portfolio_code="LIBGLO", transaction_amount="13392853.26",
+                        transaction_date="2026-07-02")
+    cash = _shared_doc("cash.pdf", "CASH_FLOW_STATEMENT", line_items=[
+        {"portfolio_code": "LIBGLO", "portfolio_name": "Liberty Global Balanced",
+         "transaction_amount": "13392853.26", "transaction_date": "2026-07-06", "trade_id": ""},
+        {"portfolio_code": "SOMEOTHER", "portfolio_name": "Some Other Fund",
+         "transaction_amount": "999", "transaction_date": "2026-07-06", "trade_id": ""},
+    ])
+    groups = correlate([instruction, cash])
+    # LIBGLO's row joins the matching instruction; SOMEOTHER's row matches
+    # nothing else in this batch, so - like any lone document - it forms
+    # its own separate transaction group rather than being dropped.
+    assert len(groups) == 2
+    libglo_group = next(g for g in groups if g.portfolio_code == "LIBGLO")
+    assert {d.source_file for d in libglo_group.documents} == {"instr.pdf", "cash.pdf"}
+    # The attached copy is a CLONE carrying just the LIBGLO row's values,
+    # not the shared document's own (blank) top-level metadata.
+    cash_clone = next(d for d in libglo_group.documents if d.source_file == "cash.pdf")
+    assert cash_clone.meta("portfolio_code") == "LIBGLO"
+    assert cash_clone.meta("transaction_amount") == "13392853.26"
+    someother_group = next(g for g in groups if g.portfolio_code == "SOMEOTHER")
+    assert [d.source_file for d in someother_group.documents] == ["cash.pdf"]
+
+
+def test_shared_ledger_document_attaches_to_multiple_transactions():
+    # This is the exact real-world case this feature exists for: one
+    # physical Cash_070726.pdf file is evidence for BOTH LIBGLO's and
+    # LIBLMM's separate withdrawals.
+    instr_a = _doc("a.pdf", "WITHDRAWAL_INSTRUCTION", portfolio_code="LIBGLO",
+                    transaction_amount="13392853.26", transaction_date="2026-07-02")
+    instr_b = _doc("b.pdf", "WITHDRAWAL_INSTRUCTION", portfolio_code="LIBLMM",
+                    transaction_amount="314621.82", transaction_date="2026-07-02")
+    cash = _shared_doc("cash.pdf", "CASH_FLOW_STATEMENT", line_items=[
+        {"portfolio_code": "LIBGLO", "portfolio_name": "", "transaction_amount": "13392853.26",
+         "transaction_date": "2026-07-07", "trade_id": ""},
+        {"portfolio_code": "LIBLMM", "portfolio_name": "", "transaction_amount": "314621.82",
+         "transaction_date": "2026-07-07", "trade_id": ""},
+    ])
+    groups = correlate([instr_a, instr_b, cash])
+    assert len(groups) == 2
+    cash_clones = [d for g in groups for d in g.documents if d.source_file == "cash.pdf"]
+    assert len(cash_clones) == 2
+    assert {c.meta("portfolio_code") for c in cash_clones} == {"LIBGLO", "LIBLMM"}
+    # Same physical file referenced from both transactions...
+    assert all(c.source_path == cash.source_path for c in cash_clones)
+    # ...but independent clones, each keyed to its own transaction.
+    assert cash_clones[0].transaction_key != cash_clones[1].transaction_key
+
+
+def test_shared_ledger_row_with_no_match_still_forms_its_own_transaction():
+    # A row that resolves to a real portfolio but matches nothing else in
+    # the batch is real (if incomplete) audit evidence, not noise - it
+    # gets its own transaction group exactly like a lone document would,
+    # rather than being silently dropped.
+    cash = _shared_doc("cash.pdf", "CASH_FLOW_STATEMENT", line_items=[
+        {"portfolio_code": "BTCLPF", "portfolio_name": "", "transaction_amount": "284448.98",
+         "transaction_date": "2026-07-06", "trade_id": ""},
+    ])
+    groups = correlate([cash])
+    assert len(groups) == 1
+    assert groups[0].portfolio_code == "BTCLPF"
+    assert not groups[0].transaction_key.startswith("UNMATCHED")
+    clone = groups[0].documents[0]
+    assert clone is not cash  # a materialized clone, not the shared original
+    assert clone.source_path == cash.source_path  # same physical file
+
+
+def test_shared_ledger_with_zero_resolvable_rows_degrades_to_whole_document():
+    # ops.analyzer never populates line_items for a row it couldn't
+    # resolve a portfolio for, so a shared document where nothing
+    # resolved looks just like line_items=[] here - it must degrade to
+    # ordinary whole-document handling (one flagged unmatched group for
+    # itself), not vanish or error.
+    cash = _shared_doc("cash.pdf", "CASH_FLOW_STATEMENT", line_items=[])
+    groups = correlate([cash])
+    assert len(groups) == 1
+    assert groups[0].transaction_key.startswith("UNMATCHED")
+    assert groups[0].documents == [cash]  # the original object, not a clone
+    assert any("correlated" in f for f in cash.review_flags)
+
+
+def test_shared_ledger_row_can_seed_its_own_transaction():
+    # The shared ledger is processed in the same batch as its matching
+    # letter, but nothing guarantees which is analysed "first" - a row
+    # unit must be able to seed a brand new composite group exactly like
+    # a whole document can, not only ever absorb into a pre-existing one.
+    cash = _shared_doc("cash.pdf", "CASH_FLOW_STATEMENT", line_items=[
+        {"portfolio_code": "LIBGLO", "portfolio_name": "", "transaction_amount": "13392853.26",
+         "transaction_date": "2026-07-07", "trade_id": ""},
+    ])
+    letter = _doc("letter.pdf", "WITHDRAWAL_INSTRUCTION", portfolio_code="LIBGLO",
+                   transaction_amount="13392853.26", transaction_date="2026-07-02")
+    groups = correlate([cash, letter])
+    assert len(groups) == 1
+    assert {d.source_file for d in groups[0].documents} == {"cash.pdf", "letter.pdf"}
 
 
 def test_unknown_transaction_type_pack_is_not_reported_complete():

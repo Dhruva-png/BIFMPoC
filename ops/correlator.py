@@ -22,10 +22,37 @@ Fully deterministic - no LLM. Correlation keys, in priority order:
 A trade-id group also absorbs composite-keyed documents that share its
 portfolio + amount profile (the bank statement usually doesn't quote the
 trade id, but it does show the amount against the portfolio's account).
+
+SHARED LEDGER DOCUMENTS: BIFM's real daily Cash and Trade Order batch
+reports cover many portfolios/transactions in one file, and some
+withdrawal letters instruct on several portfolios at once (all confirmed
+against BIFM's actual sample documents - see ops/analyzer.py's TASK 3).
+Correlation runs over "units" instead of documents directly: a normal
+document contributes exactly one unit (itself, unchanged); a shared
+ledger with N resolved OpsDocument.line_items contributes N units, one
+per row, each carrying that row's own portfolio/amount/date/trade_id
+instead of the document's (blank) top-level metadata. Units group
+through the exact same trade-id / composite / unmatched logic as whole
+documents always have - no special-casing needed, since a row unit
+always has a portfolio+amount by construction (ops.analyzer drops any
+row it couldn't resolve a portfolio for before it reaches
+OpsDocument.line_items). Only at the end does a unit finally become an
+OpsDocument: a single-row unit's document is used as-is (zero behaviour
+change for the common case); a shared-ledger row's unit becomes a CLONE
+of the source document with that row's metadata - same source_path, so
+filing still copies the one real file, just once per transaction it's
+actually evidence for, exactly as BIFM described needing ("Marvel will
+go to all these five folders... and compile it"). A row that resolves
+but matches nothing else in the batch isn't dropped - like any lone
+document, it forms its own new transaction group, which is honest audit
+evidence of a transaction Marvel doesn't yet have the rest of the paper
+trail for, not something to hide.
 """
 from __future__ import annotations
 
+import copy
 import re
+from dataclasses import dataclass
 from datetime import datetime
 
 from app.utils.logger import get_logger
@@ -88,98 +115,165 @@ def _infer_transaction_type(documents: list[OpsDocument]) -> str:
     return "Unknown"
 
 
+@dataclass
+class _Unit:
+    """One correlatable row: a whole document (line_item=None, the common
+    case) or one row of a shared-ledger document (line_item=that row's
+    dict). Correlates on the row's own identifiers, not the document's."""
+    doc: OpsDocument
+    line_item: dict | None
+
+    def _source(self) -> dict:
+        return self.line_item if self.line_item is not None else self.doc.metadata
+
+    def trade_id(self) -> str:
+        return _norm_trade_id(self._source().get("trade_id", ""))
+
+    def portfolio_code(self) -> str:
+        return str(self._source().get("portfolio_code") or "")
+
+    def amount(self) -> str:
+        return _norm_amount(self._source().get("transaction_amount", ""))
+
+    def date(self) -> str:
+        return str(self._source().get("transaction_date") or "")
+
+    def materialize(self) -> OpsDocument:
+        """The whole-document unit IS the document (no copy - preserves
+        every existing single-document behaviour unchanged). A row unit
+        becomes a clone: same physical file (source_path/source_file,
+        classification, everything else), but this row's own
+        portfolio/amount/date/trade_id instead of the shared document's
+        blank top-level metadata."""
+        if self.line_item is None:
+            return self.doc
+        clone = copy.deepcopy(self.doc)
+        clone.metadata["portfolio_code"] = self.line_item.get("portfolio_code", "")
+        clone.metadata["portfolio_name"] = self.line_item.get("portfolio_name", "")
+        clone.metadata["trade_id"] = self.line_item.get("trade_id", "")
+        clone.metadata["transaction_amount"] = self.line_item.get("transaction_amount", "")
+        if self.line_item.get("transaction_date"):
+            clone.metadata["transaction_date"] = self.line_item["transaction_date"]
+        clone.review_flags = [
+            f for f in clone.review_flags
+            if "row(s) of this shared document" not in f
+        ]
+        clone.review_flags.append(
+            f"One row of a shared multi-portfolio document ({self.doc.source_file})")
+        return clone
+
+
+def _units_for(doc: OpsDocument) -> list[_Unit]:
+    if doc.line_items:
+        return [_Unit(doc, item) for item in doc.line_items]
+    return [_Unit(doc, None)]
+
+
 def correlate(documents: list[OpsDocument]) -> list[TransactionGroup]:
-    """Groups analysed documents into transactions. Sets each document's
-    transaction_key in place and returns the groups."""
+    """Groups analysed documents into transactions. Sets each resulting
+    document's transaction_key in place and returns the groups. The
+    returned groups' documents may include clones of a shared-ledger
+    document (see module docstring) - callers should file/save those
+    materialized documents, not the original `documents` list, so a
+    shared document gets filed once per transaction it actually belongs
+    to."""
     tolerance = int(load_workflow().get("date_tolerance_days", 5))
 
-    trade_groups: dict[str, list[OpsDocument]] = {}
-    composite_docs: list[OpsDocument] = []
-    unmatched: list[OpsDocument] = []
+    units: list[_Unit] = [u for doc in documents for u in _units_for(doc)]
 
-    for doc in documents:
-        trade_id = _norm_trade_id(doc.meta("trade_id"))
+    trade_groups: dict[str, list[_Unit]] = {}
+    composite_units: list[_Unit] = []
+    unmatched_units: list[_Unit] = []
+
+    for u in units:
+        trade_id = u.trade_id()
         if trade_id:
-            trade_groups.setdefault(trade_id, []).append(doc)
-        elif doc.meta("portfolio_code") and _norm_amount(doc.meta("transaction_amount")):
-            composite_docs.append(doc)
+            trade_groups.setdefault(trade_id, []).append(u)
+        elif u.portfolio_code() and u.amount():
+            composite_units.append(u)
         else:
-            unmatched.append(doc)
+            unmatched_units.append(u)
 
-    # Absorb composite documents into an existing trade-id group when they
+    # Absorb composite units into an existing trade-id group when they
     # share its portfolio + amount profile and sit within the date window -
     # the bank statement rarely quotes the trade id, but it shows the same
     # amount moving on the same portfolio in the same week.
-    leftovers: list[OpsDocument] = []
-    for doc in composite_docs:
+    leftovers: list[_Unit] = []
+    for u in composite_units:
         placed = False
-        profile = (doc.meta("portfolio_code"), _norm_amount(doc.meta("transaction_amount")))
+        profile = (u.portfolio_code(), u.amount())
         for members in trade_groups.values():
-            member_profiles = {
-                (m.meta("portfolio_code"), _norm_amount(m.meta("transaction_amount")))
-                for m in members
-            }
+            member_profiles = {(m.portfolio_code(), m.amount()) for m in members}
             if profile in member_profiles and all(
-                _dates_within(doc.meta("transaction_date"), m.meta("transaction_date"), tolerance)
-                for m in members
+                _dates_within(u.date(), m.date(), tolerance) for m in members
             ):
-                members.append(doc)
+                members.append(u)
                 placed = True
                 break
         if not placed:
-            leftovers.append(doc)
+            leftovers.append(u)
 
     # Composite grouping among the leftovers: portfolio + amount + date window.
-    composite_groups: list[list[OpsDocument]] = []
-    for doc in leftovers:
-        profile = (doc.meta("portfolio_code"), _norm_amount(doc.meta("transaction_amount")))
+    composite_groups: list[list[_Unit]] = []
+    for u in leftovers:
+        profile = (u.portfolio_code(), u.amount())
         placed = False
         for group in composite_groups:
-            group_profile = (group[0].meta("portfolio_code"),
-                             _norm_amount(group[0].meta("transaction_amount")))
+            group_profile = (group[0].portfolio_code(), group[0].amount())
             if profile == group_profile and all(
-                _dates_within(doc.meta("transaction_date"), m.meta("transaction_date"), tolerance)
-                for m in group
+                _dates_within(u.date(), m.date(), tolerance) for m in group
             ):
-                group.append(doc)
+                group.append(u)
                 placed = True
                 break
         if not placed:
-            composite_groups.append([doc])
+            composite_groups.append([u])
 
     groups: list[TransactionGroup] = []
 
-    def _build(key: str, members: list[OpsDocument]) -> TransactionGroup:
-        for m in members:
+    def _build(key: str, unit_members: list[_Unit]) -> TransactionGroup:
+        materialized = [u.materialize() for u in unit_members]
+        for m in materialized:
             m.transaction_key = key
         return TransactionGroup(
             transaction_key=key,
-            transaction_type=_infer_transaction_type(members),
-            portfolio_code=_first_nonempty(members, "portfolio_code"),
-            portfolio_name=_first_nonempty(members, "portfolio_name"),
-            client_name=_first_nonempty(members, "client_name"),
-            transaction_date=_first_nonempty(members, "transaction_date"),
-            transaction_amount=_first_nonempty(members, "transaction_amount"),
-            trade_id=_first_nonempty(members, "trade_id"),
-            salesperson=_first_nonempty(members, "salesperson"),
-            documents=members,
+            transaction_type=_infer_transaction_type(materialized),
+            portfolio_code=_first_nonempty(materialized, "portfolio_code"),
+            portfolio_name=_first_nonempty(materialized, "portfolio_name"),
+            client_name=_first_nonempty(materialized, "client_name"),
+            transaction_date=_first_nonempty(materialized, "transaction_date"),
+            transaction_amount=_first_nonempty(materialized, "transaction_amount"),
+            trade_id=_first_nonempty(materialized, "trade_id"),
+            salesperson=_first_nonempty(materialized, "salesperson"),
+            documents=materialized,
         )
 
     for trade_id, members in trade_groups.items():
         groups.append(_build(trade_id, members))
 
     for group in composite_groups:
-        code = group[0].meta("portfolio_code")
-        amount = _norm_amount(group[0].meta("transaction_amount"))
-        date = _first_nonempty(group, "transaction_date") or "undated"
+        code = group[0].portfolio_code()
+        amount = group[0].amount()
+        date = next((u.date() for u in group if u.date()), "") or "undated"
         groups.append(_build(f"{code}-{amount}-{date}", group))
 
-    for i, doc in enumerate(unmatched, start=1):
-        doc.review_flags.append("Could not be correlated to a transaction (no Trade ID, portfolio, or amount)")
-        groups.append(_build(f"UNMATCHED-{i:03d}", [doc]))
+    # Unmatched: a unit with no trade id, portfolio, or amount at all can
+    # only ever be a whole-document unit - a shared-ledger row unit always
+    # has both by construction (ops.analyzer drops any row it couldn't
+    # resolve a portfolio for before it ever reaches OpsDocument.line_items,
+    # so an unresolvable-everywhere shared document degrades to a normal
+    # single whole-document unit here, same flagged treatment as any other
+    # uncorrelatable document). A row that resolves but matches nothing
+    # else in this batch isn't silently dropped either - it forms its own
+    # new composite group above, exactly like a lone document always has;
+    # that's honest audit evidence of a transaction Marvel doesn't yet
+    # have the rest of the paper trail for, not something to hide.
+    for i, u in enumerate(unmatched_units, start=1):
+        u.doc.review_flags.append("Could not be correlated to a transaction (no Trade ID, portfolio, or amount)")
+        groups.append(_build(f"UNMATCHED-{i:03d}", [u]))
 
     logger.info(
         "Correlated %d document(s) into %d transaction(s) (%d unmatched)",
-        len(documents), len(groups), len(unmatched),
+        len(documents), len(groups), len(unmatched_units),
     )
     return groups

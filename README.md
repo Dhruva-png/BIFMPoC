@@ -83,7 +83,15 @@ Investment team's Withdrawal and Contribution transactions:
    team per `ops/config/ops_workflow.json`.
 4. **Correlation** — deterministic grouping into transactions: Trade ID
    first, then portfolio+amount within a date window; uncorrelatable
-   documents are flagged for review, never force-merged.
+   documents are flagged for review, never force-merged. Some of BIFM's
+   real documents cover several portfolios in one file (a shared daily
+   Cash/Trade Order batch report, or a letter instructing on multiple of
+   a client's own portfolios at once) — `ops/analyzer.py` extracts each
+   row separately when a document is genuinely that kind of multi-
+   portfolio ledger, and `ops/correlator.py` attaches a per-transaction
+   copy of the same physical document to every transaction one of its
+   rows actually matches (see that module's docstring for the full
+   design).
 5. **Filing** — `ops_output/filed/<Year>/<Month>/<Date>/<Transaction>/`.
 6. **Audit packs** — evaluated against the proposal's pack composition
    (withdrawals: instruction, approval email, trade order, cash flow,

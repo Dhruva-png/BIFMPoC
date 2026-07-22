@@ -53,6 +53,16 @@ class OpsDocument:
     # see ops/salesperson.py), or "" (neither). Kept outside `metadata` since
     # it describes provenance, not an extracted value in its own right.
     salesperson_source: str = ""
+    # Populated only for a SHARED LEDGER document that covers multiple
+    # portfolios/transactions in one table (BIFM's real daily Cash and
+    # Trade Order batch reports, and multi-portfolio withdrawal letters -
+    # confirmed against BIFM's actual sample documents). Each entry is one
+    # row: {"portfolio_code", "portfolio_name", "transaction_amount",
+    # "transaction_date", "trade_id"}. Empty for the common case of a
+    # document that concerns just one portfolio/transaction, where the
+    # `metadata` fields above are used directly. See ops/correlator.py's
+    # docstring for how these get resolved into per-transaction copies.
+    line_items: list[dict] = field(default_factory=list)
 
     def meta(self, field_id: str) -> str:
         return str(self.metadata.get(field_id) or "")

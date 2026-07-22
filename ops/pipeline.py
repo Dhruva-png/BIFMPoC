@@ -108,8 +108,17 @@ def run_ops_batch(
     groups = correlate(documents)
     _emit(progress_cb, f"{len(groups)} transaction(s) identified.")
 
+    # A shared-ledger document (BIFM's real daily Cash/Trade Order batch
+    # reports, or a multi-portfolio withdrawal letter) can materialize into
+    # several per-transaction clones during correlation - see
+    # ops/correlator.py. From here on, the groups' own document lists are
+    # the source of truth (not the original `documents` from analysis),
+    # so a shared document gets filed into, and searchable from, every
+    # transaction it's actually evidence for.
+    correlated_documents = [doc for group in groups for doc in group.documents]
+
     _emit(progress_cb, "Filing documents (Year/Month/Date/Transaction)...")
-    for doc in documents:
+    for doc in correlated_documents:
         if not doc.error:
             file_document(doc)
 
@@ -122,8 +131,8 @@ def run_ops_batch(
         _emit(progress_cb, f"  {group.transaction_key}: {pack.status}")
 
     _emit(progress_cb, "Saving to the metadata repository...")
-    save_batch(documents, packs)
+    save_batch(correlated_documents, packs)
 
-    report_path = build_ops_report(documents, packs)
+    report_path = build_ops_report(correlated_documents, packs)
     _emit(progress_cb, f"Ops report saved to {report_path}")
-    return documents, packs, report_path
+    return correlated_documents, packs, report_path
