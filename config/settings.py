@@ -33,12 +33,11 @@ except ImportError:
 @dataclass
 class OpenRouterSettings:
     """
-    OpenRouter - the LLM backend this app runs on (replaced the earlier
-    Groq/Gemini backends after Groq's account lost access to every
-    vision-capable model it had and the configured Gemini key turned out
-    to be invalid). Get a free key at https://openrouter.ai/keys (no card
-    needed for the free-tier models this app defaults to) and set it as
-    OPENROUTER_API_KEY.
+    OpenRouter - the DEFAULT LLM backend this app runs on (replaced the
+    earlier Groq/Gemini-as-default setup after Groq's account lost access
+    to every vision-capable model it had). Get a free key at
+    https://openrouter.ai/keys (no card needed for the free-tier models
+    this app defaults to) and set it as OPENROUTER_API_KEY.
 
     Default model (both text and vision) is google/gemma-4-31b-it:free -
     picked after comparing OpenRouter's own live uptime stats: ~99.5%
@@ -58,6 +57,28 @@ class OpenRouterSettings:
     # so concurrent workers queue instead of tripping 429s. Override with
     # OPENROUTER_RPM_LIMIT if you've moved to a paid model with no cap.
     rpm_limit: int = int(os.environ.get("OPENROUTER_RPM_LIMIT", "15"))
+
+
+@dataclass
+class GeminiSettings:
+    """
+    Google Gemini - an alternative backend to OpenRouter, talking to
+    Google directly (its own GEMINI_API_KEY, not subject to OpenRouter's
+    shared free-tier 20/min-50/day caps). Get a key at
+    https://aistudio.google.com/apikey (any Google account, no card) and
+    set it as GEMINI_API_KEY, then set LLM_PROVIDER=gemini.
+
+    Default model is gemini-3.1-flash-lite - verified as a current
+    "Stable", multimodal (text/image/video/audio/PDF) model on Google's
+    own model list (ai.google.dev/gemini-api/docs/models) before being
+    picked, rather than guessed - see app/llm/gemini_client.py's docstring.
+    """
+    api_key: str = os.environ.get("GEMINI_API_KEY", "")
+    text_model: str = os.environ.get("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")
+    vision_model: str = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite")
+    request_timeout_seconds: int = int(os.environ.get("GEMINI_REQUEST_TIMEOUT", "60"))
+    max_retries: int = int(os.environ.get("GEMINI_MAX_RETRIES", "3"))
+    num_predict: int = int(os.environ.get("GEMINI_NUM_PREDICT", "800"))
 
 
 @dataclass
@@ -191,7 +212,14 @@ class PathSettings:
 
 @dataclass
 class AppSettings:
+    # Which LLM backend app.llm.router dispatches to: "openrouter"
+    # (default) or "gemini" (talks to Google directly, own rate limits -
+    # see GeminiSettings above). Switching is a .env change, not a code
+    # change - both backends implement the same
+    # ask_text/ask_vision/check_connection interface.
+    llm_provider: str = os.environ.get("LLM_PROVIDER", "openrouter").lower()
     openrouter: OpenRouterSettings = field(default_factory=OpenRouterSettings)
+    gemini: GeminiSettings = field(default_factory=GeminiSettings)
     sharepoint: SharePointSettings = field(default_factory=SharePointSettings)
     imap: ImapSettings = field(default_factory=ImapSettings)
     paths: PathSettings = field(default_factory=PathSettings)
