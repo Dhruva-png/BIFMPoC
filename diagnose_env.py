@@ -18,7 +18,7 @@ if env_path.exists():
             print(f"  (skipped/comment): {line}")
 
 print("\n--- Already set in real OS environment BEFORE .env loads ---")
-for key in ("LLM_PROVIDER", "OPENROUTER_API_KEY", "GEMINI_API_KEY"):
+for key in ("GEMINI_API_KEY",):
     pre_existing = os.environ.get(key)
     print(f"  {key}: {'SET (len=' + str(len(pre_existing)) + ')' if pre_existing else 'not set'}")
 
@@ -27,6 +27,6 @@ from dotenv import load_dotenv
 load_dotenv(env_path, override=False)
 
 print("\n--- Final resolved values ---")
-for key in ("LLM_PROVIDER", "OPENROUTER_API_KEY", "GEMINI_API_KEY"):
+for key in ("GEMINI_API_KEY",):
     val = os.environ.get(key, "")
     print(f"  {key}: {'SET (len=' + str(len(val)) + ')' if val else 'EMPTY'}")

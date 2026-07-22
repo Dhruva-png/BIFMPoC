@@ -31,42 +31,19 @@ except ImportError:
 
 
 @dataclass
-class OpenRouterSettings:
-    """
-    OpenRouter - the DEFAULT LLM backend this app runs on (replaced the
-    earlier Groq/Gemini-as-default setup after Groq's account lost access
-    to every vision-capable model it had). Get a free key at
-    https://openrouter.ai/keys (no card needed for the free-tier models
-    this app defaults to) and set it as OPENROUTER_API_KEY.
-
-    Default model (both text and vision) is google/gemma-4-31b-it:free -
-    picked after comparing OpenRouter's own live uptime stats: ~99.5%
-    (Google AI Studio) versus ~77% for the free NVIDIA OCR-specialist
-    model that was otherwise a closer thematic fit for document reading.
-    See app/llm/openrouter_client.py's docstring for the full rationale
-    and the free-tier rate-limit/data-logging caveats.
-    """
-    api_key: str = os.environ.get("OPENROUTER_API_KEY", "")
-    text_model: str = os.environ.get("OPENROUTER_TEXT_MODEL", "google/gemma-4-31b-it:free")
-    vision_model: str = os.environ.get("OPENROUTER_VISION_MODEL", "google/gemma-4-31b-it:free")
-    request_timeout_seconds: int = int(os.environ.get("OPENROUTER_REQUEST_TIMEOUT", "60"))
-    max_retries: int = int(os.environ.get("OPENROUTER_MAX_RETRIES", "4"))
-    num_predict: int = int(os.environ.get("OPENROUTER_NUM_PREDICT", "800"))
-    # Free-model requests are capped at 20/min platform-wide regardless of
-    # account status (OpenRouter's docs) - self-throttle a bit under that
-    # so concurrent workers queue instead of tripping 429s. Override with
-    # OPENROUTER_RPM_LIMIT if you've moved to a paid model with no cap.
-    rpm_limit: int = int(os.environ.get("OPENROUTER_RPM_LIMIT", "15"))
-
-
-@dataclass
 class GeminiSettings:
     """
-    Google Gemini - an alternative backend to OpenRouter, talking to
-    Google directly (its own GEMINI_API_KEY, not subject to OpenRouter's
-    shared free-tier 20/min-50/day caps). Get a key at
-    https://aistudio.google.com/apikey (any Google account, no card) and
-    set it as GEMINI_API_KEY, then set LLM_PROVIDER=gemini.
+    Google Gemini - the LLM backend this app runs on. Talks to Google
+    directly. Get a key at https://aistudio.google.com/apikey (any Google
+    account, no card) and set it as GEMINI_API_KEY.
+
+    Replaced OpenRouter as the default after OpenRouter's free-tier shared
+    pool for its default model (google/gemma-4-31b-it:free) turned out to
+    hit real upstream 429s under contention from other OpenRouter users -
+    an account-independent reliability problem live-tested during a real
+    document batch run. Gemini talks to Google directly with its own key
+    and quota, not a shared pool, and was already proven reliable in the
+    same testing.
 
     Default model is gemini-3.1-flash-lite - verified as a current
     "Stable", multimodal (text/image/video/audio/PDF) model on Google's
@@ -212,13 +189,6 @@ class PathSettings:
 
 @dataclass
 class AppSettings:
-    # Which LLM backend app.llm.router dispatches to: "openrouter"
-    # (default) or "gemini" (talks to Google directly, own rate limits -
-    # see GeminiSettings above). Switching is a .env change, not a code
-    # change - both backends implement the same
-    # ask_text/ask_vision/check_connection interface.
-    llm_provider: str = os.environ.get("LLM_PROVIDER", "openrouter").lower()
-    openrouter: OpenRouterSettings = field(default_factory=OpenRouterSettings)
     gemini: GeminiSettings = field(default_factory=GeminiSettings)
     sharepoint: SharePointSettings = field(default_factory=SharePointSettings)
     imap: ImapSettings = field(default_factory=ImapSettings)
@@ -242,11 +212,11 @@ class AppSettings:
     # concurrently - so at 3 (the default), a multi-person folder can have
     # up to 9 documents genuinely in flight at once. Each document mostly
     # just waits on an LLM HTTP call, so this is I/O-bound concurrency, not
-    # CPU parallelism - the real ceiling is OpenRouter's free-tier rate
-    # limit, enforced separately and safely by the proactive RPM limiter
-    # in app.llm.openrouter_client (workers queue on it rather than ever
-    # exceeding the platform's real 20/min cap), so raising this number is
-    # safe to try even before knowing your exact headroom.
+    # CPU parallelism - the real ceiling is your Gemini project's own rate
+    # limit (check the AI Studio dashboard for your tier). Unlike a shared
+    # free pool, this is your own quota, so 429s (handled with retry/
+    # backoff in app.llm.gemini_client) mean it's time to lower this
+    # number, not evidence of contention from other users.
     max_workers: int = int(os.environ.get("BIFM_MAX_WORKERS", "3"))
     log_level: str = os.environ.get("LOG_LEVEL", "INFO")
     excel_report_name: str = "BIFM_UT_Processing_Report.xlsx"

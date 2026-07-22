@@ -1,19 +1,24 @@
 """
-Google Gemini backend - alternative cloud LLM backend to OpenRouter (the
-default). Talks to Google directly rather than through OpenRouter's
-shared pool, so it needs its own GEMINI_API_KEY and isn't subject to
-OpenRouter's free-model 20/min-50/day caps. No local download, no model
+Google Gemini backend - the LLM backend this app runs on. Talks to
+Google directly, own key and own quota. No local download, no model
 warm-up.
+
+Replaced OpenRouter (which had briefly replaced Groq as the default -
+see git history) after a real batch run against actual documents hit
+429s on OpenRouter's free-tier shared pool for its default model, caused
+by contention from OTHER OpenRouter users rather than anything on this
+account (confirmed live: OpenRouter's own /api/v1/key endpoint showed
+usage_daily: 0 at the exact moment requests were failing). Gemini talks
+to Google directly with its own key and quota - no shared pool to
+contend with - and was already proven reliable in the same testing.
 
 Setup (one-time):
   1. Go to https://aistudio.google.com/apikey (any Google account, no card).
   2. Create an API key.
   3. Set GEMINI_API_KEY as an environment variable (or in .env - see
-     .env.example) and set LLM_PROVIDER=gemini before launching the app:
+     .env.example) before launching the app:
        macOS/Linux:  export GEMINI_API_KEY="your-key-here"
-                     export LLM_PROVIDER=gemini
        Windows:      set GEMINI_API_KEY=your-key-here
-                     set LLM_PROVIDER=gemini
 
 Default model is gemini-3.1-flash-lite (verified against Google's model
 list at ai.google.dev/gemini-api/docs/models before picking it - "Stable"
@@ -23,25 +28,25 @@ extraction", a good match for this app's per-page vision-extraction call
 pattern).
 
 Uses Google's official `google-genai` SDK rather than a plain `requests`
-call like the other backends (Groq/OpenRouter are both OpenAI-compatible
-REST, so hand-rolling those was straightforward and dependency-free).
-Gemini is different: as of mid-2026 Google is migrating API keys from
-"standard" keys (the old AIzaSy... format, a simple `?key=` query param
-against the generateContent REST endpoint) to "auth keys" (bound to a
-service account, the type AI Studio now issues by default). A live test
-against a real auth key found that raw REST calls to the legacy
-generateContent endpoint (`?key=` query param, `x-goog-api-key` header,
-and `Authorization: Bearer` header were all tried) uniformly fail with
-401 "Expected OAuth 2 access token..." - but the same key works
-immediately through `google-genai`'s `client.models.generate_content()`.
-Rather than reverse-engineer whatever internal protocol the SDK actually
-speaks to make that work, this module just uses the SDK directly - it's
-Google's own officially-supported path and isn't guesswork.
+call like the old Groq/OpenRouter backends did (both were OpenAI-
+compatible REST, so hand-rolling those was straightforward and
+dependency-free). Gemini is different: as of mid-2026 Google is
+migrating API keys from "standard" keys (the old AIzaSy... format, a
+simple `?key=` query param against the generateContent REST endpoint) to
+"auth keys" (bound to a service account, the type AI Studio now issues
+by default). A live test against a real auth key found that raw REST
+calls to the legacy generateContent endpoint (`?key=` query param,
+`x-goog-api-key` header, and `Authorization: Bearer` header were all
+tried) uniformly fail with 401 "Expected OAuth 2 access token..." - but
+the same key works immediately through `google-genai`'s
+`client.models.generate_content()`. Rather than reverse-engineer
+whatever internal protocol the SDK actually speaks to make that work,
+this module just uses the SDK directly - it's Google's own officially-
+supported path and isn't guesswork.
 
-Exposes the same public interface as app.llm.openrouter_client (ask_text,
-ask_vision, parse_json_response, check_connection, LLMResponse) so
-business logic never needs to know which backend is running - see
-app.llm.router.
+Exposes a small interface (ask_text, ask_vision, parse_json_response,
+check_connection, LLMResponse) that app.llm.router re-exports as-is, so
+business logic never talks to this module directly.
 """
 from __future__ import annotations
 
@@ -78,8 +83,7 @@ def _require_api_key() -> str:
         raise GeminiError(
             "GEMINI_API_KEY is not set. Get a free key at "
             "https://aistudio.google.com/apikey and set it in your .env file "
-            "(see .env.example) or as an environment variable, and set "
-            "LLM_PROVIDER=gemini."
+            "(see .env.example) or as an environment variable."
         )
     return settings.gemini.api_key
 

@@ -1,13 +1,15 @@
 # BIFM Unit Trusts — Document Processing (POC)
 
 AI-powered pipeline for BIFM UT instruction form processing. Runs against
-a **free cloud vision model** — no local GPU, no model download, no
-credit card. Default backend is **OpenRouter**; **Gemini** (talking to
-Google directly) is an alternative (`LLM_PROVIDER=gemini`) with its own,
-separate rate limits. (Earlier versions of this POC ran on Groq by
-default; that was replaced after Groq's account lost access to every
-vision-capable model it had — see `app/llm/openrouter_client.py`'s
-docstring for the full story.)
+**Google Gemini** — no local GPU, no model download, no credit card.
+(Earlier versions of this POC ran on Groq, then briefly on OpenRouter;
+OpenRouter was dropped after a real batch run found its free-tier shared
+pool throwing 429s caused by contention from *other* OpenRouter users,
+not this account's own quota — confirmed live via OpenRouter's own
+`/api/v1/key` endpoint showing `usage_daily: 0` at the exact moment
+requests were failing. Gemini talks to Google directly with its own key
+and quota, no shared pool to contend with. See
+`app/llm/gemini_client.py`'s docstring for the full story.)
 
 ## Quick start: set an API key
 
@@ -17,72 +19,34 @@ docstring for the full story.)
 > never get committed. Environment variables still work too — `.env` is just
 > a persistent alternative.
 
-### Option A — OpenRouter (default)
-
-1. Get a free API key: https://openrouter.ai/keys (no credit card needed
-   for the free-tier models this app defaults to).
-2. Set `OPENROUTER_API_KEY` in `.env` (see tip above), or as an
-   environment variable before launching:
-   ```bash
-   # macOS/Linux
-   export OPENROUTER_API_KEY="your-key-here"
-
-   # Windows (Command Prompt)
-   set OPENROUTER_API_KEY=your-key-here
-
-   # Windows (PowerShell)
-   $env:OPENROUTER_API_KEY="your-key-here"
-   ```
-3. Run the app (`python main.py`, or `streamlit run streamlit_app.py`).
-   `LLM_PROVIDER` defaults to `openrouter`, so nothing else changes.
-
-The default model, `google/gemma-4-31b-it:free`, was picked after
-comparing OpenRouter's own live uptime stats across every free
-vision-capable model on the platform: ~99.5% uptime (served by Google AI
-Studio) beat a free NVIDIA OCR-specialist model that was otherwise a
-closer thematic fit but sitting at ~77% — a flaky demo is worse than a
-slightly-less-specialized model that's actually up.
-
-Free-tier limits: 20 requests/minute, 50/day until you've purchased at
-least $10 of OpenRouter credit (a one-time top-up, not a subscription —
-and not spent by the free models themselves), after which it's 1000/day.
-The app self-throttles under the per-minute cap (`OPENROUTER_RPM_LIMIT`)
-so concurrent workers queue instead of tripping 429s. **Note:** OpenRouter's
-free-tier model pages disclose that prompts/outputs sent to `:free` models
-are logged by the hosting provider to improve their product — fine for
-this POC's demo/synthetic data, but swap in a paid OpenRouter model
-(drop the `:free` suffix) before ever pointing this at real client
-documents.
-
-### Option B — Gemini (alternative, own rate limits)
-
 1. Get a free API key: https://aistudio.google.com/apikey (any Google
    account, no card required).
-2. Set `GEMINI_API_KEY` **and** `LLM_PROVIDER=gemini`:
+2. Set `GEMINI_API_KEY` in `.env` (see tip above), or as an environment
+   variable before launching:
    ```bash
    # macOS/Linux
    export GEMINI_API_KEY="your-key-here"
-   export LLM_PROVIDER=gemini
+
+   # Windows (Command Prompt)
+   set GEMINI_API_KEY=your-key-here
 
    # Windows (PowerShell)
    $env:GEMINI_API_KEY="your-key-here"
-   $env:LLM_PROVIDER="gemini"
    ```
-   (or set both in `.env` — see `.env.example`'s Gemini section.)
-3. Run the app as normal.
+3. Run the app (`python main.py`, or `streamlit run streamlit_app.py`).
 
 Default model is `gemini-3.1-flash-lite` — checked against Google's own
 model list before picking it (Stable, multimodal: text/image/video/audio/
-PDF input). Talking to Google directly means this path isn't subject to
-OpenRouter's shared free-tier caps, but has its own: some newer Google
-Cloud projects have a **0 free-tier quota** for Gemini (often
-region-restricted) — if `check_connection()` fails with a quota error,
-that project needs billing enabled or you're back to OpenRouter. Both
-providers implement the exact same interface
-(`ask_text`/`ask_vision`/`check_connection`/`LLMResponse`), so switching is
-a `.env` change, not a code change — `app/llm/router.py` is the single
-point the rest of the app talks to, and it never calls a specific backend
-directly.
+PDF input, positioned by Google as their fast/cheap tier for lightweight
+data-extraction tasks — a good match for this app's per-page
+vision-extraction calls).
+
+Some newer Google Cloud projects have a **0 free-tier quota** for Gemini
+(often region-restricted) — if `check_connection()` fails with a quota
+error, that project needs billing enabled. `app/llm/router.py` is the
+single point the rest of the app talks to; it never calls
+`app/llm/gemini_client.py` directly, so if the backend ever needs to
+change again, only those two files do.
 
 
 ## Two applications, one platform
@@ -151,7 +115,7 @@ Processes scanned PDF instruction forms through 5 stages:
 | Stage | Module | What happens |
 |-------|--------|-------------|
 | 1 | Classifier | Identifies the form type from page 1 image |
-| 2 | Extractor | Reads form fields using the configured vision LLM (OpenRouter) |
+| 2 | Extractor | Reads form fields using the configured vision LLM (Gemini) |
 | 3 | Validator | Checks mandatory fields, ID formats, dates, branch codes |
 | 3b | Pre-Validation Flags | Rejection-risk checklist per Section 8 of the understanding doc (see below) |
 | 4 | Report | Builds Excel workbook (7 sheets) |
@@ -254,7 +218,7 @@ pip install -r requirements.txt
 
 # 2. Set your API key (see "Quick start" above)
 #    Either copy .env.example to .env and fill in the key, or export:
-export OPENROUTER_API_KEY="your-key-here"     # Windows PowerShell: $env:OPENROUTER_API_KEY="..."
+export GEMINI_API_KEY="your-key-here"     # Windows PowerShell: $env:GEMINI_API_KEY="..."
 ```
 
 ### Run the app
@@ -269,12 +233,7 @@ Open http://localhost:8501. Upload PDFs in the sidebar and click **Run Batch**.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `openrouter` | `openrouter` or `gemini` — which backend `app/llm/router.py` dispatches to |
-| `OPENROUTER_API_KEY` | (none) | **Required if `LLM_PROVIDER=openrouter`** |
-| `OPENROUTER_VISION_MODEL` | `google/gemma-4-31b-it:free` | Vision model for classification & extraction |
-| `OPENROUTER_TEXT_MODEL` | `google/gemma-4-31b-it:free` | Text model |
-| `OPENROUTER_RPM_LIMIT` | `15` | Self-throttle budget, kept below OpenRouter's free-model 20/min platform cap |
-| `GEMINI_API_KEY` | (none) | **Required if `LLM_PROVIDER=gemini`** |
+| `GEMINI_API_KEY` | (none) | **Required** — the app's only LLM backend |
 | `GEMINI_VISION_MODEL` | `gemini-3.1-flash-lite` | Vision model for classification & extraction |
 | `GEMINI_TEXT_MODEL` | `gemini-3.1-flash-lite` | Text model |
 | `PDF_RENDER_DPI` | `220` | DPI for PDF-to-image rendering |
@@ -299,9 +258,8 @@ bifm_ocr_app/
 │   └── prevalidation_flags.json  # Section 8: rejection-risk flag definitions
 ├── app/
 │   ├── core/pipeline.py          # Main orchestration (Module 1-5)
-│   ├── llm/openrouter_client.py  # LLM calls (ask_text, ask_vision) - default backend
-│   ├── llm/gemini_client.py      # Same interface, alternative backend
-│   ├── llm/router.py             # Single entry point the app imports (dispatches on LLM_PROVIDER)
+│   ├── llm/gemini_client.py      # LLM calls (ask_text, ask_vision) - the only backend
+│   ├── llm/router.py             # Single entry point the app imports
 │   ├── ocr/pdf_utils.py          # PDF → image rendering (pypdfium2)
 │   ├── services/
 │   │   ├── classifier.py         # Module 1: form type classification
