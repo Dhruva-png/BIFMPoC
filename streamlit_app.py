@@ -67,7 +67,7 @@ st.markdown(
         color: {INK} !important;
     }}
 
-    /* Inline code spans (e.g. `GROQ_API_KEY`) keep
+    /* Inline code spans (e.g. `OPENROUTER_API_KEY`) keep
        Streamlit's own light-grey chip background by default — the blanket
        light-text rule above made them invisible on it (light-on-light).
        Give them an explicit dark chip instead. */
