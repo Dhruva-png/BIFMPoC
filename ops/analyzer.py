@@ -103,7 +103,13 @@ def _normalize_amount(value) -> str:
         number = float(cleaned)
     except ValueError:
         return str(value)
-    return f"{number:g}"
+    # Fixed-point, never scientific notation - ":g" switches to exponential
+    # past 6 significant digits (e.g. a real BWP 13,392,853.26 withdrawal
+    # became the transaction key "LIBGLO-1.33929e+07-..." during a live
+    # test against BIFM's actual sample documents). Trailing zeros/dot are
+    # still stripped so whole amounts stay clean ("25000" not "25000.00").
+    text = f"{number:.2f}".rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def analyze_item(item: IntakeItem) -> OpsDocument:

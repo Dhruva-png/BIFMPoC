@@ -40,8 +40,14 @@ def _norm_trade_id(value: str) -> str:
 
 
 def _norm_amount(value: str) -> str:
+    # Fixed-point, never scientific notation - this value is used both for
+    # matching (any consistent representation works) and embedded directly
+    # into the visible transaction key/folder name (composite grouping,
+    # below), where ":g" turning a real BWP 13,392,853.26 amount into
+    # "1.33929e+07" is a real defect, not just cosmetic.
     try:
-        return f"{float(value):g}"
+        text = f"{float(value):.2f}".rstrip("0").rstrip(".")
+        return text or "0"
     except (TypeError, ValueError):
         return ""
 

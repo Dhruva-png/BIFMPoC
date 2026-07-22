@@ -140,11 +140,14 @@ def test_complete_withdrawal_pack():
 
 
 def test_missing_required_item_marks_pack_incomplete():
-    group = _withdrawal_group(["WITHDRAWAL_INSTRUCTION", "APPROVAL_EMAIL", "CASH_FLOW_STATEMENT"])
+    # TRADE_ORDER is 'where applicable' (absent for segregated-client
+    # withdrawals - no fund trade to record), so a genuinely incomplete
+    # pack needs to be missing something that's actually always required.
+    group = _withdrawal_group(["WITHDRAWAL_INSTRUCTION", "APPROVAL_EMAIL", "TRADE_ORDER"])
     pack = evaluate_pack(group)
     assert not pack.is_complete
     missing = {i.code for i in pack.missing_required}
-    assert "TRADE_ORDER" in missing
+    assert "CASH_FLOW_STATEMENT" in missing
 
 
 def test_where_applicable_item_missing_does_not_fail_the_pack():
@@ -160,6 +163,7 @@ def test_satisfied_by_alternates_deposit_confirmation_counts_as_proof_of_payment
         _doc("dep.pdf", "DEPOSIT_CONFIRMATION", trade_id="C1", portfolio_code="BBPF02", transaction_amount="900"),
         _doc("bank.pdf", "BANK_STATEMENT", trade_id="C1", portfolio_code="BBPF02", transaction_amount="900"),
         _doc("tr.pdf", "PROOF_OF_TRANSFER", trade_id="C1", portfolio_code="BBPF02", transaction_amount="900"),
+        _doc("cash.pdf", "CASH_TEMPLATE", trade_id="C1", portfolio_code="BBPF02", transaction_amount="900"),
     ]
     pack = evaluate_pack(correlate(docs)[0])
     pop_item = next(i for i in pack.items if i.code == "PROOF_OF_PAYMENT")

@@ -1,81 +1,81 @@
 {
-  "_comment": "Use Case 2 (BIFM Ops: Withdrawal & Contribution Audit Document Automation). Document types the Ops pipeline classifies incoming documents into, plus the audit-pack composition per transaction type - both taken directly from the proposal's 'Audit Document Compilation' section. 'required: false' = the proposal's 'where applicable' items: their absence is noted on the pack manifest but does not mark the pack incomplete.",
+  "_comment": "Use Case 2 (BIFM Ops: Withdrawal & Contribution Audit Document Automation). Document types + audit-pack composition, cross-checked against BIFM's own real sample documents (Ops Samples.zip, 2026-07-22) and the KGISL/BIFM requirements-clarification call transcript on top of the original proposal. 'required: false' = the proposal's 'where applicable' items: their absence is noted on the pack manifest but does not mark the pack incomplete. Two client types matter here and change which documents genuinely exist for a given transaction: POOLED (BIFM executes an actual trade in a shared fund - a Trade Order/Trading-tool document exists) vs SEGREGATED (money moves straight to/from the client's own account - no fund trade, so no Trade Order/Template; confirmed by real WITHDR-SEGREGATED and CONTRI-SEGREGATED samples containing no trade-order-style document at all).",
   "document_types": [
     {
       "code": "WITHDRAWAL_INSTRUCTION",
       "name": "Client Withdrawal Instruction",
       "transaction_type": "Withdrawal",
-      "classification_hints": ["withdrawal instruction", "redemption request", "disinvestment letter", "please process the withdrawal", "withdraw from portfolio"]
+      "classification_hints": ["withdrawal instruction", "redemption request", "disinvestment letter", "please process the withdrawal", "withdraw from portfolio", "re: disinvestment", "we hereby request that a cheque be drawn", "kindly disinvest as follows", "portfolio name / portfolio code / amount table"]
     },
     {
       "code": "APPROVAL_EMAIL",
       "name": "Investment Team Approval / Instruction Email",
       "transaction_type": "Withdrawal",
-      "classification_hints": ["approved for processing", "investment team approval", "proceed with the trade", "authorised to execute", "approval granted"]
+      "classification_hints": ["approved for processing", "investment team approval", "proceed with the trade", "authorised to execute", "approval granted", "please liquidate", "kindly receive the attached and advise", "portfolio management team", "re: disinvestment"]
     },
     {
       "code": "TRADE_ORDER",
       "name": "Trade Order Document (Trading Tool)",
       "transaction_type": "Any",
-      "classification_hints": ["trade order", "order ticket", "deal ticket", "trade confirmation", "order id", "execution details"]
+      "classification_hints": ["trade order", "order ticket", "deal ticket", "trade confirmation", "order id", "execution details", "load orders", "schedule of investments", "ordr_typ", "xact_typ", "pf_cod", "portfolio/hiport code", "prepared by / checked by"]
     },
     {
       "code": "CASH_FLOW_STATEMENT",
       "name": "Cash Flow Statement",
       "transaction_type": "Any",
-      "classification_hints": ["cash flow statement", "cash flow report", "cashflow", "inflow outflow summary"]
+      "classification_hints": ["cash flow statement", "cash flow report", "cashflow", "inflow outflow summary", "cash trade id", "analysis code withdr contri", "prepared by ... reviewed by", "portfolio code date transaction type amount"]
     },
     {
       "code": "BANK_STATEMENT",
       "name": "Bank Statement",
       "transaction_type": "Any",
-      "classification_hints": ["bank statement", "statement of account", "account statement", "opening balance", "closing balance", "bank logo"]
+      "classification_hints": ["bank statement", "statement of account", "account statement", "opening balance", "closing balance", "bank logo", "operating account consolidated statement", "opening ledger balance", "closing ledger balance", "value date"]
     },
     {
       "code": "PROOF_OF_PAYMENT",
       "name": "Proof of Payment",
       "transaction_type": "Any",
-      "classification_hints": ["proof of payment", "payment confirmation", "transfer receipt", "eft confirmation", "payment reference"]
+      "classification_hints": ["proof of payment", "payment confirmation", "transfer receipt", "eft confirmation", "payment reference", "payment transaction details", "beneficiary details", "debtor account is BIFM, beneficiary is a client/third-party bank account (money moving OUT to the client)", "rtgs", "uetr number"]
     },
     {
       "code": "DEPOSIT_CONFIRMATION",
       "name": "Deposit Confirmation Letter",
       "transaction_type": "Contribution",
-      "classification_hints": ["deposit confirmation", "confirmation of deposit", "funds deposited", "we confirm receipt of"]
+      "classification_hints": ["deposit confirmation", "confirmation of deposit", "funds deposited", "we confirm receipt of", "confirmation of investment", "client confirms they have sent money to BIFM"]
     },
     {
       "code": "PROOF_OF_TRANSFER",
       "name": "Proof of Transfer (BIFM to investment inflow account)",
       "transaction_type": "Contribution",
-      "classification_hints": ["proof of transfer", "inter-account transfer", "transfer to inflow account", "internal transfer confirmation"]
+      "classification_hints": ["proof of transfer", "inter-account transfer", "transfer to inflow account", "internal transfer confirmation", "payment transaction details", "beneficiary is a BIFM-owned inflow account (e.g. name/nickname containing BIFM), money moving IN to BIFM", "book transfer"]
     },
     {
       "code": "CASH_TEMPLATE",
       "name": "Cash Template",
       "transaction_type": "Contribution",
-      "classification_hints": ["cash template", "cash allocation template", "cash instruction template"]
+      "classification_hints": ["cash template", "cash allocation template", "cash instruction template", "cash trade id", "same shared daily cash report used for withdrawals - see CASH_FLOW_STATEMENT hints"]
     },
     {
       "code": "TRADE_TEMPLATE",
       "name": "Trade Template",
       "transaction_type": "Contribution",
-      "classification_hints": ["trade template", "trade allocation template", "trade instruction template"]
+      "classification_hints": ["trade template", "trade allocation template", "trade instruction template", "same trading-tool output used for withdrawals - see TRADE_ORDER hints", "only present for pooled clients - a segregated client's contribution has no trade template"]
     }
   ],
   "audit_packs": {
     "Withdrawal": [
       {"code": "WITHDRAWAL_INSTRUCTION", "required": true},
       {"code": "APPROVAL_EMAIL", "required": true},
-      {"code": "TRADE_ORDER", "required": true},
+      {"code": "TRADE_ORDER", "required": false, "note": "Trade Order Document (Trading Tool) - only exists for pooled clients, where BIFM executes an actual fund trade; a segregated client's withdrawal pays out directly with no trade to record (confirmed: real WITHDR-SEGREGATED sample has no trade-order document)"},
       {"code": "CASH_FLOW_STATEMENT", "required": true},
-      {"code": "BANK_STATEMENT", "required": false, "satisfied_by": ["BANK_STATEMENT", "PROOF_OF_PAYMENT"], "note": "Bank Statement / Proof of Payment - where applicable"}
+      {"code": "BANK_STATEMENT", "required": false, "satisfied_by": ["BANK_STATEMENT", "PROOF_OF_PAYMENT"], "note": "Bank Statement / Proof of Payment - where applicable (BIFM only generates this for pooled-client payouts it makes itself, or on ad hoc auditor request)"}
     ],
     "Contribution": [
       {"code": "PROOF_OF_PAYMENT", "required": true, "satisfied_by": ["PROOF_OF_PAYMENT", "DEPOSIT_CONFIRMATION"], "note": "Client Proof of Payment / Deposit Confirmation Letter"},
       {"code": "BANK_STATEMENT", "required": true, "note": "Bank Statement confirming receipt"},
       {"code": "PROOF_OF_TRANSFER", "required": true, "note": "Proof of Transfer from the BIFM account to the investment inflow account"},
-      {"code": "CASH_TEMPLATE", "required": false, "note": "Cash Template - where applicable based on client type"},
-      {"code": "TRADE_TEMPLATE", "required": false, "note": "Trade Template - where applicable based on client type"}
+      {"code": "CASH_TEMPLATE", "required": true, "satisfied_by": ["CASH_TEMPLATE", "CASH_FLOW_STATEMENT"], "note": "Cash Template - captured the same day for every contribution (unlike the withdrawal cash record, which is captured the next day); same shared daily cash file as CASH_FLOW_STATEMENT, so either code satisfies this"},
+      {"code": "TRADE_TEMPLATE", "required": false, "satisfied_by": ["TRADE_TEMPLATE", "TRADE_ORDER"], "note": "Trade Template - only exists for pooled clients (an actual fund purchase happens); a segregated client's contribution is captured under the cash template only, with no trade"}
     ]
   }
 }
