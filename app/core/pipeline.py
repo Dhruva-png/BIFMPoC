@@ -101,7 +101,17 @@ class DocumentOutcome:
 def _emit(progress_cb: ProgressCallback, message: str) -> None:
     logger.info(message)
     if progress_cb:
-        progress_cb(message)
+        try:
+            progress_cb(message)
+        except Exception:  # noqa: BLE001
+            # progress_cb is purely informational (e.g. `print` in headless
+            # CLI mode, which can't encode a Unicode arrow on a legacy
+            # Windows console codepage) - a failure here must never bubble
+            # up into the caller's try/except and get mistaken for the
+            # document itself having failed. logger.info() above already
+            # has a real record of the message even if this display step
+            # couldn't render it.
+            logger.exception("progress_cb failed for message: %r", message)
 
 
 # Windows/OneDrive tack a suffix onto the filename (not the surname) when a

@@ -15,7 +15,17 @@ ProgressCallback = Optional[Callable[[str], None]]
 def _emit(progress_cb: ProgressCallback, message: str) -> None:
     logger.info(message)
     if progress_cb:
-        progress_cb(message)
+        try:
+            progress_cb(message)
+        except Exception:  # noqa: BLE001
+            # progress_cb is purely informational (e.g. `print` in headless
+            # CLI mode, which can't encode a Unicode character on a legacy
+            # Windows console codepage) - a failure here must never bubble
+            # up into a caller's try/except and get mistaken for the
+            # underlying operation having failed. logger.info() above
+            # already has a real record of the message even if this
+            # display step couldn't render it.
+            logger.exception("progress_cb failed for message: %r", message)
 
 
 def sharepoint_available() -> bool:
