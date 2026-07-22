@@ -11,11 +11,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ops.analyzer import _normalize_amount, _normalize_date
-from ops.audit_pack import compile_pack, evaluate_pack
+from ops.audit_pack import compile_pack, evaluate_pack, zip_audit_folders, zip_packs_for_salesperson
 from ops.correlator import correlate
 from ops.models import OpsDocument
 from ops.portfolio import resolve_portfolio
-from ops.repository import documents_for_transaction, list_transactions, save_batch, search_documents
+from ops.repository import (
+    _init,
+    documents_for_transaction,
+    list_salespeople,
+    list_transactions,
+    save_batch,
+    search_documents,
+)
+from ops.salesperson import SOURCE_ASSIGNED, SOURCE_EXTRACTED, SOURCE_NONE, resolve_salesperson
 
 
 def _doc(name, doc_type="TRADE_ORDER", **meta) -> OpsDocument:
@@ -256,3 +264,153 @@ def test_date_and_amount_normalisation():
     assert _normalize_amount("P25,000.00") == "25000"
     assert _normalize_amount("1 200") == "1200"
     assert _normalize_amount("") == ""
+
+
+# ------------------------------------------------------------- salesperson (demo capability)
+# The demo roster (ops/config/salesperson_roster.json) maps:
+#   BPMMF01, BLEF03  -> Thabo Kgosi
+#   BBPF02, BYMJF04  -> Naledi Phiri
+#   BLEQ05, BGSGF06  -> Kagiso Mmusi
+
+def test_stated_salesperson_always_wins_over_the_roster():
+    # A document that actually names its advisor is real data - the demo
+    # roster must never override it, even though BPMMF01 maps to someone else.
+    name, source = resolve_salesperson("Naledi Phiri", "BPMMF01")
+    assert (name, source) == ("Naledi Phiri", SOURCE_EXTRACTED)
+
+
+def test_roster_fallback_when_nothing_stated():
+    name, source = resolve_salesperson("", "BPMMF01")
+    assert (name, source) == ("Thabo Kgosi", SOURCE_ASSIGNED)
+    name2, source2 = resolve_salesperson(None, "BBPF02")
+    assert (name2, source2) == ("Naledi Phiri", SOURCE_ASSIGNED)
+
+
+def test_no_portfolio_means_no_assignment_never_a_guess():
+    # Mirrors ops.portfolio's rule: never assign without a real peg to hang
+    # it on. A portfolio-less document gets no salesperson, not a random one.
+    assert resolve_salesperson("", "") == ("", SOURCE_NONE)
+    assert resolve_salesperson(None, None) == ("", SOURCE_NONE)
+
+
+def test_portfolio_not_in_roster_means_no_assignment():
+    assert resolve_salesperson("", "UNKNOWN_CODE") == ("", SOURCE_NONE)
+
+
+def test_correlator_propagates_salesperson_onto_the_transaction():
+    docs = [
+        _doc("a.pdf", "WITHDRAWAL_INSTRUCTION", trade_id="T1", portfolio_code="BPMMF01",
+             transaction_amount="100", salesperson="Thabo Kgosi"),
+        _doc("b.pdf", "TRADE_ORDER", trade_id="T1", portfolio_code="BPMMF01",
+             transaction_amount="100"),  # doesn't state one - group still resolves
+    ]
+    group = correlate(docs)[0]
+    assert group.salesperson == "Thabo Kgosi"
+
+
+# ------------------------------------------------------------- repository: salesperson filter
+
+def test_list_transactions_and_list_salespeople_filter_correctly(tmp_path):
+    db = tmp_path / "ops.db"
+    doc_a = _doc("a.pdf", "WITHDRAWAL_INSTRUCTION", trade_id="T-A", portfolio_code="BPMMF01",
+                 transaction_amount="100", salesperson="Thabo Kgosi")
+    doc_b = _doc("b.pdf", "PROOF_OF_PAYMENT", trade_id="T-B", portfolio_code="BBPF02",
+                 transaction_amount="200", salesperson="Naledi Phiri")
+    groups = correlate([doc_a]) + correlate([doc_b])
+    packs = [evaluate_pack(g) for g in groups]
+    save_batch([doc_a, doc_b], packs, db_path=db)
+
+    assert sorted(list_salespeople(db_path=db)) == ["Naledi Phiri", "Thabo Kgosi"]
+    thabo_only = list_transactions(db_path=db, salesperson="Thabo Kgosi")
+    assert len(thabo_only) == 1 and thabo_only[0]["client_name"] == doc_a.meta("client_name")
+    assert list_transactions(db_path=db, salesperson="Nobody Here") == []
+    assert len(list_transactions(db_path=db)) == 2  # unfiltered still returns everything
+
+
+def test_repository_migrates_a_database_created_before_salesperson_existed(tmp_path):
+    # Regression guard for the exact bug this feature's own rollout hit:
+    # CREATE TABLE IF NOT EXISTS is a no-op against a database that already
+    # exists, so a repository.db from before "salesperson" was added would
+    # otherwise break every query referencing that column. Build a
+    # deliberately old-schema DB (no salesperson column anywhere) and
+    # confirm _init() adds it in place without losing existing rows.
+    import sqlite3
+    db = tmp_path / "old_schema.db"
+    conn = sqlite3.connect(db)
+    conn.execute("""
+        CREATE TABLE documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_file TEXT, filed_path TEXT, portfolio_code TEXT,
+            UNIQUE(filed_path)
+        )""")
+    conn.execute("""
+        CREATE TABLE transactions (
+            transaction_key TEXT PRIMARY KEY, portfolio_code TEXT, client_name TEXT
+        )""")
+    conn.execute("INSERT INTO documents (source_file, filed_path, portfolio_code) VALUES (?,?,?)",
+                 ("old.pdf", "/filed/old.pdf", "BPMMF01"))
+    conn.execute("INSERT INTO transactions (transaction_key, portfolio_code, client_name) VALUES (?,?,?)",
+                 ("OLDKEY", "BPMMF01", "Old Client"))
+    conn.commit()
+    conn.close()
+
+    conn2 = sqlite3.connect(db)
+    _init(conn2)  # the migration under test
+
+    doc_cols = {r[1] for r in conn2.execute("PRAGMA table_info(documents)")}
+    tx_cols = {r[1] for r in conn2.execute("PRAGMA table_info(transactions)")}
+    assert "salesperson" in doc_cols
+    assert "salesperson" in tx_cols
+
+    # Original rows survive, untouched, with salesperson simply NULL/blank -
+    # never fabricated for data that predates the field.
+    row = conn2.execute("SELECT source_file, portfolio_code, salesperson FROM documents").fetchone()
+    assert row[0] == "old.pdf" and row[1] == "BPMMF01" and not row[2]
+    tx_row = conn2.execute("SELECT client_name, salesperson FROM transactions").fetchone()
+    assert tx_row[0] == "Old Client" and not tx_row[1]
+    conn2.close()
+
+
+# ------------------------------------------------------------- audit-pack zip export
+
+def test_zip_audit_folders_includes_files_and_skips_missing(tmp_path):
+    folder_a = tmp_path / "PACK_A"
+    folder_a.mkdir()
+    (folder_a / "MANIFEST.txt").write_text("manifest a", encoding="utf-8")
+    (folder_a / "doc.txt").write_text("doc a", encoding="utf-8")
+
+    missing_folder = str(tmp_path / "DOES_NOT_EXIST")
+
+    zip_bytes = zip_audit_folders([str(folder_a), missing_folder, ""])
+
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = set(zf.namelist())
+    assert names == {"PACK_A/MANIFEST.txt", "PACK_A/doc.txt"}
+
+
+def test_zip_packs_for_salesperson_only_includes_their_transactions(tmp_path):
+    folder_thabo = tmp_path / "THABO_PACK"
+    folder_thabo.mkdir()
+    (folder_thabo / "MANIFEST.txt").write_text("m", encoding="utf-8")
+    folder_naledi = tmp_path / "NALEDI_PACK"
+    folder_naledi.mkdir()
+    (folder_naledi / "MANIFEST.txt").write_text("m", encoding="utf-8")
+
+    doc_a = _doc("a.pdf", "WITHDRAWAL_INSTRUCTION", trade_id="T-A", portfolio_code="BPMMF01",
+                 transaction_amount="100", salesperson="Thabo Kgosi")
+    doc_b = _doc("b.pdf", "PROOF_OF_PAYMENT", trade_id="T-B", portfolio_code="BBPF02",
+                 transaction_amount="200", salesperson="Naledi Phiri")
+    pack_thabo = evaluate_pack(correlate([doc_a])[0])
+    pack_thabo.audit_folder = str(folder_thabo)
+    pack_naledi = evaluate_pack(correlate([doc_b])[0])
+    pack_naledi.audit_folder = str(folder_naledi)
+
+    zip_bytes = zip_packs_for_salesperson([pack_thabo, pack_naledi], "Thabo Kgosi")
+
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = zf.namelist()
+    assert names == ["THABO_PACK/MANIFEST.txt"]  # only Thabo's pack, not Naledi's

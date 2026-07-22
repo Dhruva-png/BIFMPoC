@@ -8,6 +8,8 @@ Usage:
     python ops_main.py search "BPMMF01"                   # free-text metadata search
     python ops_main.py search "Theo" --field client_name  # field-scoped search
     python ops_main.py transactions                       # list known transactions
+    python ops_main.py transactions --salesperson "Thabo Kgosi"   # filter by salesperson (demo capability - see ops/salesperson.py)
+    python ops_main.py export-packs "Thabo Kgosi" -o packs.zip    # zip that salesperson's compiled audit packs
 
 The Streamlit UI equivalent is: streamlit run ops_app.py
 """
@@ -65,18 +67,51 @@ def _cmd_search(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_transactions(_args: argparse.Namespace) -> int:
+def _cmd_transactions(args: argparse.Namespace) -> int:
     from ops.repository import list_transactions
 
-    rows = list_transactions()
+    rows = list_transactions(salesperson=args.salesperson or None)
     if not rows:
-        print("No transactions in the repository yet.")
+        if args.salesperson:
+            print(f"No transactions found for {args.salesperson}.")
+        else:
+            print("No transactions in the repository yet.")
         return 0
     for row in rows:
         print(f"{row['transaction_key']:30s} {row['transaction_type'] or '':12s} "
               f"{row['portfolio_code'] or '':10s} {row['transaction_date'] or '':12s} "
-              f"{row['transaction_amount'] or '':>12s}  {row['pack_status']}")
+              f"{row['transaction_amount'] or '':>12s}  {row['salesperson'] or '':16s} {row['pack_status']}")
     print(f"\n{len(rows)} transaction(s).")
+    return 0
+
+
+def _cmd_export_packs(args: argparse.Namespace) -> int:
+    """Zips every already-compiled audit pack for one salesperson - the
+    CLI form of the UI's scoped download button. Reads folder paths back
+    from the repository (not live AuditPack objects, which don't outlive
+    the run that created them), so this works against ANY past run, not
+    just the one you just processed."""
+    from ops.audit_pack import zip_audit_folders
+    from ops.repository import list_transactions
+
+    rows = list_transactions(salesperson=args.salesperson)
+    if not rows:
+        print(f"No transactions found for {args.salesperson}.")
+        return 1
+
+    # A valid empty zip is still non-empty bytes (the End-Of-Central-
+    # Directory record), so check folder existence up front rather than
+    # trusting zip_bytes' truthiness to tell us whether anything was
+    # actually included.
+    existing_folders = [r["audit_folder"] for r in rows if r["audit_folder"] and Path(r["audit_folder"]).exists()]
+    if not existing_folders:
+        print(f"No compiled audit packs found on disk for {args.salesperson}.")
+        return 1
+
+    zip_bytes = zip_audit_folders(existing_folders)
+    out_path = Path(args.output)
+    out_path.write_bytes(zip_bytes)
+    print(f"Wrote {len(rows)} transaction(s)' audit packs -> {out_path}")
     return 0
 
 
@@ -97,7 +132,15 @@ def main() -> int:
     search_p.set_defaults(func=_cmd_search)
 
     tx_p = sub.add_parser("transactions", help="List known transactions and pack status")
+    tx_p.add_argument("--salesperson", type=str, default=None,
+                       help="Filter to one salesperson (demo capability - see ops/salesperson.py)")
     tx_p.set_defaults(func=_cmd_transactions)
+
+    export_p = sub.add_parser(
+        "export-packs", help="Zip every compiled audit pack for one salesperson (demo capability)")
+    export_p.add_argument("salesperson", type=str)
+    export_p.add_argument("-o", "--output", type=str, default="audit_packs.zip")
+    export_p.set_defaults(func=_cmd_export_packs)
 
     args = parser.parse_args()
     return args.func(args)

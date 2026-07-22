@@ -108,6 +108,19 @@ Investment team's Withdrawal and Contribution transactions:
 7. **Search** — a persistent SQLite metadata repository; search any
    extracted field from the UI (`ops_app.py` → Search tab) or CLI
    (`python ops_main.py search "TRD-2026-001"`).
+8. **Filter / export by salesperson** *(demo capability)* — there is no
+   SharePoint/HR-directory integration for salesperson assignment yet, so
+   this uses a synthetic roster (`ops/config/salesperson_roster.json`,
+   portfolio → salesperson) as a stand-in, purely so the capability can be
+   demonstrated end-to-end. A document that actually states its own
+   advisor/consultant/broker name always overrides the roster — the
+   roster is only a fallback for documents that don't say. Swap in a real
+   feed later via `OPS_SALESPERSON_ROSTER=<client csv>` (same override
+   pattern as the portfolio mapping) without touching code. Both UI tabs
+   get a "Filter by salesperson" dropdown, plus a scoped "Download audit
+   packs for `<name>`" zip; CLI equivalents:
+   `python ops_main.py transactions --salesperson "Thabo Kgosi"` and
+   `python ops_main.py export-packs "Thabo Kgosi" -o packs.zip`.
 
 ## Use Case 1 — What it does
 

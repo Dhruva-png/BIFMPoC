@@ -23,8 +23,10 @@ opening the app.
 """
 from __future__ import annotations
 
+import io
 import re
 import shutil
+import zipfile
 from pathlib import Path
 
 from app.utils.logger import get_logger
@@ -99,6 +101,7 @@ def compile_pack(pack: AuditPack) -> Path:
         f"Trade ID:         {tx.trade_id}",
         f"Transaction date: {tx.transaction_date}",
         f"Amount:           {tx.transaction_amount}",
+        f"Salesperson:      {tx.salesperson}",
         f"Status:           {pack.status}",
         "",
         "Pack contents:",
@@ -115,3 +118,38 @@ def compile_pack(pack: AuditPack) -> Path:
     pack.audit_folder = str(dest_dir)
     logger.info("Compiled audit pack %s (%s)", dest_dir.name, pack.status)
     return dest_dir
+
+
+def zip_audit_folders(folder_paths: list[str]) -> bytes:
+    """
+    Bundles a list of already-compiled audit pack folders (each holding
+    its documents + MANIFEST.txt) into a single in-memory zip. Folders
+    that are blank or missing on disk are silently skipped rather than
+    raising - a stale reference should degrade to "not included", not
+    break the whole export. Takes plain folder path strings (not AuditPack
+    objects) so both the UI (in-memory packs from the run just completed)
+    and the CLI (folder paths read back from the repository DB, which
+    outlives any single run's in-memory objects) can share this.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for folder_str in folder_paths:
+            if not folder_str:
+                continue
+            folder = Path(folder_str)
+            if not folder.exists():
+                continue
+            for file_path in folder.rglob("*"):
+                if file_path.is_file():
+                    zf.write(file_path, arcname=f"{folder.name}/{file_path.relative_to(folder)}")
+    return buffer.getvalue()
+
+
+def zip_packs_for_salesperson(packs: list[AuditPack], salesperson: str) -> bytes:
+    """The "create audit packs based on the salesperson's name" capability,
+    from in-memory AuditPack objects (e.g. right after a UI run). Each
+    transaction's compiled pack folder is unchanged - audit packs are
+    fundamentally per-transaction, per BIFM's own requirement; this is a
+    filtered EXPORT on top, not a restructuring of how packs are built."""
+    folders = [p.audit_folder for p in packs if p.transaction.salesperson == salesperson]
+    return zip_audit_folders(folders)

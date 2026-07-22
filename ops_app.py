@@ -38,7 +38,10 @@ from ops.ops_config import (  # noqa: E402
     ensure_output_dirs,
     load_audit_pack_definitions,
     load_document_types,
+    load_salesperson_roster,
 )
+
+_ALL_SALESPEOPLE = "(all salespeople)"
 
 # --------------------------------------------------------------------------- #
 # Page config & theme - same palette and CSS as Use Case 1 (streamlit_app.py)
@@ -297,6 +300,16 @@ with st.sidebar:
                 tag = "" if item.get("required", True) else " _(where applicable)_"
                 st.markdown(f"- {item.get('note') or item['code']}{tag}")
 
+    with st.expander("Salesperson roster (demo)"):
+        st.caption(
+            "No SharePoint/HR-directory integration yet - this is a synthetic "
+            "roster standing in for one, only so the salesperson filter can be "
+            "demonstrated. A document that states its own advisor/consultant "
+            "always overrides this."
+        )
+        for person in load_salesperson_roster():
+            st.markdown(f"**{person['name']}** — {', '.join(person.get('portfolios', []))}")
+
 # --------------------------------------------------------------------------- #
 # Header
 # --------------------------------------------------------------------------- #
@@ -423,8 +436,25 @@ with process_tab:
     if not last:
         st.info("No batch has been run yet. Add documents in the sidebar and click **Process Batch** to begin.")
     else:
-        documents: list[OpsDocument] = last["documents"]
-        packs: list[AuditPack] = last["packs"]
+        all_documents: list[OpsDocument] = last["documents"]
+        all_packs: list[AuditPack] = last["packs"]
+
+        # Salesperson filter - scopes everything below it (metrics, the
+        # transactions table, and Document Detail), the "filter ... based
+        # on the salesperson's name" capability. Options come from THIS
+        # batch's own transactions, not the full roster, so the dropdown
+        # never offers a name that would filter down to nothing.
+        batch_salespeople = sorted({p.transaction.salesperson for p in all_packs if p.transaction.salesperson})
+        selected_salesperson = st.selectbox(
+            "Filter by salesperson", [_ALL_SALESPEOPLE] + batch_salespeople,
+        )
+        if selected_salesperson == _ALL_SALESPEOPLE:
+            packs = all_packs
+            documents = all_documents
+        else:
+            packs = [p for p in all_packs if p.transaction.salesperson == selected_salesperson]
+            scoped_keys = {p.transaction.transaction_key for p in packs}
+            documents = [d for d in all_documents if d.transaction_key in scoped_keys]
 
         complete_n = sum(1 for p in packs if p.is_complete)
         incomplete_n = sum(1 for p in packs if not p.is_complete and p.items)
@@ -473,6 +503,7 @@ with process_tab:
                 "Client": p.transaction.client_name,
                 "Date": p.transaction.transaction_date,
                 "Amount": p.transaction.transaction_amount,
+                "Salesperson": p.transaction.salesperson or "—",
                 "Docs": len(p.transaction.documents),
                 "Pack": _pack_label(p),
             } for p in packs]
@@ -499,6 +530,18 @@ with process_tab:
                 )
                 st.write("")
 
+            if selected_salesperson != _ALL_SALESPEOPLE:
+                from ops.audit_pack import zip_packs_for_salesperson
+                zip_bytes = zip_packs_for_salesperson(all_packs, selected_salesperson)
+                if zip_bytes:
+                    st.download_button(
+                        f"⬇  Audit Packs — {selected_salesperson} ({len(packs)} transaction(s))",
+                        data=zip_bytes,
+                        file_name=f"audit_packs_{selected_salesperson.replace(' ', '_')}.zip",
+                        mime="application/zip", width="stretch", key="download_salesperson_zip",
+                    )
+                    st.write("")
+
             st.caption(
                 "Every transaction's audit pack — the source documents plus a "
                 "MANIFEST.txt stating exactly what's present and missing — is "
@@ -517,7 +560,12 @@ with process_tab:
                 f"{doc.source_file}  ·  {doc.doc_type_name}  ·  {doc.classification_confidence:.0f}% confidence"
             ):
                 st.markdown(chip, unsafe_allow_html=True)
-                st.caption(f"Transaction: `{doc.transaction_key or '—'}`  ·  Routed to: **{doc.assigned_team or '—'}**")
+                sp = doc.meta("salesperson")
+                sp_note = f" _({doc.salesperson_source})_" if sp and doc.salesperson_source else ""
+                st.caption(
+                    f"Transaction: `{doc.transaction_key or '—'}`  ·  Routed to: **{doc.assigned_team or '—'}**"
+                    f"  ·  Salesperson: **{sp or '—'}**{sp_note}"
+                )
 
                 if doc.error:
                     st.error(doc.error)
@@ -558,7 +606,7 @@ with process_tab:
 # Search tab
 # --------------------------------------------------------------------------- #
 with search_tab:
-    from ops.repository import documents_for_transaction, list_transactions, search_documents
+    from ops.repository import documents_for_transaction, list_salespeople, list_transactions, search_documents
 
     st.markdown('<div class="section-title">Search the Metadata Repository</div>', unsafe_allow_html=True)
     st.caption(
@@ -582,7 +630,13 @@ with search_tab:
 
     st.write("")
     st.markdown('<div class="section-title">All Transactions</div>', unsafe_allow_html=True)
-    tx = list_transactions()
+    known_salespeople = list_salespeople()
+    salesperson_filter = st.selectbox(
+        "Filter by salesperson", [_ALL_SALESPEOPLE] + known_salespeople, key="search_salesperson_filter",
+    )
+    tx = list_transactions(
+        salesperson=None if salesperson_filter == _ALL_SALESPEOPLE else salesperson_filter,
+    )
     if tx:
         st.dataframe(pd.DataFrame(tx), width="stretch", hide_index=True)
         picked = st.selectbox("Show documents for transaction", [""] + [t["transaction_key"] for t in tx])
@@ -591,5 +645,7 @@ with search_tab:
             st.dataframe(pd.DataFrame(docs)[
                 ["source_file", "doc_type_name", "portfolio_code", "transaction_amount", "filed_path"]
             ], width="stretch", hide_index=True)
+    elif salesperson_filter != _ALL_SALESPEOPLE:
+        st.caption(f"No transactions found for {salesperson_filter}.")
     else:
         st.caption("Repository is empty — process a batch first.")

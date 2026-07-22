@@ -1,0 +1,8 @@
+{
+  "_comment": "DEMO DATA ONLY. There is no SharePoint/HR-directory integration for salesperson assignment in this PoC, and no real BIFM sales-consultant roster was available to build one against - this file exists purely so the 'filter and compile audit packs by salesperson' capability can be demonstrated end-to-end without either. It assigns each of the 6 sample portfolios (config/form_types.json in the UT app) to one of 3 fictional demo salespeople. A document that actually STATES a sales consultant / advisor / broker name (see ops/analyzer.py's salesperson field) always takes priority over this roster - the roster is only a fallback for documents that don't say. Replace with a real feed (SharePoint list, HR system export, CRM) via OPS_SALESPERSON_ROSTER before any production use - see ops/ops_config.py's load_salesperson_roster().",
+  "salespeople": [
+    {"name": "Thabo Kgosi", "portfolios": ["BPMMF01", "BLEF03"]},
+    {"name": "Naledi Phiri", "portfolios": ["BBPF02", "BYMJF04"]},
+    {"name": "Kagiso Mmusi", "portfolios": ["BLEQ05", "BGSGF06"]}
+  ]
+}

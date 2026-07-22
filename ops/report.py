@@ -78,13 +78,13 @@ def build_ops_report(documents: list[OpsDocument], packs: list[AuditPack]) -> Pa
 
     ws_t = wb.create_sheet("Transactions")
     t_headers = ["Transaction Key", "Type", "Portfolio Code", "Portfolio Name", "Client",
-                 "Date", "Amount", "Trade ID", "Documents", "Pack Status", "Audit Folder"]
+                 "Date", "Amount", "Trade ID", "Salesperson", "Documents", "Pack Status", "Audit Folder"]
     _write_header(ws_t, t_headers)
     for pack in packs:
         tx = pack.transaction
         ws_t.append([tx.transaction_key, tx.transaction_type, tx.portfolio_code,
                      tx.portfolio_name, tx.client_name, tx.transaction_date,
-                     tx.transaction_amount, tx.trade_id, len(tx.documents),
+                     tx.transaction_amount, tx.trade_id, tx.salesperson, len(tx.documents),
                      pack.status, pack.audit_folder])
         fill = FILL_COMPLETE if pack.is_complete else FILL_INCOMPLETE
         for col in range(1, len(t_headers) + 1):
@@ -92,12 +92,13 @@ def build_ops_report(documents: list[OpsDocument], packs: list[AuditPack]) -> Pa
     _autosize(ws_t, t_headers)
 
     ws_p = wb.create_sheet("Audit Packs")
-    p_headers = ["Transaction Key", "Type", "Pack Item", "Required", "Present", "Satisfied By"]
+    p_headers = ["Transaction Key", "Type", "Salesperson", "Pack Item", "Required", "Present", "Satisfied By"]
     _write_header(ws_p, p_headers)
     for pack in packs:
         for item in pack.items:
             ws_p.append([pack.transaction.transaction_key, pack.transaction.transaction_type,
-                         item.name, "Yes" if item.required else "Where applicable",
+                         pack.transaction.salesperson, item.name,
+                         "Yes" if item.required else "Where applicable",
                          "Yes" if item.present else "No", item.satisfied_by_code])
             if item.required and not item.present:
                 for col in range(1, len(p_headers) + 1):

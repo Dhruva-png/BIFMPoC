@@ -3,8 +3,9 @@ Config loaders + output paths for Use Case 2 (BIFM Ops).
 
 Everything configurable lives in ops/config/*.json - document types and
 audit-pack composition, workflow routing, correlation identifiers, folder
-naming conventions, and the client-provided Portfolio Name-to-Code
-mapping - so a behaviour change is a JSON edit, not a code change (same
+naming conventions, the client-provided Portfolio Name-to-Code mapping,
+and the (demo-only, see salesperson_roster.json) salesperson roster - so
+a behaviour change is a JSON edit, not a code change (same
 configuration-driven principle as Use Case 1's config/ directory).
 
 Output tree (separate from UC1's output/ so the two apps never collide):
@@ -78,6 +79,27 @@ def load_portfolio_mapping() -> list[dict]:
         if rows:
             return rows
     return _load_json("portfolio_mapping.json")["portfolios"]
+
+
+def load_salesperson_roster() -> list[dict]:
+    """DEMO roster only - see ops/config/salesperson_roster.json's own
+    comment. Defaults to that file; point OPS_SALESPERSON_ROSTER at a
+    client-supplied CSV (name,portfolios - ';'-separated portfolio codes)
+    to swap in a real SharePoint/HR-directory feed without touching the
+    repo, the same override pattern as load_portfolio_mapping()."""
+    override = os.environ.get("OPS_SALESPERSON_ROSTER", "")
+    if override and override.lower().endswith(".csv") and Path(override).exists():
+        rows: list[dict] = []
+        with open(override, encoding="utf-8-sig", newline="") as fh:
+            for record in csv.DictReader(fh):
+                name = (record.get("name") or "").strip()
+                if not name:
+                    continue
+                portfolios = [p.strip() for p in (record.get("portfolios") or "").split(";") if p.strip()]
+                rows.append({"name": name, "portfolios": portfolios})
+        if rows:
+            return rows
+    return _load_json("salesperson_roster.json")["salespeople"]
 
 
 def document_type_lookup() -> dict[str, str]:

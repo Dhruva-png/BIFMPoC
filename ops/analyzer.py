@@ -17,7 +17,9 @@ API cost per document; the two questions share all their context anyway
 PDFs go through Use Case 1's rendering stack (app.ocr.pdf_utils - deskew,
 enhancement) and a vision call; email bodies / text documents go through a
 text call. Deterministic post-processing then resolves the portfolio via
-the client mapping, normalises dates/amounts, and raises review flags for
+the client mapping, resolves the salesperson (extracted from the document
+if it states one, else DEMO-assigned via the portfolio - see
+ops/salesperson.py), normalises dates/amounts, and raises review flags for
 the human-in-the-loop queue ("Low-confidence extractions, discrepancies,
 and incomplete document sets are flagged for user review").
 """
@@ -34,6 +36,7 @@ from ops.intake import IntakeItem
 from ops.models import OpsDocument
 from ops.ops_config import load_document_types, load_workflow
 from ops.portfolio import resolve_portfolio
+from ops.salesperson import resolve_salesperson
 
 logger = get_logger(__name__)
 
@@ -51,6 +54,7 @@ _LLM_FIELDS = [
     ("security_name", "Security / fund name involved, if stated"),
     ("security_code", "Security code / ISIN / instrument code, if stated"),
     ("trade_id", "Trade ID / transaction reference / order number, if stated"),
+    ("salesperson", "Sales consultant / advisor / broker name mentioned on the document, if any"),
 ]
 
 
@@ -160,6 +164,17 @@ def analyze_item(item: IntakeItem) -> OpsDocument:
             value = "Withdrawal" if "withdraw" in low else ("Contribution" if "contribut" in low or "deposit" in low else value)
         doc.metadata[field_id] = value
         doc.metadata_confidence[field_id] = conf
+
+    # Salesperson: prefer whatever the document itself stated (just read
+    # generically above, in doc.metadata["salesperson"]); fall back to the
+    # DEMO roster keyed by the now-resolved portfolio code. See
+    # ops/salesperson.py - this whole field is a demo capability standing
+    # in for a future SharePoint/HR-directory integration.
+    resolved_name, source = resolve_salesperson(doc.metadata.get("salesperson"), code_resolved)
+    doc.metadata["salesperson"] = resolved_name
+    doc.salesperson_source = source
+    if source == "Assigned (demo roster)":
+        doc.metadata_confidence["salesperson"] = 0.0  # a lookup, not a model read
 
     # Fields known from intake context, not the LLM.
     doc.metadata["instruction_type"] = doc.doc_type_name

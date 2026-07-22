@@ -36,12 +36,25 @@ _SEARCHABLE_FIELDS = [
     "source_file", "doc_type_code", "doc_type_name", "transaction_key", "assigned_team",
 ] + METADATA_FIELDS
 
+# transaction_key is the PRIMARY KEY (always present); these are the rest -
+# one list, reused for CREATE TABLE, migration, and the upsert in
+# save_batch, so a new column is added in exactly one place.
+_TRANSACTION_COLUMNS = [
+    "transaction_type", "portfolio_code", "portfolio_name", "client_name",
+    "transaction_date", "transaction_amount", "trade_id", "salesperson",
+    "pack_status", "audit_folder", "document_count",
+]
+
 
 def _connect(db_path: Path | None = None) -> sqlite3.Connection:
     ensure_output_dirs()
     conn = sqlite3.connect(db_path or OPS_DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
 def _init(conn: sqlite3.Connection) -> None:
@@ -52,13 +65,27 @@ def _init(conn: sqlite3.Connection) -> None:
             {doc_cols},
             UNIQUE(filed_path)
         )""")
-    conn.execute("""
+    tx_cols = ", ".join(f"{c} TEXT" for c in _TRANSACTION_COLUMNS)
+    conn.execute(f"""
         CREATE TABLE IF NOT EXISTS transactions (
             transaction_key TEXT PRIMARY KEY,
-            transaction_type TEXT, portfolio_code TEXT, portfolio_name TEXT,
-            client_name TEXT, transaction_date TEXT, transaction_amount TEXT,
-            trade_id TEXT, pack_status TEXT, audit_folder TEXT, document_count TEXT
+            {tx_cols}
         )""")
+
+    # Forward-compat: CREATE TABLE IF NOT EXISTS is a no-op against a
+    # repository.db from an older version of this app - add any column
+    # that's part of the current schema but missing from an existing table
+    # (e.g. "salesperson", added after some databases already existed),
+    # rather than every future field addition needing its own migration.
+    existing_doc_cols = _existing_columns(conn, "documents")
+    for col in _DOC_COLUMNS:
+        if col not in existing_doc_cols:
+            conn.execute(f"ALTER TABLE documents ADD COLUMN {col} TEXT")
+    existing_tx_cols = _existing_columns(conn, "transactions")
+    for col in _TRANSACTION_COLUMNS:
+        if col not in existing_tx_cols:
+            conn.execute(f"ALTER TABLE transactions ADD COLUMN {col} TEXT")
+
     conn.commit()
 
 
@@ -91,19 +118,27 @@ def save_batch(documents: list[OpsDocument], packs: list[AuditPack], db_path: Pa
             )
         for pack in packs:
             tx = pack.transaction
+            tx_values = {
+                "transaction_key": tx.transaction_key,
+                "transaction_type": tx.transaction_type,
+                "portfolio_code": tx.portfolio_code,
+                "portfolio_name": tx.portfolio_name,
+                "client_name": tx.client_name,
+                "transaction_date": tx.transaction_date,
+                "transaction_amount": tx.transaction_amount,
+                "trade_id": tx.trade_id,
+                "salesperson": tx.salesperson,
+                "pack_status": pack.status,
+                "audit_folder": pack.audit_folder,
+                "document_count": str(len(tx.documents)),
+            }
+            columns = ", ".join(tx_values)
+            placeholders = ", ".join("?" for _ in tx_values)
+            updates = ", ".join(f"{c}=excluded.{c}" for c in tx_values if c != "transaction_key")
             conn.execute(
-                "INSERT INTO transactions (transaction_key, transaction_type, portfolio_code, "
-                "portfolio_name, client_name, transaction_date, transaction_amount, trade_id, "
-                "pack_status, audit_folder, document_count) VALUES (?,?,?,?,?,?,?,?,?,?,?) "
-                "ON CONFLICT(transaction_key) DO UPDATE SET transaction_type=excluded.transaction_type, "
-                "portfolio_code=excluded.portfolio_code, portfolio_name=excluded.portfolio_name, "
-                "client_name=excluded.client_name, transaction_date=excluded.transaction_date, "
-                "transaction_amount=excluded.transaction_amount, trade_id=excluded.trade_id, "
-                "pack_status=excluded.pack_status, audit_folder=excluded.audit_folder, "
-                "document_count=excluded.document_count",
-                (tx.transaction_key, tx.transaction_type, tx.portfolio_code, tx.portfolio_name,
-                 tx.client_name, tx.transaction_date, tx.transaction_amount, tx.trade_id,
-                 pack.status, pack.audit_folder, str(len(tx.documents))),
+                f"INSERT INTO transactions ({columns}) VALUES ({placeholders}) "
+                f"ON CONFLICT(transaction_key) DO UPDATE SET {updates}",
+                list(tx_values.values()),
             )
         conn.commit()
         logger.info("Repository: saved %d document(s), %d transaction(s)", len(documents), len(packs))
@@ -151,13 +186,39 @@ def documents_for_transaction(transaction_key: str, db_path: Path | None = None)
         conn.close()
 
 
-def list_transactions(db_path: Path | None = None) -> list[dict]:
+def list_transactions(db_path: Path | None = None, salesperson: str | None = None) -> list[dict]:
+    """All transactions, optionally scoped to one salesperson - the
+    'filter ... audit packs based on the salesperson's name' capability.
+    salesperson=None (default) or "" returns everything."""
+    conn = _connect(db_path)
+    try:
+        _init(conn)
+        if salesperson:
+            rows = conn.execute(
+                "SELECT * FROM transactions WHERE salesperson = ? "
+                "ORDER BY transaction_date DESC, transaction_key",
+                (salesperson,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM transactions ORDER BY transaction_date DESC, transaction_key"
+            ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def list_salespeople(db_path: Path | None = None) -> list[str]:
+    """Distinct salesperson names actually present in the repository (not
+    the full roster - only names that have shown up on a real transaction),
+    for populating a filter dropdown."""
     conn = _connect(db_path)
     try:
         _init(conn)
         rows = conn.execute(
-            "SELECT * FROM transactions ORDER BY transaction_date DESC, transaction_key"
+            "SELECT DISTINCT salesperson FROM transactions "
+            "WHERE salesperson IS NOT NULL AND salesperson != '' ORDER BY salesperson"
         ).fetchall()
-        return [dict(r) for r in rows]
+        return [r[0] for r in rows]
     finally:
         conn.close()

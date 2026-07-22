@@ -30,6 +30,7 @@ METADATA_FIELDS = [
     "trade_id",             # Used to correlate transaction documents
     "document_type",        # Letter, Email, PDF, Trade Order, ...
     "source_document",      # Email, Banking Platform, Internal System
+    "salesperson",          # DEMO capability - see ops/salesperson.py
 ]
 
 
@@ -47,6 +48,11 @@ class OpsDocument:
     transaction_key: str = ""             # set by the correlator
     filed_path: str = ""                  # Year/Month/Date/Transaction location
     error: str = ""
+    # How metadata["salesperson"] was determined - "Extracted" (the document
+    # stated one), "Assigned (demo roster)" (fell back to the DEMO roster -
+    # see ops/salesperson.py), or "" (neither). Kept outside `metadata` since
+    # it describes provenance, not an extracted value in its own right.
+    salesperson_source: str = ""
 
     def meta(self, field_id: str) -> str:
         return str(self.metadata.get(field_id) or "")
@@ -66,6 +72,7 @@ class TransactionGroup:
     transaction_date: str
     transaction_amount: str
     trade_id: str
+    salesperson: str = ""                 # DEMO capability - see ops/salesperson.py
     documents: list[OpsDocument] = field(default_factory=list)
 
     @property

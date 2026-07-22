@@ -155,6 +155,7 @@ def correlate(documents: list[OpsDocument]) -> list[TransactionGroup]:
             transaction_date=_first_nonempty(members, "transaction_date"),
             transaction_amount=_first_nonempty(members, "transaction_amount"),
             trade_id=_first_nonempty(members, "trade_id"),
+            salesperson=_first_nonempty(members, "salesperson"),
             documents=members,
         )
 
