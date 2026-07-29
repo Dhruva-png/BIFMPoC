@@ -249,18 +249,15 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📂 Intake")
     imap_ok = uc1_intake.imap_available()
-    sharepoint_ok = uc1_intake.sharepoint_available()
     source_options = [
         "Upload files",
         "Use intake folder",
         "Email mailbox (IMAP)" + ("" if imap_ok else " (not configured)"),
-        "SharePoint folder" + ("" if sharepoint_ok else " (not configured)"),
     ]
     mode = st.radio("Source", source_options, label_visibility="collapsed")
 
     uploaded_files = None
     use_mailbox = False
-    use_sharepoint = False
     intake_dir = OPS_INTAKE_DIR
     if mode == "Upload files":
         uploaded_files = st.file_uploader(
@@ -279,7 +276,7 @@ with st.sidebar:
             if intake_dir.exists() else []
         )
         st.caption(f"{len(existing)} document(s) found in folder.")
-    elif mode.startswith("Email mailbox"):
+    else:
         use_mailbox = True
         if imap_ok:
             st.caption(f"Mailbox folder: `{settings.imap.folder}`  ·  Search: `{settings.imap.search_criteria}`")
@@ -287,19 +284,6 @@ with st.sidebar:
             st.caption(
                 "Set IMAP_HOST / IMAP_USERNAME / IMAP_PASSWORD as environment variables to enable "
                 "this source (same mailbox settings as the UT app)."
-            )
-    else:
-        use_sharepoint = True
-        if sharepoint_ok:
-            st.caption(f"Input folder: `{settings.sharepoint.ops_submission_folder}`")
-            if settings.sharepoint.ops_mark_processed:
-                st.caption(f"Processed items move to: `{settings.sharepoint.ops_processed_folder}`")
-            if settings.sharepoint.ops_write_back_enabled:
-                st.caption("Write-back is ON — filed documents and audit packs are also pushed to SharePoint.")
-        else:
-            st.caption(
-                "Set SHAREPOINT_TENANT_ID / CLIENT_ID / CLIENT_SECRET / SITE_ID as environment "
-                "variables to enable this source (same credentials as the UT app — see README)."
             )
 
     st.markdown("---")
@@ -360,9 +344,7 @@ with process_tab:
             return OPS_INTAKE_DIR, False, False
         if mode == "Use intake folder":
             return intake_dir, False, False
-        if mode.startswith("Email mailbox"):
-            return None, True, False
-        return None, False, True  # SharePoint
+        return None, True, False  # Email mailbox (IMAP)
 
     if run_clicked:
         from app.llm.router import check_connection, connection_error_message
@@ -376,7 +358,7 @@ with process_tab:
         if run_intake_dir is None and not run_use_mailbox and not run_use_sharepoint:
             st.warning(
                 "Upload documents, point at a non-empty intake folder, or select the "
-                "mailbox / SharePoint source first."
+                "mailbox source first."
             )
             st.stop()
 

@@ -230,10 +230,8 @@ with st.sidebar:
     st.image("assets/marvel_logo.png", width="stretch")
     st.markdown("---")
     st.markdown("### 📂 Intake")
-    sharepoint_ok = intake.sharepoint_available()
     imap_ok = intake.imap_available()
     source_options = ["Upload files", "Use intake folder"]
-    source_options.append("SharePoint folder" + ("" if sharepoint_ok else " (not configured)"))
     source_options.append("Email inbox (IMAP)" + ("" if imap_ok else " (not configured)"))
     mode = st.radio("Source", source_options, label_visibility="collapsed")
     if mode.startswith("Email"):
@@ -263,16 +261,6 @@ with st.sidebar:
         intake_dir = Path(st.text_input("Intake folder path", value=str(settings.paths.intake_dir)))
         existing = sorted(intake_dir.glob("*.pdf")) if intake_dir.exists() else []
         st.caption(f"{len(existing)} PDF(s) found in folder. Can contain multiple people's forms.")
-    elif mode.startswith("SharePoint"):
-        if sharepoint_ok:
-            st.caption(f"Watching `{settings.sharepoint.submission_folder}` on the configured SharePoint site.")
-            if settings.sharepoint.write_back_enabled:
-                st.caption("Write-back is ON — filed documents are also pushed to SharePoint.")
-        else:
-            st.caption(
-                "Set SHAREPOINT_TENANT_ID / SHAREPOINT_CLIENT_ID / SHAREPOINT_CLIENT_SECRET / "
-                "SHAREPOINT_SITE_ID as environment variables to enable this source."
-            )
     elif mode.startswith("Email"):
         if imap_ok:
             st.caption(f"Mailbox folder: `{settings.imap.folder}`  ·  Search: `{settings.imap.search_criteria}`")
@@ -324,8 +312,6 @@ def _resolve_pdf_paths() -> list[Path]:
             dest.write_bytes(f.getbuffer())
             saved.append(dest)
         return saved
-    if mode.startswith("SharePoint"):
-        return intake.pull_from_sharepoint(progress_cb=st.write)
     if mode.startswith("Email"):
         return intake.pull_from_imap(progress_cb=st.write)
     return sorted(intake_dir.glob("*.pdf")) if intake_dir.exists() else []
