@@ -17,7 +17,9 @@ compilation are sequential and deterministic.
 """
 from __future__ import annotations
 
+import random
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -29,7 +31,7 @@ from ops.correlator import correlate
 from ops.filer import file_document
 from ops.intake import IntakeItem, gather_from_folder, gather_from_mailbox, gather_from_sharepoint
 from ops.models import AuditPack, OpsDocument
-from ops.ops_config import load_workflow
+from ops.ops_config import load_salesperson_roster, load_workflow
 from ops.report import build_ops_report
 from ops.repository import save_batch
 
@@ -90,10 +92,20 @@ def run_ops_batch(
         report_path = build_ops_report([], [])
         return [], [], report_path
 
+    # Real submissions arrive as a batch from one sales consultant - see
+    # ops/salesperson.py's docstring. Picking this once, here, means every
+    # document in THIS run that doesn't state or portfolio-resolve its own
+    # salesperson lands on the same demo name, instead of each document
+    # independently rolling its own (which would scatter one real
+    # submission across unrelated names).
+    roster = load_salesperson_roster()
+    batch_fallback_salesperson = random.choice(roster)["name"] if roster else None
+
     _emit(progress_cb, f"Analysing {len(gathered)} document(s) - classification + metadata extraction...")
     workers = max(1, settings.max_workers)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        documents = list(pool.map(analyze_item, gathered))
+        documents = list(pool.map(
+            partial(analyze_item, batch_fallback_salesperson=batch_fallback_salesperson), gathered))
 
     for doc in documents:
         _route(doc)

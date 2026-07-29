@@ -54,7 +54,10 @@ _DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %B %Y", "%d %b %Y", "%Y
 # Metadata the LLM is asked for (portfolio is asked as free text and
 # resolved to a code afterwards via the client mapping).
 _LLM_FIELDS = [
-    ("portfolio", "Portfolio name or portfolio code the transaction concerns"),
+    ("portfolio", "Portfolio/fund NAME the transaction concerns (e.g. 'BIFM Pula Money Market Fund'). "
+     "Prefer the written fund/portfolio name over a raw 'Fund Number' or account-reference column next "
+     "to it on the same form - that number is the client form's own internal reference, not one of "
+     "BIFM's portfolio codes, and will never match the Portfolio Name-to-Code mapping"),
     ("client_name", "Client / portfolio holder name"),
     ("transaction_type", "Withdrawal or Contribution"),
     ("transaction_date", "Instruction date on the document"),
@@ -98,7 +101,8 @@ def _build_prompt(is_text: bool) -> str:
         "TASK 2 for that, not this. Only if THIS SPECIFIC document "
         'actually covers multiple portfolios, list each one as '
         '"line_items": one entry per portfolio/transaction, each with '
-        '"portfolio" (name or code), "transaction_amount", '
+        '"portfolio" (the fund/portfolio NAME, preferred over a raw Fund '
+        'Number/account-reference column), "transaction_amount", '
         '"transaction_date" (that row\'s own stated transaction/value '
         "date - never an unrelated per-instrument date like a settlement, "
         'maturity, or order-validity date), and "trade_id" - ONLY if it '
@@ -169,8 +173,17 @@ def _is_weak(parsed: dict) -> bool:
     return not any(_field_value(meta, f) for f in ("portfolio", "client_name", "transaction_amount", "trade_id"))
 
 
-def analyze_item(item: IntakeItem) -> OpsDocument:
-    """One intake item -> classified, metadata-tagged OpsDocument."""
+def analyze_item(item: IntakeItem, batch_fallback_salesperson: str | None = None) -> OpsDocument:
+    """One intake item -> classified, metadata-tagged OpsDocument.
+
+    batch_fallback_salesperson: the one salesperson name ops.pipeline
+    picked at random for this whole batch (see its docstring) - passed
+    through to ops.salesperson.resolve_salesperson so that every document
+    in one intake run which doesn't state or resolve a real salesperson
+    still ends up attributed to the SAME name, not each independently
+    rolling its own. None when analyze_item is called standalone (e.g.
+    directly, outside a batch), in which case resolve_salesperson falls
+    back to its own per-call random pick."""
     doc = OpsDocument(source_file=item.path.name, source_path=str(item.path))
     prompt = _build_prompt(is_text=item.kind == "text")
 
@@ -187,7 +200,16 @@ def analyze_item(item: IntakeItem) -> OpsDocument:
                 # Page 1 alone read as unrecognized/empty - try page 2
                 # before giving up. Cheap since this only fires for
                 # documents that already looked unusable from page 1.
-                more_pages = render_pdf_to_images(item.path, output_subdir=f"ops_{item.path.stem}", page_numbers=[2])
+                # render_pdf_to_images raises when a requested page simply
+                # doesn't exist (e.g. a genuinely one-page document, like a
+                # bare KYC scan) - that's an expected outcome here, not a
+                # failure, so it's swallowed rather than aborting the whole
+                # document's analysis over an optional secondary attempt.
+                try:
+                    more_pages = render_pdf_to_images(
+                        item.path, output_subdir=f"ops_{item.path.stem}", page_numbers=[2])
+                except Exception:  # noqa: BLE001
+                    more_pages = {}
                 if 2 in more_pages:
                     response2 = ask_vision(prompt, more_pages[2], json_mode=True)
                     parsed2 = parse_json_response(response2.text)
@@ -239,12 +261,29 @@ def analyze_item(item: IntakeItem) -> OpsDocument:
         doc.metadata[field_id] = value
         doc.metadata_confidence[field_id] = conf
 
+    # Portfolio fallback: some real BIFM UT retail forms print a client-
+    # facing "Fund Number"/account-reference column right next to the fund
+    # name in the same table, and the model sometimes reads that number as
+    # "portfolio" even though it's the form's own internal reference, not
+    # one of BIFM's portfolio codes - it will never resolve. security_name
+    # is read from the same table and usually names the fund correctly;
+    # retry resolution against that before giving up.
+    if not code_resolved and doc.metadata.get("security_name"):
+        fallback_code, fallback_name = resolve_portfolio(doc.metadata["security_name"])
+        if fallback_code:
+            code_resolved, name_resolved = fallback_code, fallback_name
+            doc.metadata["portfolio_code"] = code_resolved
+            doc.metadata["portfolio_name"] = name_resolved
+            doc.metadata_confidence["portfolio_code"] = doc.metadata_confidence.get("security_name", 0.0)
+
     # Salesperson: prefer whatever the document itself stated (just read
     # generically above, in doc.metadata["salesperson"]); fall back to the
-    # DEMO roster keyed by the now-resolved portfolio code. See
-    # ops/salesperson.py - this whole field is a demo capability standing
-    # in for a future SharePoint/HR-directory integration.
-    resolved_name, source = resolve_salesperson(doc.metadata.get("salesperson"), code_resolved)
+    # DEMO roster keyed by the now-resolved portfolio code, or to this
+    # batch's single random pick. See ops/salesperson.py - this whole
+    # field is a demo capability standing in for a future SharePoint/HR-
+    # directory integration.
+    resolved_name, source = resolve_salesperson(
+        doc.metadata.get("salesperson"), code_resolved, batch_fallback=batch_fallback_salesperson)
     doc.metadata["salesperson"] = resolved_name
     doc.salesperson_source = source
     if source == "Assigned (demo roster)":

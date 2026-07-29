@@ -2,17 +2,22 @@
 Tests for the Use Case 2 (BIFM Ops) application - every deterministic
 component: portfolio mapping, correlation, audit-pack evaluation and
 compilation, Year/Month/Date/Transaction filing, and the metadata
-repository's search. The LLM-dependent analyzer is covered only for its
-deterministic normalisers; live extraction accuracy needs a real run.
+repository's search. analyze_item's own deterministic post-processing
+(portfolio fallback, batch salesperson) is covered with ask_text mocked
+to a canned response; live extraction accuracy against a real document
+still needs a real run.
 """
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ops.analyzer import _is_weak, _normalize_amount, _normalize_date
+import ops.analyzer as analyzer_mod
+from ops.analyzer import _is_weak, _normalize_amount, _normalize_date, analyze_item
 from ops.audit_pack import compile_pack, evaluate_pack, zip_audit_folders, zip_packs_for_salesperson
 from ops.correlator import correlate
+from ops.intake import IntakeItem
 from ops.models import OpsDocument
 from ops.portfolio import resolve_portfolio
 from ops.repository import (
@@ -404,6 +409,97 @@ def test_date_and_amount_normalisation():
     assert _normalize_amount("P25,000.00") == "25000"
     assert _normalize_amount("1 200") == "1200"
     assert _normalize_amount("") == ""
+
+
+class _FakeLLMResponse:
+    def __init__(self, text: str):
+        self.text = text
+
+
+def test_portfolio_falls_back_to_security_name_when_raw_field_is_a_form_reference_number(monkeypatch):
+    # Real bug, seen against a real BIFM UT Disinvestment Form: the model
+    # read the printed "Fund Number" column (a client form's own internal
+    # reference, e.g. "178231") as "portfolio" instead of the fund name in
+    # the very next column - that number will never be in the Portfolio
+    # Name-to-Code mapping. security_name is read from the same table and
+    # correctly names the fund - analyze_item should retry resolution
+    # against that before giving up.
+    canned = {
+        "doc_type": "WITHDRAWAL_INSTRUCTION", "confidence": 98,
+        "metadata": {
+            "portfolio": {"value": "178231", "confidence": 90},
+            "client_name": {"value": "Onalenna Bogosing", "confidence": 95},
+            "transaction_type": {"value": "Withdrawal", "confidence": 90},
+            "transaction_amount": {"value": "40000", "confidence": 95},
+            "security_name": {"value": "BIFM Global Sustainable Growth Fund", "confidence": 90},
+        },
+        "line_items": [],
+    }
+    monkeypatch.setattr(analyzer_mod, "ask_text", lambda *a, **kw: _FakeLLMResponse(json.dumps(canned)))
+
+    item = IntakeItem(path=Path("GSGF - ONALENNA.txt"), kind="text", source_label="Folder drop",
+                       body_text="disinvestment instruction body")
+    doc = analyze_item(item)
+
+    assert doc.metadata["portfolio_code"] == "BGSGF06"
+    assert doc.metadata["portfolio_name"] == "BIFM Global Sustainable Growth Fund"
+    assert not any("not found in the Portfolio Name-to-Code mapping" in f for f in doc.review_flags)
+
+
+def test_batch_fallback_salesperson_used_when_nothing_else_resolves(monkeypatch):
+    canned = {
+        "doc_type": "WITHDRAWAL_INSTRUCTION", "confidence": 98,
+        "metadata": {"client_name": {"value": "Someone", "confidence": 90}},
+        "line_items": [],
+    }
+    monkeypatch.setattr(analyzer_mod, "ask_text", lambda *a, **kw: _FakeLLMResponse(json.dumps(canned)))
+    item = IntakeItem(path=Path("x.txt"), kind="text", source_label="Folder drop", body_text="body")
+
+    doc = analyze_item(item, batch_fallback_salesperson="Naledi Phiri")
+    assert doc.metadata["salesperson"] == "Naledi Phiri"
+
+
+def test_batch_fallback_salesperson_loses_to_a_real_portfolio_match(monkeypatch):
+    # The portfolio-roster mapping is a stronger signal than the batch's
+    # arbitrary random pick - it should still win when both are available.
+    canned = {
+        "doc_type": "WITHDRAWAL_INSTRUCTION", "confidence": 98,
+        "metadata": {
+            "portfolio": {"value": "BIFM Pula Money Market Fund", "confidence": 95},
+            "transaction_amount": {"value": "1000", "confidence": 90},
+        },
+        "line_items": [],
+    }
+    monkeypatch.setattr(analyzer_mod, "ask_text", lambda *a, **kw: _FakeLLMResponse(json.dumps(canned)))
+    item = IntakeItem(path=Path("y.txt"), kind="text", source_label="Folder drop", body_text="body")
+
+    # BPMMF01 maps to Thabo Kgosi in the demo roster - batch_fallback is a
+    # different name and must not override that real match.
+    doc = analyze_item(item, batch_fallback_salesperson="Kagiso Mmusi")
+    assert doc.metadata["salesperson"] == "Thabo Kgosi"
+
+
+def test_page_1_weak_read_on_a_genuine_one_page_pdf_does_not_crash(monkeypatch):
+    # Regression: a bare one-page scan (e.g. a KYC ID document with no
+    # matching UC2 doc type) legitimately reads as UNRECOGNIZED from page
+    # 1 alone, which is "weak" and triggers the page-2 retry - but this
+    # PDF genuinely has no page 2. render_pdf_to_images raises in that
+    # case (a requested page that doesn't exist), which must not blow up
+    # the whole document's analysis over an optional secondary attempt.
+    weak = {"doc_type": "UNRECOGNIZED", "confidence": 98, "metadata": {}, "line_items": []}
+    monkeypatch.setattr(analyzer_mod, "ask_vision", lambda *a, **kw: _FakeLLMResponse(json.dumps(weak)))
+
+    def fake_render(path, output_subdir=None, page_numbers=None):
+        if page_numbers == [1]:
+            return {1: Path("fake_page_1.png")}
+        raise ValueError(f"No pages rendered from {path.name}")  # no page 2 exists
+
+    monkeypatch.setattr(analyzer_mod, "render_pdf_to_images", fake_render)
+    item = IntakeItem(path=Path("KYC - ONALENNA.pdf"), kind="pdf", source_label="Folder drop")
+
+    doc = analyze_item(item)
+    assert not doc.error
+    assert doc.doc_type_code == "UNRECOGNIZED"
 
 
 # ------------------------------------------------------------- salesperson (demo capability)

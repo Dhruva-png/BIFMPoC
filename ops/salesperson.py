@@ -18,12 +18,25 @@ Three-tier resolution, in priority order:
      has resolved (ops.portfolio.resolve_portfolio).
   3. ASSIGNED (demo roster), at random - when neither of the above yields
      anyone (no stated name, and either no portfolio or a portfolio the
-     roster doesn't cover), pick uniformly from the roster anyway, so
-     every pack built in the demo has a named salesperson to show rather
-     than a blank field. This is explicitly a demo-only relaxation of the
-     "never assign without a real peg" rule ops.portfolio still follows -
-     there being no visible salesperson isn't useful for demonstrating the
+     roster doesn't cover), fall back to a name from the roster, so every
+     pack built in the demo has a named salesperson to show rather than a
+     blank field. This is explicitly a demo-only relaxation of the "never
+     assign without a real peg" rule ops.portfolio still follows - there
+     being no visible salesperson isn't useful for demonstrating the
      "filter and compile audit packs by salesperson" capability end-to-end.
+
+     Real BIFM submissions arrive as a batch from one sales consultant -
+     several different clients' instruction forms, sent in together, none
+     of which necessarily states the consultant's name on the form itself.
+     Rolling this random pick independently per document would scatter one
+     real submission across several different demo names, which is wrong
+     in exactly the way that's obvious in a client demo (the same
+     salesperson's forms end up split across unrelated audit packs).
+     ops.pipeline.run_ops_batch instead picks ONE random name per batch and
+     passes it in as batch_fallback, so every document in one intake run
+     that doesn't state or portfolio-resolve a name still lands on the
+     same person - callers that don't pass batch_fallback (a bare,
+     non-batch call) get a fresh independent random pick instead.
 
 The (name, source) return lets callers show a document's salesperson
 alongside whether it was actually stated or just demo-assigned - the
@@ -40,12 +53,15 @@ SOURCE_ASSIGNED = "Assigned (demo roster)"
 SOURCE_NONE = ""
 
 
-def resolve_salesperson(stated_name: str | None, portfolio_code: str | None) -> tuple[str, str]:
+def resolve_salesperson(
+    stated_name: str | None, portfolio_code: str | None, batch_fallback: str | None = None,
+) -> tuple[str, str]:
     """
     Returns (salesperson_name, source). source is SOURCE_EXTRACTED when
     stated_name was used as-is, SOURCE_ASSIGNED when it came from the demo
-    roster (via portfolio_code if possible, else at random), or
-    SOURCE_NONE ("", "") only when the roster itself is empty.
+    roster (via portfolio_code if possible, else batch_fallback if given,
+    else a fresh random pick), or SOURCE_NONE ("", "") only when the
+    roster itself is empty.
     """
     if stated_name and str(stated_name).strip():
         return str(stated_name).strip(), SOURCE_EXTRACTED
@@ -58,5 +74,8 @@ def resolve_salesperson(stated_name: str | None, portfolio_code: str | None) -> 
         for person in roster:
             if portfolio_code in person.get("portfolios", []):
                 return person["name"], SOURCE_ASSIGNED
+
+    if batch_fallback:
+        return batch_fallback, SOURCE_ASSIGNED
 
     return random.choice(roster)["name"], SOURCE_ASSIGNED

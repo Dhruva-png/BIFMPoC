@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import threading
+import time
 from pathlib import Path
 
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
@@ -212,16 +213,33 @@ def render_pdf_to_images(
         f" page(s) {sorted(wanted)}" if wanted else "", settings.pdf_render_dpi, _RENDERER,
     )
 
-    try:
-        if _RENDERER == "pypdfium2":
-            image_paths = _render_with_pypdfium2(pdf_path, target_dir, wanted)
-        else:
-            image_paths = _render_with_pdf2image(pdf_path, target_dir, wanted)
-    except Exception as exc:
-        raise ValueError(
-            f"Could not render {pdf_path.name} — file may be corrupt or password-protected: {exc}"
-        ) from exc
+    # Retried once: the intake/output folders in practice live inside a
+    # OneDrive-synced directory, and a brief sync-lock on the source PDF
+    # (or a similar one-off I/O hiccup) can make a single render attempt
+    # come back empty even though the file is perfectly fine - confirmed
+    # by re-running the exact same call moments later with no other change
+    # and getting a normal result. A short pause before the retry gives
+    # whatever briefly held the file time to let go.
+    last_exc: Exception | None = None
+    image_paths: dict[int, Path] = {}
+    for attempt in range(2):
+        try:
+            if _RENDERER == "pypdfium2":
+                image_paths = _render_with_pypdfium2(pdf_path, target_dir, wanted)
+            else:
+                image_paths = _render_with_pdf2image(pdf_path, target_dir, wanted)
+            if image_paths:
+                break
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+        if attempt == 0:
+            logger.warning("Render attempt 1 for %s produced nothing usable - retrying once", pdf_path.name)
+            time.sleep(1.0)
 
+    if not image_paths and last_exc is not None:
+        raise ValueError(
+            f"Could not render {pdf_path.name} — file may be corrupt or password-protected: {last_exc}"
+        ) from last_exc
     if not image_paths:
         raise ValueError(f"No pages rendered from {pdf_path.name}")
 
