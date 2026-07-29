@@ -38,6 +38,12 @@
       "classification_hints": ["proof of payment", "payment confirmation", "transfer receipt", "eft confirmation", "payment reference", "payment transaction details", "beneficiary details", "debtor account is BIFM, beneficiary is a client/third-party bank account (money moving OUT to the client)", "rtgs", "uetr number"]
     },
     {
+      "code": "CONTRIBUTION_INSTRUCTION",
+      "name": "Client Contribution / Additional Investment Instruction",
+      "transaction_type": "Contribution",
+      "classification_hints": ["additional investment form", "investment instruction", "please invest", "lump sum deposit", "lump sum debit", "investment fund details", "core fund range", "source of funds for this investment", "please credit our portfolio with", "kindly invest as follows"]
+    },
+    {
       "code": "DEPOSIT_CONFIRMATION",
       "name": "Deposit Confirmation Letter",
       "transaction_type": "Contribution",
@@ -71,6 +77,7 @@
       {"code": "BANK_STATEMENT", "required": false, "satisfied_by": ["BANK_STATEMENT", "PROOF_OF_PAYMENT"], "note": "Bank Statement / Proof of Payment - where applicable (BIFM only generates this for pooled-client payouts it makes itself, or on ad hoc auditor request)"}
     ],
     "Contribution": [
+      {"code": "CONTRIBUTION_INSTRUCTION", "required": false, "note": "Client's own contribution / additional investment instruction, where the client submits one (e.g. BIFM UT's Additional Investment Form) - institutional contributions confirmed in BIFM's real samples were captured straight into the cash/trade templates below with no separate instruction letter on file, so this isn't required, only filed as evidence when present"},
       {"code": "PROOF_OF_PAYMENT", "required": true, "satisfied_by": ["PROOF_OF_PAYMENT", "DEPOSIT_CONFIRMATION"], "note": "Client Proof of Payment / Deposit Confirmation Letter"},
       {"code": "BANK_STATEMENT", "required": true, "note": "Bank Statement confirming receipt"},
       {"code": "PROOF_OF_TRANSFER", "required": true, "note": "Proof of Transfer from the BIFM account to the investment inflow account"},

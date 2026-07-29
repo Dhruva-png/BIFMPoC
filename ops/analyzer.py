@@ -151,6 +151,24 @@ def _normalize_amount(value) -> str:
     return text or "0"
 
 
+def _field_value(meta: dict, field_id: str):
+    payload = meta.get(field_id)
+    return payload.get("value") if isinstance(payload, dict) else payload
+
+
+def _is_weak(parsed: dict) -> bool:
+    """True when a read found nothing usable - either it couldn't classify
+    the document at all, or classified it but read none of the core
+    transaction fields. Some real BIFM documents (e.g. BIFM UT's own
+    Additional Investment Form) put every cover/instructions paragraph on
+    page 1 and the actual investor/fund/amount table on page 2 - a
+    page-1-only read of one of these comes back exactly this way."""
+    if str(parsed.get("doc_type", "UNRECOGNIZED")) == "UNRECOGNIZED":
+        return True
+    meta = parsed.get("metadata", {}) or {}
+    return not any(_field_value(meta, f) for f in ("portfolio", "client_name", "transaction_amount", "trade_id"))
+
+
 def analyze_item(item: IntakeItem) -> OpsDocument:
     """One intake item -> classified, metadata-tagged OpsDocument."""
     doc = OpsDocument(source_file=item.path.name, source_path=str(item.path))
@@ -160,10 +178,21 @@ def analyze_item(item: IntakeItem) -> OpsDocument:
         if item.kind == "text":
             text = item.body_text or item.path.read_text(encoding="utf-8", errors="replace")
             response = ask_text(f"{prompt}\n\nDOCUMENT TEXT:\n{text[:8000]}", json_mode=True)
+            parsed = parse_json_response(response.text)
         else:
             pages = render_pdf_to_images(item.path, output_subdir=f"ops_{item.path.stem}", page_numbers=[1])
             response = ask_vision(prompt, pages[1], json_mode=True)
-        parsed = parse_json_response(response.text)
+            parsed = parse_json_response(response.text)
+            if _is_weak(parsed):
+                # Page 1 alone read as unrecognized/empty - try page 2
+                # before giving up. Cheap since this only fires for
+                # documents that already looked unusable from page 1.
+                more_pages = render_pdf_to_images(item.path, output_subdir=f"ops_{item.path.stem}", page_numbers=[2])
+                if 2 in more_pages:
+                    response2 = ask_vision(prompt, more_pages[2], json_mode=True)
+                    parsed2 = parse_json_response(response2.text)
+                    if not _is_weak(parsed2):
+                        parsed = parsed2
     except Exception as exc:  # noqa: BLE001 - one bad document must not stop the batch
         logger.exception("Ops analysis failed for %s", item.path.name)
         doc.error = str(exc)

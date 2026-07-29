@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ops.analyzer import _normalize_amount, _normalize_date
+from ops.analyzer import _is_weak, _normalize_amount, _normalize_date
 from ops.audit_pack import compile_pack, evaluate_pack, zip_audit_folders, zip_packs_for_salesperson
 from ops.correlator import correlate
 from ops.models import OpsDocument
@@ -23,6 +23,7 @@ from ops.repository import (
     save_batch,
     search_documents,
 )
+import ops.salesperson as salesperson_mod
 from ops.salesperson import SOURCE_ASSIGNED, SOURCE_EXTRACTED, SOURCE_NONE, resolve_salesperson
 
 
@@ -376,6 +377,26 @@ def test_repository_upsert_does_not_duplicate_on_rerun(tmp_path):
 
 # ------------------------------------------------------------- analyzer normalisers
 
+def test_is_weak_flags_unrecognized_and_empty_reads():
+    # UNRECOGNIZED is always weak, whatever metadata came with it.
+    assert _is_weak({"doc_type": "UNRECOGNIZED", "metadata": {"client_name": {"value": "Theo Mabe"}}})
+    # Classified, but every core field null - a page-1-only read of a form
+    # whose cover page (page 1) carries no investor/fund/amount data at all.
+    assert _is_weak({"doc_type": "TRADE_ORDER", "metadata": {"security_name": {"value": "N/A"}}})
+    assert _is_weak({"doc_type": "TRADE_ORDER", "metadata": {}})
+
+
+def test_is_weak_false_once_a_core_field_resolved():
+    assert not _is_weak({
+        "doc_type": "TRADE_ORDER",
+        "metadata": {"portfolio": {"value": "BIFM Pula Money Market Fund"}},
+    })
+    assert not _is_weak({
+        "doc_type": "TRADE_ORDER",
+        "metadata": {"trade_id": "T-123"},  # bare value, not a {value, confidence} payload
+    })
+
+
 def test_date_and_amount_normalisation():
     assert _normalize_date("10/07/2026") == "2026-07-10"
     assert _normalize_date("10 July 2026") == "2026-07-10"
@@ -405,15 +426,27 @@ def test_roster_fallback_when_nothing_stated():
     assert (name2, source2) == ("Naledi Phiri", SOURCE_ASSIGNED)
 
 
-def test_no_portfolio_means_no_assignment_never_a_guess():
-    # Mirrors ops.portfolio's rule: never assign without a real peg to hang
-    # it on. A portfolio-less document gets no salesperson, not a random one.
-    assert resolve_salesperson("", "") == ("", SOURCE_NONE)
-    assert resolve_salesperson(None, None) == ("", SOURCE_NONE)
+def test_no_portfolio_still_gets_a_random_roster_assignment():
+    # Unlike ops.portfolio's stricter rule, salesperson is an explicit demo
+    # capability (see ops/salesperson.py's docstring) - a portfolio-less
+    # document still gets someone from the roster, at random, so every pack
+    # built in the demo has a name to show rather than a blank field.
+    roster_names = {"Thabo Kgosi", "Naledi Phiri", "Kagiso Mmusi"}
+    name, source = resolve_salesperson("", "")
+    assert source == SOURCE_ASSIGNED and name in roster_names
+    name2, source2 = resolve_salesperson(None, None)
+    assert source2 == SOURCE_ASSIGNED and name2 in roster_names
 
 
-def test_portfolio_not_in_roster_means_no_assignment():
-    assert resolve_salesperson("", "UNKNOWN_CODE") == ("", SOURCE_NONE)
+def test_portfolio_not_in_roster_falls_back_to_random_assignment():
+    roster_names = {"Thabo Kgosi", "Naledi Phiri", "Kagiso Mmusi"}
+    name, source = resolve_salesperson("", "UNKNOWN_CODE")
+    assert source == SOURCE_ASSIGNED and name in roster_names
+
+
+def test_empty_roster_still_means_no_assignment(monkeypatch):
+    monkeypatch.setattr(salesperson_mod, "load_salesperson_roster", lambda: [])
+    assert resolve_salesperson("", "BPMMF01") == ("", SOURCE_NONE)
 
 
 def test_correlator_propagates_salesperson_onto_the_transaction():
