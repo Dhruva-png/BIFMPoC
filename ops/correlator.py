@@ -144,7 +144,17 @@ class _Unit:
         becomes a clone: same physical file (source_path/source_file,
         classification, everything else), but this row's own
         portfolio/amount/date/trade_id instead of the shared document's
-        blank top-level metadata."""
+        blank top-level metadata.
+
+        No review flag is raised for this split itself - splitting a
+        shared document across the transactions it's evidence for is
+        correct, expected behaviour (exactly what BIFM described: "Marvel
+        will go to all these five folders... and compile it"), not
+        something for a human to double-check. review_flags is reserved
+        for things that actually need attention (an unresolved portfolio,
+        a missing trade id/amount); a purely informational note here would
+        make every correctly-split row show up as "needs review" for no
+        real reason."""
         if self.line_item is None:
             return self.doc
         clone = copy.deepcopy(self.doc)
@@ -158,8 +168,6 @@ class _Unit:
             f for f in clone.review_flags
             if "row(s) of this shared document" not in f
         ]
-        clone.review_flags.append(
-            f"One row of a shared multi-portfolio document ({self.doc.source_file})")
         return clone
 
 
