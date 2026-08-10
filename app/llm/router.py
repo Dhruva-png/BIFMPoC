@@ -48,8 +48,9 @@ def connection_error_message() -> str:
     entry point (main.py, ops_main.py, ops_app.py) so the message never
     drifts out of sync with the actual backend."""
     return (
-        "Could not reach Gemini (missing/invalid GEMINI_API_KEY, or the "
-        "project's free-tier quota is 0). Get a free key at "
-        "https://aistudio.google.com/apikey and set it in your .env file "
-        "(see .env.example) or as an environment variable."
+        "Could not reach Gemini on any configured key (missing/invalid "
+        "GEMINI_API_KEY, or the project's free-tier quota is 0). Get a "
+        "free key at https://aistudio.google.com/apikey and set it in "
+        "your .env file (see .env.example) as GEMINI_API_KEY - optionally "
+        "add a second as GEMINI_API_KEY_2 for higher throughput."
     )

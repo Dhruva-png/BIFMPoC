@@ -18,7 +18,7 @@ if env_path.exists():
             print(f"  (skipped/comment): {line}")
 
 print("\n--- Already set in real OS environment BEFORE .env loads ---")
-for key in ("GEMINI_API_KEY",):
+for key in ("GEMINI_API_KEY", "GEMINI_API_KEY_2"):
     pre_existing = os.environ.get(key)
     print(f"  {key}: {'SET (len=' + str(len(pre_existing)) + ')' if pre_existing else 'not set'}")
 
@@ -27,6 +27,10 @@ from dotenv import load_dotenv
 load_dotenv(env_path, override=False)
 
 print("\n--- Final resolved values ---")
-for key in ("GEMINI_API_KEY",):
+for key in ("GEMINI_API_KEY", "GEMINI_API_KEY_2"):
     val = os.environ.get(key, "")
     print(f"  {key}: {'SET (len=' + str(len(val)) + ')' if val else 'EMPTY'}")
+
+n_keys = sum(1 for k in ("GEMINI_API_KEY", "GEMINI_API_KEY_2") if os.environ.get(k))
+print(f"\n{n_keys} Gemini key(s) configured "
+      f"{'- requests will round-robin across both' if n_keys == 2 else '(single-key mode)' if n_keys == 1 else '- app.llm calls will fail until at least one is set'}.")

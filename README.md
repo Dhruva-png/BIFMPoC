@@ -35,6 +35,13 @@ and quota, no shared pool to contend with. See
    ```
 3. Run the app (`python main.py`, or `streamlit run streamlit_app.py`).
 
+Optional second key: both use cases process documents concurrently, so a
+normal-sized batch can trip one key's free-tier rate limit. Set
+`GEMINI_API_KEY_2` (a second key, same way) and requests round-robin
+across both, rotating off a rate-limited key instead of waiting it out —
+see `app/llm/gemini_client.py`'s docstring. Not required; one key still
+works.
+
 Default model is `gemini-3.1-flash-lite` — checked against Google's own
 model list before picking it (Stable, multimodal: text/image/video/audio/
 PDF input, positioned by Google as their fast/cheap tier for lightweight
@@ -242,6 +249,7 @@ Open http://localhost:8501. Upload PDFs in the sidebar and click **Run Batch**.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_API_KEY` | (none) | **Required** — the app's only LLM backend |
+| `GEMINI_API_KEY_2` | (none) | Optional second key — requests round-robin across both for higher throughput |
 | `GEMINI_VISION_MODEL` | `gemini-3.1-flash-lite` | Vision model for classification & extraction |
 | `GEMINI_TEXT_MODEL` | `gemini-3.1-flash-lite` | Text model |
 | `PDF_RENDER_DPI` | `220` | DPI for PDF-to-image rendering |

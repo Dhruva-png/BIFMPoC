@@ -49,13 +49,26 @@ class GeminiSettings:
     "Stable", multimodal (text/image/video/audio/PDF) model on Google's
     own model list (ai.google.dev/gemini-api/docs/models) before being
     picked, rather than guessed - see app/llm/gemini_client.py's docstring.
+
+    Supports a second key (GEMINI_API_KEY_2, optional) for higher
+    effective throughput under the free tier's per-key rate limits:
+    app.llm.gemini_client round-robins requests across every configured
+    key and, on a 429 from one key, rotates to the next before falling
+    back to a sleep-and-retry - see that module's docstring. Everything
+    works unchanged with just GEMINI_API_KEY set.
     """
     api_key: str = os.environ.get("GEMINI_API_KEY", "")
+    api_key_2: str = os.environ.get("GEMINI_API_KEY_2", "")
     text_model: str = os.environ.get("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite")
     vision_model: str = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite")
     request_timeout_seconds: int = int(os.environ.get("GEMINI_REQUEST_TIMEOUT", "60"))
     max_retries: int = int(os.environ.get("GEMINI_MAX_RETRIES", "3"))
     num_predict: int = int(os.environ.get("GEMINI_NUM_PREDICT", "800"))
+
+    @property
+    def api_keys(self) -> list[str]:
+        """Every configured key, in priority order, with unset ones skipped."""
+        return [k for k in (self.api_key, self.api_key_2) if k]
 
 
 @dataclass
