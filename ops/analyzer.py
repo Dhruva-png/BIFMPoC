@@ -57,7 +57,11 @@ _LLM_FIELDS = [
     ("portfolio", "Portfolio/fund NAME the transaction concerns (e.g. 'BIFM Pula Money Market Fund'). "
      "Prefer the written fund/portfolio name over a raw 'Fund Number' or account-reference column next "
      "to it on the same form - that number is the client form's own internal reference, not one of "
-     "BIFM's portfolio codes, and will never match the Portfolio Name-to-Code mapping"),
+     "BIFM's portfolio codes, and will never match the Portfolio Name-to-Code mapping. A pooled bank "
+     "statement (e.g. an 'Operating Account Consolidated Statement') is held in BIFM's OWN name (e.g. "
+     "'Botswana Insurance Fund Management') on behalf of many portfolios collectively - that account "
+     "holder name is never itself a portfolio; leave this null on that kind of document unless it "
+     "explicitly names one specific client portfolio"),
     ("client_name", "Client / portfolio holder name"),
     ("transaction_type", "Withdrawal or Contribution"),
     ("transaction_date", "Instruction date on the document"),
