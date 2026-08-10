@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 import threading
 import time
 from pathlib import Path
@@ -26,12 +25,6 @@ except ImportError:
     pdfium = None  # type: ignore[assignment]
     _RENDERER = "pdf2image"
     logger.debug("PDF renderer: pdf2image (pypdfium2 not available)")
-
-try:
-    import pytesseract
-    _TESSERACT_AVAILABLE = shutil.which("tesseract") is not None
-except ImportError:
-    _TESSERACT_AVAILABLE = False
 
 
 _DESKEW_MAX_ANGLE = 3.0        # degrees each way - scanner tilt, not sideways pages
@@ -245,30 +238,3 @@ def render_pdf_to_images(
 
     logger.info("Rendered %d page(s) from %s", len(image_paths), pdf_path.name)
     return image_paths
-
-
-def quick_text_scan(image_path: Path) -> str:
-    """
-    Optional raw-text pass via Tesseract (if installed).
-    Used for classification keyword hints only — not the primary extraction path.
-    Returns empty string gracefully when Tesseract is unavailable.
-    """
-    if not _TESSERACT_AVAILABLE:
-        return ""
-    try:
-        return pytesseract.image_to_string(Image.open(image_path))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Tesseract quick scan failed for %s: %s", image_path.name, exc)
-        return ""
-
-
-def find_page_for_hint(image_paths: list[Path], hint_keywords: list[str]) -> Path | None:
-    """
-    Scans pages with quick_text_scan to locate a page matching given keywords.
-    Used e.g. to find the guardian section on page 10 of the APPFORM.
-    """
-    for img_path in image_paths:
-        text = quick_text_scan(img_path).lower()
-        if any(hint.lower() in text for hint in hint_keywords):
-            return img_path
-    return None
