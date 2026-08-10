@@ -61,15 +61,27 @@ _LLM_FIELDS = [
      "statement (e.g. an 'Operating Account Consolidated Statement') is held in BIFM's OWN name (e.g. "
      "'Botswana Insurance Fund Management') on behalf of many portfolios collectively - that account "
      "holder name is never itself a portfolio; leave this null on that kind of document unless it "
-     "explicitly names one specific client portfolio"),
-    ("client_name", "Client / portfolio holder name"),
+     "explicitly names one specific client portfolio. Likewise, a report/template identifier printed "
+     "in a document's own header (e.g. '[PF:XHLD8A]', a schedule-of-investments report code) is that "
+     "report's internal system name, not a portfolio - never use it here"),
+    ("client_name", "The actual investor/fund whose money this concerns - named in a portfolio/fund "
+     "table, an instruction's subject line, or similar (e.g. 'Botswana Telecommunications Corporation "
+     "Staff Pension Fund'). NOT the letterhead of whichever company physically sent the document if "
+     "they're acting as an intermediary/broker on the client's behalf (e.g. a broker's letterhead like "
+     "'Alexander Forbes' is the messenger, not the client), and NOT BIFM's own name. Leave null rather "
+     "than fill this with a portfolio code that's already captured under the portfolio field"),
     ("transaction_type", "Withdrawal or Contribution"),
     ("transaction_date", "Instruction date on the document"),
     ("trade_date", "Trade execution date, if stated"),
-    ("transaction_amount", "The withdrawal or contribution amount (number)"),
+    ("transaction_amount", "The withdrawal or contribution amount (number). Read large amounts with "
+     "many digits or repeated zeros (e.g. 40000000) digit by digit rather than at a glance - it's easy "
+     "to drop or duplicate a zero on a long run of them"),
     ("security_name", "Security / fund name involved, if stated"),
     ("security_code", "Security code / ISIN / instrument code, if stated"),
-    ("trade_id", "Trade ID / transaction reference / order number, if stated"),
+    ("trade_id", "Trade ID / transaction reference / order number, if stated - an actual reference "
+     "code or number (e.g. 'Q0004024'). NOT a portfolio code that happens to appear near other "
+     "reference-looking text elsewhere on the page (e.g. a small breakdown table showing a code like "
+     "'LIBLMM' next to an amount is not a trade id, even though it looks like one out of context)"),
     ("salesperson", "Sales consultant / advisor / broker name mentioned on the document, if any"),
 ]
 
@@ -88,6 +100,31 @@ def _build_prompt(is_text: bool) -> str:
         "TASK 1 - classify the document as exactly ONE of:\n"
         f"{type_list}\n"
         "If it is none of these, use code UNRECOGNIZED.\n\n"
+        "Score your classification confidence honestly with this rubric - "
+        "do not default to a high number out of habit, and do not let two "
+        "documents that are equally unclear get different scores just "
+        "because one LOOKS more official:\n"
+        "  90-100: the document explicitly labels itself with wording "
+        "matching one of the hints almost verbatim (e.g. a header "
+        "literally titled 'Schedule of Investments' or 'Withdrawal "
+        "Instruction').\n"
+        "  70-89: no explicit self-label, but the structure and content "
+        "unambiguously match one type over every other listed type (e.g. "
+        "a portfolio/amount table requesting disinvestment, even without "
+        "the word 'withdrawal' appearing anywhere).\n"
+        "  40-69: plausible but genuinely ambiguous - it could reasonably "
+        "be more than one of the listed types, or only loosely resembles "
+        "one.\n"
+        "  0-39: you are guessing; nothing here clearly resembles a "
+        "listed type well enough to justify picking one over UNRECOGNIZED.\n"
+        "For UNRECOGNIZED specifically, confidence means how sure you are "
+        "that this ISN'T any of the listed types - a document that's "
+        "obviously something else entirely (e.g. a random ID scan) "
+        "deserves a high score; a document you simply couldn't get enough "
+        "signal from (e.g. only a cover/instructions page was visible) "
+        "deserves a LOW score, since low confidence is what sends a "
+        "document to human review - never mark UNRECOGNIZED confidently "
+        "just because nothing matched.\n\n"
         "TASK 2 - extract this metadata (null for anything not present; "
         "never invent values):\n"
         f"{field_list}\n\n"
@@ -109,7 +146,15 @@ def _build_prompt(is_text: bool) -> str:
         'Number/account-reference column), "transaction_amount", '
         '"transaction_date" (that row\'s own stated transaction/value '
         "date - never an unrelated per-instrument date like a settlement, "
-        'maturity, or order-validity date), and "trade_id" - ONLY if it '
+        "maturity, or order-validity date. A real BIFM trade order batch "
+        "has a column literally called something like 'ORDR_VALID_DAT' "
+        "holding a date many months in the future (e.g. an order that "
+        "stays valid until next January) - that is NEVER the transaction "
+        "date, no matter how tempting it looks as 'the' date column. The "
+        "actual transaction date is the 'PREPARED BY' / 'CHECKED BY' "
+        "sign-off date at the bottom of the document, which applies to "
+        "every row in the batch; use that same date for every line item "
+        'unless a row states its own different one), and "trade_id" - ONLY if it '
         "looks like a reference likely to also appear on OTHER documents "
         "for the same transaction (e.g. a bank payment reference); leave "
         "it null for a purely internal per-row ledger ID that exists "

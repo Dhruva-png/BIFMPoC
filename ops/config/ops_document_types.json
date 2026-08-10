@@ -17,13 +17,13 @@
       "code": "TRADE_ORDER",
       "name": "Trade Order Document (Trading Tool)",
       "transaction_type": "Any",
-      "classification_hints": ["trade order", "order ticket", "deal ticket", "trade confirmation", "order id", "execution details", "load orders", "schedule of investments", "ordr_typ", "xact_typ", "pf_cod", "portfolio/hiport code", "prepared by / checked by"]
+      "classification_hints": ["trade order", "order ticket", "deal ticket", "trade confirmation", "order id", "execution details", "load orders", "ordr_typ", "xact_typ", "pf_cod", "portfolio/hiport code", "schedule of investments listing many individual securities/holdings with a market value per instrument, for ONE fund (e.g. a '[PF:XHLD8A]' schedule) - not a table of portfolio-level cash movements, that is CASH_FLOW_STATEMENT instead"]
     },
     {
       "code": "CASH_FLOW_STATEMENT",
       "name": "Cash Flow Statement",
       "transaction_type": "Any",
-      "classification_hints": ["cash flow statement", "cash flow report", "cashflow", "inflow outflow summary", "cash trade id", "analysis code withdr contri", "prepared by ... reviewed by", "portfolio code date transaction type amount"]
+      "classification_hints": ["cash flow statement", "cash flow report", "cashflow", "inflow outflow summary", "a table with one row per PORTFOLIO (not per security), columns like Cash Trade Id / Portfolio Code / Date / Transaction Type / Amount, transaction type values like Withdrawal or Deposit", "analysis code withdr contri"]
     },
     {
       "code": "BANK_STATEMENT",
